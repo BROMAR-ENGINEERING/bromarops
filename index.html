@@ -1196,60 +1196,70 @@
                 const sampleEquipment = [
                     {
                         id: 'EQ-001',
+                        assetNumber: 'BA00001',
                         type: 'tool',
                         name: 'Cable Fault Locator',
                         serialNumber: 'CFL-2023-001',
                         assignedTo: 'TECH-003',
                         status: 'in_use',
                         purchaseDate: '2023-06-20',
+                        maintenanceType: 'calibration',
                         lastCalibration: '2024-01-10',
                         nextCalibration: '2025-01-10',
                         notes: 'Annual calibration required'
                     },
                     {
                         id: 'EQ-002',
+                        assetNumber: 'BA00002',
                         type: 'tool',
                         name: 'Thermal Imaging Camera',
                         serialNumber: 'TIC-2022-045',
                         assignedTo: null,
                         status: 'available',
                         purchaseDate: '2022-11-05',
+                        maintenanceType: 'calibration',
                         lastCalibration: '2023-11-05',
                         nextCalibration: '2024-11-05',
                         notes: 'Store in protective case when not in use'
                     },
                     {
                         id: 'EQ-003',
+                        assetNumber: 'BA00003',
                         type: 'tool',
                         name: 'Generator - 5.5kVA',
                         serialNumber: 'GEN-2021-012',
                         assignedTo: null,
                         status: 'maintenance',
                         purchaseDate: '2021-05-12',
+                        maintenanceType: 'service',
                         lastService: '2024-04-10',
                         nextService: '2024-10-10',
                         notes: 'In for repairs - carburetor issue'
                     },
                     {
                         id: 'EQ-004',
+                        assetNumber: 'BA00004',
                         type: 'tool',
                         name: 'Multimeter - Fluke 87V',
                         serialNumber: 'FLK-2023-089',
                         assignedTo: 'TECH-001',
                         status: 'in_use',
                         purchaseDate: '2023-02-14',
+                        maintenanceType: 'calibration',
                         lastCalibration: '2024-02-14',
                         nextCalibration: '2025-02-14',
                         notes: 'Primary field meter'
                     },
                     {
                         id: 'EQ-005',
+                        assetNumber: 'BA00005',
                         type: 'tool',
                         name: 'Ladder - 6m Extension',
                         serialNumber: 'LAD-2022-003',
                         assignedTo: 'TECH-002',
                         status: 'in_use',
                         purchaseDate: '2022-07-10',
+                        maintenanceType: 'service',
                         lastService: '2024-01-15',
                         nextService: '2025-01-15',
                         notes: 'Annual safety inspection required'
@@ -1503,7 +1513,7 @@
                 { id: 'fleet', label: 'Fleet Management', icon: '🚐' },
                 { id: 'equipment', label: 'Equipment', icon: '🔧' },
                 { id: 'timesheets', label: 'Timesheets', icon: '⏱️' },
-                { id: 'inventory', label: 'Inventory', icon: '📋' },
+                { id: 'jobsheets', label: 'Job Sheets', icon: '📄' },
                 { id: 'reports', label: 'Reports', icon: '📈' },
                 { id: 'settings', label: 'Settings', icon: '⚙️' }
             ];
@@ -1589,8 +1599,13 @@
             const activeJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'invoiced').length;
             const techsDeployed = technicians.filter(t => t.assignedJobs.length > 0).length;
             const pendingPOs = purchaseOrders.filter(po => po.status === 'pending' || po.status === 'ordered').length;
-            const revenue = jobs.filter(j => j.status === 'completed' || j.status === 'invoiced')
-                .reduce((sum, j) => sum + (j.actualHours * 120), 0);
+            const completedThisMonth = jobs.filter(j => {
+                const jobDate = new Date(j.updatedAt);
+                const now = new Date();
+                return (j.status === 'completed' || j.status === 'invoiced') && 
+                       jobDate.getMonth() === now.getMonth() && 
+                       jobDate.getFullYear() === now.getFullYear();
+            }).length;
             
             const recentJobs = [...jobs]
                 .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
@@ -1602,7 +1617,7 @@
                         <div className="kpi-card">
                             <div className="kpi-label">Active Jobs</div>
                             <div className="kpi-value">{activeJobs}</div>
-                            <div className="kpi-trend">+12% from last week</div>
+                            <div className="kpi-trend">In progress</div>
                         </div>
                         <div className="kpi-card">
                             <div className="kpi-label">Techs Deployed</div>
@@ -1615,9 +1630,9 @@
                             <div className="kpi-trend">${purchaseOrders.reduce((s, po) => s + po.totalAmount, 0).toLocaleString()}</div>
                         </div>
                         <div className="kpi-card">
-                            <div className="kpi-label">Revenue (MTD)</div>
-                            <div className="kpi-value">${(revenue/1000).toFixed(1)}K</div>
-                            <div className="kpi-trend">+8% from last month</div>
+                            <div className="kpi-label">Completed (MTD)</div>
+                            <div className="kpi-value">{completedThisMonth}</div>
+                            <div className="kpi-trend">This month</div>
                         </div>
                     </div>
                     
@@ -2566,7 +2581,6 @@
             );
             
             const activeClients = clients.filter(c => c.status === 'active').length;
-            const totalRevenue = clients.reduce((sum, c) => sum + (c.totalJobs * 5000), 0); // Estimated
             
             const handleCreateClient = (clientData) => {
                 const newClient = {
@@ -2621,8 +2635,8 @@
                             <div className="kpi-value">{activeClients}</div>
                         </div>
                         <div className="kpi-card">
-                            <div className="kpi-label">Est. Revenue</div>
-                            <div className="kpi-value">${(totalRevenue/1000).toFixed(0)}K</div>
+                            <div className="kpi-label">Total Jobs</div>
+                            <div className="kpi-value">{clients.reduce((sum, c) => sum + c.totalJobs, 0)}</div>
                         </div>
                     </div>
                     
@@ -2984,88 +2998,223 @@
             );
         };
         
-        // Inventory Page
-        const Inventory = () => {
-            const [inventoryItems] = useState([
-                { id: 'INV-001', name: 'LED Panel 600x600mm', category: 'Lighting', quantity: 48, minStock: 20, unitPrice: 45.00, location: 'Warehouse A' },
-                { id: 'INV-002', name: 'Electrical Cable 2.5mm²', category: 'Cable', quantity: 1200, minStock: 500, unitPrice: 2.50, location: 'Warehouse A' },
-                { id: 'INV-003', name: 'Circuit Breaker 20A', category: 'Protection', quantity: 8, minStock: 15, unitPrice: 18.00, location: 'Van 1' },
-                { id: 'INV-004', name: 'Junction Box IP65', category: 'Accessories', quantity: 35, minStock: 25, unitPrice: 12.50, location: 'Warehouse B' },
-                { id: 'INV-005', name: 'LED Driver 40W', category: 'Lighting', quantity: 22, minStock: 20, unitPrice: 28.00, location: 'Warehouse A' }
-            ]);
+        // Job Sheets Page
+        const JobSheets = () => {
+            const { jobs, technicians, clients } = useContext(DataContext);
+            const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, 1 = last week, etc.
+            const [filterTech, setFilterTech] = useState('all');
             
-            const lowStockItems = inventoryItems.filter(item => item.quantity < item.minStock);
-            const totalValue = inventoryItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            // Get week date range
+            const getWeekRange = (weeksAgo) => {
+                const now = new Date();
+                const startOfWeek = new Date(now);
+                startOfWeek.setDate(now.getDate() - now.getDay() - (weeksAgo * 7)); // Sunday
+                startOfWeek.setHours(0, 0, 0, 0);
+                
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
+                endOfWeek.setHours(23, 59, 59, 999);
+                
+                return { start: startOfWeek, end: endOfWeek };
+            };
+            
+            const { start, end } = getWeekRange(selectedWeek);
+            const weekLabel = selectedWeek === 0 ? 'This Week' : 
+                             selectedWeek === 1 ? 'Last Week' : 
+                             `${selectedWeek} Weeks Ago`;
+            
+            // Get jobs for selected week
+            const getJobsForWeek = () => {
+                return jobs.filter(job => {
+                    if (!job.scheduledDate) return false;
+                    const jobDate = new Date(job.scheduledDate);
+                    return jobDate >= start && jobDate <= end;
+                }).sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate));
+            };
+            
+            const weekJobs = getJobsForWeek();
+            const filteredJobs = filterTech === 'all' 
+                ? weekJobs 
+                : weekJobs.filter(j => j.assignedTechs && j.assignedTechs.includes(filterTech));
+            
+            const getTechName = (techId) => {
+                const tech = technicians.find(t => t.id === techId);
+                return tech ? tech.name : 'Unassigned';
+            };
+            
+            const getClientName = (clientName) => {
+                return clientName;
+            };
+            
+            // Group jobs by day
+            const jobsByDay = filteredJobs.reduce((acc, job) => {
+                const day = new Date(job.scheduledDate).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                if (!acc[day]) acc[day] = [];
+                acc[day].push(job);
+                return acc;
+            }, {});
+            
+            const totalHours = filteredJobs.reduce((sum, j) => sum + (j.actualHours || j.estimatedHours || 0), 0);
+            const completedJobs = filteredJobs.filter(j => j.status === 'completed' || j.status === 'invoiced').length;
             
             return (
                 <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
-                        <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>Inventory</h2>
-                        <button className="btn btn-primary">+ Add Item</button>
+                        <div>
+                            <h2 style={{ fontSize: '1.3rem', fontWeight: 600, marginBottom: '0.5rem' }}>Job Sheets</h2>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                {start.toLocaleDateString()} - {end.toLocaleDateString()}
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                            <select 
+                                className="form-select" 
+                                style={{ width: 'auto' }}
+                                value={filterTech}
+                                onChange={(e) => setFilterTech(e.target.value)}
+                            >
+                                <option value="all">All Technicians</option>
+                                {technicians.map(tech => (
+                                    <option key={tech.id} value={tech.id}>{tech.name}</option>
+                                ))}
+                            </select>
+                            <select 
+                                className="form-select" 
+                                style={{ width: 'auto' }}
+                                value={selectedWeek}
+                                onChange={(e) => setSelectedWeek(parseInt(e.target.value))}
+                            >
+                                <option value="0">This Week</option>
+                                <option value="1">Last Week</option>
+                                <option value="2">2 Weeks Ago</option>
+                                <option value="3">3 Weeks Ago</option>
+                                <option value="4">4 Weeks Ago</option>
+                                <option value="5">5 Weeks Ago</option>
+                                <option value="6">6 Weeks Ago</option>
+                                <option value="7">7 Weeks Ago</option>
+                                <option value="8">8 Weeks Ago</option>
+                            </select>
+                        </div>
                     </div>
                     
+                    {/* Week Summary */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
                         <div className="kpi-card">
-                            <div className="kpi-label">Total Items</div>
-                            <div className="kpi-value">{inventoryItems.length}</div>
+                            <div className="kpi-label">Total Jobs</div>
+                            <div className="kpi-value">{filteredJobs.length}</div>
                         </div>
                         <div className="kpi-card">
-                            <div className="kpi-label">Low Stock Alerts</div>
-                            <div className="kpi-value" style={{ color: lowStockItems.length > 0 ? 'var(--accent-danger)' : 'var(--accent-success)' }}>
-                                {lowStockItems.length}
+                            <div className="kpi-label">Completed</div>
+                            <div className="kpi-value">{completedJobs}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Total Hours</div>
+                            <div className="kpi-value">{totalHours}h</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Completion Rate</div>
+                            <div className="kpi-value">
+                                {filteredJobs.length > 0 ? Math.round((completedJobs / filteredJobs.length) * 100) : 0}%
                             </div>
-                        </div>
-                        <div className="kpi-card">
-                            <div className="kpi-label">Total Value</div>
-                            <div className="kpi-value">${(totalValue/1000).toFixed(1)}K</div>
                         </div>
                     </div>
                     
-                    {lowStockItems.length > 0 && (
-                        <div className="card" style={{ marginBottom: 'var(--spacing-xl)', borderLeft: '4px solid var(--accent-danger)' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--accent-danger)', marginBottom: 'var(--spacing-md)' }}>
-                                ⚠️ Low Stock Alert
-                            </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                {lowStockItems.length} items below minimum stock level
-                            </div>
+                    {/* Job Sheets by Day */}
+                    {Object.keys(jobsByDay).length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-state-icon">📄</div>
+                            <div className="empty-state-text">No jobs scheduled for this week</div>
+                            <div className="empty-state-subtext">Select a different week or check the schedule</div>
                         </div>
+                    ) : (
+                        Object.entries(jobsByDay).map(([day, dayJobs]) => (
+                            <div key={day} className="card" style={{ marginBottom: 'var(--spacing-lg)' }}>
+                                <div className="card-header">
+                                    <h3 className="card-title">{day}</h3>
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                        {dayJobs.length} {dayJobs.length === 1 ? 'job' : 'jobs'}
+                                    </span>
+                                </div>
+                                
+                                <div className="table-container">
+                                    <table className="table">
+                                        <thead>
+                                            <tr>
+                                                <th>Job ID</th>
+                                                <th>Client</th>
+                                                <th>Description</th>
+                                                <th>Technician</th>
+                                                <th>Hours</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {dayJobs.map(job => (
+                                                <tr key={job.id}>
+                                                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)', fontWeight: 600 }}>
+                                                        {job.id}
+                                                    </td>
+                                                    <td style={{ fontWeight: 600 }}>
+                                                        {job.clientName}
+                                                    </td>
+                                                    <td style={{ maxWidth: '300px' }}>
+                                                        {job.description}
+                                                    </td>
+                                                    <td>
+                                                        {job.assignedTechs && job.assignedTechs.length > 0 
+                                                            ? job.assignedTechs.map(techId => getTechName(techId)).join(', ')
+                                                            : 'Unassigned'
+                                                        }
+                                                    </td>
+                                                    <td style={{ fontFamily: 'var(--font-mono)' }}>
+                                                        {job.actualHours || job.estimatedHours || 0}h
+                                                    </td>
+                                                    <td>
+                                                        <span className={`status-badge status-${job.status}`}>
+                                                            {job.status.replace('_', ' ')}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                {/* Day Summary */}
+                                <div style={{ 
+                                    marginTop: 'var(--spacing-md)', 
+                                    padding: 'var(--spacing-md)', 
+                                    background: 'var(--bg-tertiary)', 
+                                    borderRadius: 'var(--radius-sm)',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <div>
+                                        <strong>Day Total:</strong> {dayJobs.length} jobs
+                                    </div>
+                                    <div>
+                                        <strong>Hours:</strong> {dayJobs.reduce((sum, j) => sum + (j.actualHours || j.estimatedHours || 0), 0)}h
+                                    </div>
+                                    <div>
+                                        <strong>Completed:</strong> {dayJobs.filter(j => j.status === 'completed' || j.status === 'invoiced').length}/{dayJobs.length}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
                     )}
                     
-                    <div className="table-container">
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Item Code</th>
-                                    <th>Name</th>
-                                    <th>Category</th>
-                                    <th>Quantity</th>
-                                    <th>Min Stock</th>
-                                    <th>Unit Price</th>
-                                    <th>Location</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {inventoryItems.map(item => (
-                                    <tr key={item.id}>
-                                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{item.id}</td>
-                                        <td style={{ fontWeight: 600 }}>{item.name}</td>
-                                        <td>{item.category}</td>
-                                        <td style={{ fontFamily: 'var(--font-mono)' }}>{item.quantity}</td>
-                                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{item.minStock}</td>
-                                        <td style={{ fontFamily: 'var(--font-mono)' }}>${item.unitPrice.toFixed(2)}</td>
-                                        <td>{item.location}</td>
-                                        <td>
-                                            <span className={`status-badge ${item.quantity < item.minStock ? 'status-in_progress' : 'status-completed'}`}>
-                                                {item.quantity < item.minStock ? 'Low Stock' : 'In Stock'}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    {/* Print Button */}
+                    {filteredJobs.length > 0 && (
+                        <div style={{ marginTop: 'var(--spacing-xl)', textAlign: 'center' }}>
+                            <button 
+                                className="btn btn-primary"
+                                onClick={() => window.print()}
+                            >
+                                🖨️ Print Job Sheets
+                            </button>
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -3074,12 +3223,16 @@
         const Reports = () => {
             const { jobs, purchaseOrders, technicians } = useContext(DataContext);
             
-            const revenueByMonth = [
-                { month: 'Jan', revenue: 45000 },
-                { month: 'Feb', revenue: 52000 },
-                { month: 'Mar', revenue: 48000 },
-                { month: 'Apr', revenue: 58000 }
-            ];
+            const jobsByMonth = jobs.reduce((acc, job) => {
+                const month = new Date(job.createdAt).toLocaleDateString('en-US', { month: 'short' });
+                acc[month] = (acc[month] || 0) + 1;
+                return acc;
+            }, {});
+            
+            const monthlyData = ['Jan', 'Feb', 'Mar', 'Apr'].map(month => ({
+                month,
+                jobs: jobsByMonth[month] || 0
+            }));
             
             const jobsByStatus = {
                 planned: jobs.filter(j => j.status === 'planned').length,
@@ -3088,6 +3241,9 @@
                 completed: jobs.filter(j => j.status === 'completed').length,
                 invoiced: jobs.filter(j => j.status === 'invoiced').length
             };
+            
+            const totalHours = jobs.reduce((sum, j) => sum + (j.actualHours || 0), 0);
+            const estimatedHours = jobs.reduce((sum, j) => sum + (j.estimatedHours || 0), 0);
             
             return (
                 <div>
@@ -3098,15 +3254,15 @@
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
                         <div className="card">
                             <div className="card-header">
-                                <h3 className="card-title">Revenue Trend</h3>
+                                <h3 className="card-title">Jobs by Month</h3>
                             </div>
                             <div style={{ marginTop: 'var(--spacing-md)' }}>
-                                {revenueByMonth.map((data) => (
+                                {monthlyData.map((data) => (
                                     <div key={data.month} style={{ marginBottom: 'var(--spacing-md)' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
                                             <span>{data.month}</span>
                                             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                                                ${(data.revenue/1000).toFixed(0)}K
+                                                {data.jobs} jobs
                                             </span>
                                         </div>
                                         <div style={{ 
@@ -3116,7 +3272,7 @@
                                             overflow: 'hidden'
                                         }}>
                                             <div style={{ 
-                                                width: `${(data.revenue/60000)*100}%`, 
+                                                width: `${Math.min((data.jobs/10)*100, 100)}%`, 
                                                 height: '100%', 
                                                 background: 'var(--accent-primary)',
                                                 transition: 'width 0.3s ease'
@@ -3152,31 +3308,25 @@
                         
                         <div className="card">
                             <div className="card-header">
-                                <h3 className="card-title">Tech Performance</h3>
+                                <h3 className="card-title">Labour Hours</h3>
                             </div>
                             <div style={{ marginTop: 'var(--spacing-md)' }}>
-                                {technicians.map(tech => (
-                                    <div key={tech.id} style={{ marginBottom: 'var(--spacing-md)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
-                                            <span>{tech.name}</span>
-                                            <span style={{ fontFamily: 'var(--font-mono)' }}>
-                                                {tech.assignedJobs.length} jobs
-                                            </span>
-                                        </div>
-                                        <div style={{ 
-                                            height: '6px', 
-                                            background: 'var(--bg-tertiary)', 
-                                            borderRadius: '3px',
-                                            overflow: 'hidden'
-                                        }}>
-                                            <div style={{ 
-                                                width: `${(tech.assignedJobs.length/3)*100}%`, 
-                                                height: '100%', 
-                                                background: 'var(--accent-primary)'
-                                            }} />
-                                        </div>
+                                <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                                        Total Actual Hours
                                     </div>
-                                ))}
+                                    <div style={{ fontSize: '2rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
+                                        {totalHours}h
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                                        Total Estimated Hours
+                                    </div>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                                        {estimatedHours}h
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3188,8 +3338,8 @@
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-md)' }}>
                             <button className="btn btn-secondary">Export Jobs Report</button>
                             <button className="btn btn-secondary">Export Timesheet Report</button>
-                            <button className="btn btn-secondary">Export PO Report</button>
-                            <button className="btn btn-secondary">Export Financial Summary</button>
+                            <button className="btn btn-secondary">Export Fleet Report</button>
+                            <button className="btn btn-secondary">Export Job Sheets</button>
                         </div>
                     </div>
                 </div>
@@ -3201,11 +3351,25 @@
             const { equipment, setEquipment, technicians } = useContext(DataContext);
             const [showModal, setShowModal] = useState(false);
             const [editingEquipment, setEditingEquipment] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterView, setFilterView] = useState('all'); // all, in_use, service_due
+            const [expandedId, setExpandedId] = useState(null);
             
             const inUse = equipment.filter(e => e.status === 'in_use').length;
-            const needsCalibration = equipment.filter(e => {
-                if (e.nextCalibration) {
+            const needsService = equipment.filter(e => {
+                const maintenanceType = e.maintenanceType;
+                if (maintenanceType === 'none') return false;
+                
+                if (maintenanceType === 'calibration' && e.nextCalibration) {
                     return new Date(e.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                }
+                if (maintenanceType === 'service' && e.nextService) {
+                    return new Date(e.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                }
+                if (maintenanceType === 'both') {
+                    const calibrationDue = e.nextCalibration && new Date(e.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    const serviceDue = e.nextService && new Date(e.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    return calibrationDue || serviceDue;
                 }
                 return false;
             }).length;
@@ -3241,6 +3405,52 @@
                 return tech ? tech.name : 'Unknown';
             };
             
+            // Filter equipment based on view and search
+            const getFilteredEquipment = () => {
+                let filtered = equipment;
+                
+                // Apply view filter
+                if (filterView === 'in_use') {
+                    filtered = filtered.filter(e => e.status === 'in_use');
+                } else if (filterView === 'service_due') {
+                    filtered = filtered.filter(e => {
+                        const maintenanceType = e.maintenanceType;
+                        if (maintenanceType === 'none') return false;
+                        
+                        if (maintenanceType === 'calibration' && e.nextCalibration) {
+                            return new Date(e.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                        }
+                        if (maintenanceType === 'service' && e.nextService) {
+                            return new Date(e.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                        }
+                        if (maintenanceType === 'both') {
+                            const calibrationDue = e.nextCalibration && new Date(e.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                            const serviceDue = e.nextService && new Date(e.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                            return calibrationDue || serviceDue;
+                        }
+                        return false;
+                    });
+                }
+                
+                // Apply search filter
+                if (searchTerm) {
+                    filtered = filtered.filter(e => 
+                        e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        e.assetNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        e.serialNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        e.id.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                }
+                
+                return filtered;
+            };
+            
+            const filteredEquipment = getFilteredEquipment();
+            
+            const toggleExpand = (id) => {
+                setExpandedId(expandedId === id ? null : id);
+            };
+            
             return (
                 <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
@@ -3250,6 +3460,39 @@
                         </button>
                     </div>
                     
+                    {/* Search and Filter Bar */}
+                    <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Search by name, asset number, or serial number..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{ flex: 1 }}
+                        />
+                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                            <button
+                                className={`btn ${filterView === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setFilterView('all')}
+                            >
+                                All ({equipment.length})
+                            </button>
+                            <button
+                                className={`btn ${filterView === 'in_use' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setFilterView('in_use')}
+                            >
+                                In Use ({inUse})
+                            </button>
+                            <button
+                                className={`btn ${filterView === 'service_due' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setFilterView('service_due')}
+                            >
+                                Service Due ({needsService})
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* KPI Cards */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
                         <div className="kpi-card">
                             <div className="kpi-label">Total Equipment</div>
@@ -3260,33 +3503,207 @@
                             <div className="kpi-value">{inUse}</div>
                         </div>
                         <div className="kpi-card">
-                            <div className="kpi-label">Calibration Due</div>
-                            <div className="kpi-value" style={{ color: needsCalibration > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
-                                {needsCalibration}
+                            <div className="kpi-label">Service Due</div>
+                            <div className="kpi-value" style={{ color: needsService > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                                {needsService}
                             </div>
                         </div>
                     </div>
                     
-                    {needsCalibration > 0 && (
-                        <div className="card" style={{ marginBottom: 'var(--spacing-xl)', borderLeft: '4px solid var(--accent-warning)' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--accent-warning)', marginBottom: 'var(--spacing-md)' }}>
-                                ⚠️ Calibration Due
-                            </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                {needsCalibration} items require calibration within the next 30 days
-                            </div>
-                        </div>
-                    )}
-                    
-                    <div style={{ display: 'grid', gap: 'var(--spacing-lg)' }}>
-                        {equipment.length === 0 ? (
+                    {/* Equipment List - Compact Cards */}
+                    <div style={{ display: 'grid', gap: 'var(--spacing-md)' }}>
+                        {filteredEquipment.length === 0 ? (
                             <div className="empty-state">
                                 <div className="empty-state-icon">🔧</div>
                                 <div className="empty-state-text">No equipment found</div>
-                                <div className="empty-state-subtext">Add tools and equipment to start tracking</div>
+                                <div className="empty-state-subtext">
+                                    {searchTerm ? 'Try a different search term' : 'Add tools and equipment to start tracking'}
+                                </div>
                             </div>
                         ) : (
-                            equipment.map(item => (
+                            filteredEquipment.map(item => (
+                                <div key={item.id} className="card" style={{ cursor: 'pointer' }}>
+                                    {/* Compact Header - Always Visible */}
+                                    <div 
+                                        onClick={() => toggleExpand(item.id)}
+                                        style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center',
+                                            padding: 'var(--spacing-md)'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-lg)', flex: 1 }}>
+                                            <div style={{ minWidth: '120px' }}>
+                                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                    {item.assetNumber}
+                                                </div>
+                                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 600 }}>
+                                                    {item.id}
+                                                </div>
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                                                    🔧 {item.name}
+                                                </div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                    {getAssignedTechName(item.assignedTo)}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span className={`status-badge ${
+                                                    item.status === 'in_use' ? 'status-in_progress' :
+                                                    item.status === 'available' ? 'status-completed' :
+                                                    'status-scheduled'
+                                                }`}>
+                                                    {item.status.replace('_', ' ')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginLeft: 'var(--spacing-md)', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>
+                                            {expandedId === item.id ? '▼' : '▶'}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Expanded Details */}
+                                    {expandedId === item.id && (
+                                        <div style={{ 
+                                            padding: 'var(--spacing-lg)', 
+                                            paddingTop: 0,
+                                            borderTop: '1px solid var(--border-primary)',
+                                            marginTop: 'var(--spacing-md)'
+                                        }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+                                                {item.serialNumber && (
+                                                    <div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Serial Number</div>
+                                                        <div style={{ fontFamily: 'var(--font-mono)' }}>{item.serialNumber}</div>
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Purchase Date</div>
+                                                    <div>{new Date(item.purchaseDate).toLocaleDateString()}</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Maintenance Type</div>
+                                                    <div style={{ textTransform: 'capitalize' }}>{item.maintenanceType?.replace('_', ' & ') || 'None'}</div>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Service/Calibration Schedule */}
+                                            {item.maintenanceType && item.maintenanceType !== 'none' && (
+                                                <div style={{ 
+                                                    display: 'grid', 
+                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                                                    gap: 'var(--spacing-md)', 
+                                                    padding: 'var(--spacing-md)', 
+                                                    background: 'var(--bg-tertiary)', 
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    marginBottom: 'var(--spacing-md)'
+                                                }}>
+                                                    {(item.maintenanceType === 'service' || item.maintenanceType === 'both') && (
+                                                        <>
+                                                            {item.lastService && (
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Service</div>
+                                                                    <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                                        {new Date(item.lastService).toLocaleDateString()}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {item.nextService && (
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Next Service</div>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.9rem', 
+                                                                        fontFamily: 'var(--font-mono)',
+                                                                        color: new Date(item.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'var(--accent-warning)' : 'inherit',
+                                                                        fontWeight: new Date(item.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 600 : 400
+                                                                    }}>
+                                                                        {new Date(item.nextService).toLocaleDateString()}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {(item.maintenanceType === 'calibration' || item.maintenanceType === 'both') && (
+                                                        <>
+                                                            {item.lastCalibration && (
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Calibration</div>
+                                                                    <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                                        {new Date(item.lastCalibration).toLocaleDateString()}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {item.nextCalibration && (
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Next Calibration</div>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.9rem', 
+                                                                        fontFamily: 'var(--font-mono)',
+                                                                        color: new Date(item.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'var(--accent-warning)' : 'inherit',
+                                                                        fontWeight: new Date(item.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 600 : 400
+                                                                    }}>
+                                                                        {new Date(item.nextCalibration).toLocaleDateString()}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {item.notes && (
+                                                <div style={{ marginBottom: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                                    💡 {item.notes}
+                                                </div>
+                                            )}
+                                            
+                                            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--border-primary)' }}>
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    style={{ flex: 1 }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingEquipment(item);
+                                                        setShowModal(true);
+                                                    }}
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    style={{ flex: 1 }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteEquipment(item.id);
+                                                    }}
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    
+                    {showModal && (
+                        <EquipmentModal
+                            equipment={editingEquipment}
+                            technicians={technicians}
+                            onClose={() => {
+                                setShowModal(false);
+                                setEditingEquipment(null);
+                            }}
+                            onSave={editingEquipment ? handleUpdateEquipment : handleCreateEquipment}
+                        />
+                    )}
+                </div>
+            );
+        };
                                 <div key={item.id} className="card">
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 'var(--spacing-md)' }}>
                                         <div style={{ flex: 1 }}>
@@ -3436,18 +3853,17 @@
         // Equipment Modal Component
         const EquipmentModal = ({ equipment, technicians, onClose, onSave }) => {
             const [formData, setFormData] = useState(equipment || {
-                type: 'vehicle',
+                assetNumber: '',
                 name: '',
-                registration: '',
                 serialNumber: '',
                 assignedTo: null,
                 status: 'available',
                 purchaseDate: new Date().toISOString().split('T')[0],
+                maintenanceType: 'none', // none, service, calibration, both
                 lastService: '',
                 nextService: '',
                 lastCalibration: '',
                 nextCalibration: '',
-                odometerReading: 0,
                 notes: ''
             });
             
@@ -3467,15 +3883,15 @@
                             <form onSubmit={handleSubmit}>
                                 <div className="form-row">
                                     <div className="form-group">
-                                        <label className="form-label">Type</label>
-                                        <select
-                                            className="form-select"
-                                            value={formData.type}
-                                            onChange={(e) => setFormData({...formData, type: e.target.value})}
-                                        >
-                                            <option value="vehicle">Vehicle</option>
-                                            <option value="tool">Tool/Equipment</option>
-                                        </select>
+                                        <label className="form-label">Asset Number</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={formData.assetNumber}
+                                            onChange={(e) => setFormData({...formData, assetNumber: e.target.value})}
+                                            placeholder="BA00001"
+                                            required
+                                        />
                                     </div>
                                     
                                     <div className="form-group">
@@ -3499,36 +3915,12 @@
                                         className="form-input"
                                         value={formData.name}
                                         onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                        placeholder="e.g., Van 1 - Toyota HiAce"
+                                        placeholder="e.g., Cable Fault Locator"
                                         required
                                     />
                                 </div>
                                 
-                                {formData.type === 'vehicle' ? (
-                                    <>
-                                        <div className="form-row">
-                                            <div className="form-group">
-                                                <label className="form-label">Registration</label>
-                                                <input
-                                                    type="text"
-                                                    className="form-input"
-                                                    value={formData.registration}
-                                                    onChange={(e) => setFormData({...formData, registration: e.target.value})}
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Odometer (km)</label>
-                                                <input
-                                                    type="number"
-                                                    className="form-input"
-                                                    value={formData.odometerReading}
-                                                    onChange={(e) => setFormData({...formData, odometerReading: parseInt(e.target.value) || 0})}
-                                                />
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : (
+                                <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Serial Number</label>
                                         <input
@@ -3538,7 +3930,18 @@
                                             onChange={(e) => setFormData({...formData, serialNumber: e.target.value})}
                                         />
                                     </div>
-                                )}
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Purchase Date</label>
+                                        <input
+                                            type="date"
+                                            className="form-input"
+                                            value={formData.purchaseDate}
+                                            onChange={(e) => setFormData({...formData, purchaseDate: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+                                </div>
                                 
                                 <div className="form-row">
                                     <div className="form-group">
@@ -3556,50 +3959,69 @@
                                     </div>
                                     
                                     <div className="form-group">
-                                        <label className="form-label">Purchase Date</label>
-                                        <input
-                                            type="date"
-                                            className="form-input"
-                                            value={formData.purchaseDate}
-                                            onChange={(e) => setFormData({...formData, purchaseDate: e.target.value})}
-                                            required
-                                        />
+                                        <label className="form-label">Maintenance Type</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.maintenanceType}
+                                            onChange={(e) => setFormData({...formData, maintenanceType: e.target.value})}
+                                        >
+                                            <option value="none">Not Applicable</option>
+                                            <option value="service">Service Only</option>
+                                            <option value="calibration">Calibration Only</option>
+                                            <option value="both">Service & Calibration</option>
+                                        </select>
                                     </div>
                                 </div>
                                 
-                                <div className="form-row">
-                                    <div className="form-group">
-                                        <label className="form-label">Last Service/Calibration</label>
-                                        <input
-                                            type="date"
-                                            className="form-input"
-                                            value={formData.lastService || formData.lastCalibration || ''}
-                                            onChange={(e) => {
-                                                if (formData.type === 'vehicle') {
-                                                    setFormData({...formData, lastService: e.target.value});
-                                                } else {
-                                                    setFormData({...formData, lastCalibration: e.target.value});
-                                                }
-                                            }}
-                                        />
+                                {/* Service Fields */}
+                                {(formData.maintenanceType === 'service' || formData.maintenanceType === 'both') && (
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label className="form-label">Last Service</label>
+                                            <input
+                                                type="date"
+                                                className="form-input"
+                                                value={formData.lastService || ''}
+                                                onChange={(e) => setFormData({...formData, lastService: e.target.value})}
+                                            />
+                                        </div>
+                                        
+                                        <div className="form-group">
+                                            <label className="form-label">Next Service</label>
+                                            <input
+                                                type="date"
+                                                className="form-input"
+                                                value={formData.nextService || ''}
+                                                onChange={(e) => setFormData({...formData, nextService: e.target.value})}
+                                            />
+                                        </div>
                                     </div>
-                                    
-                                    <div className="form-group">
-                                        <label className="form-label">Next Service/Calibration</label>
-                                        <input
-                                            type="date"
-                                            className="form-input"
-                                            value={formData.nextService || formData.nextCalibration || ''}
-                                            onChange={(e) => {
-                                                if (formData.type === 'vehicle') {
-                                                    setFormData({...formData, nextService: e.target.value});
-                                                } else {
-                                                    setFormData({...formData, nextCalibration: e.target.value});
-                                                }
-                                            }}
-                                        />
+                                )}
+                                
+                                {/* Calibration Fields */}
+                                {(formData.maintenanceType === 'calibration' || formData.maintenanceType === 'both') && (
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label className="form-label">Last Calibration</label>
+                                            <input
+                                                type="date"
+                                                className="form-input"
+                                                value={formData.lastCalibration || ''}
+                                                onChange={(e) => setFormData({...formData, lastCalibration: e.target.value})}
+                                            />
+                                        </div>
+                                        
+                                        <div className="form-group">
+                                            <label className="form-label">Next Calibration</label>
+                                            <input
+                                                type="date"
+                                                className="form-input"
+                                                value={formData.nextCalibration || ''}
+                                                onChange={(e) => setFormData({...formData, nextCalibration: e.target.value})}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                                 
                                 <div className="form-group">
                                     <label className="form-label">Notes</label>
@@ -3607,7 +4029,7 @@
                                         className="form-textarea"
                                         value={formData.notes}
                                         onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                                        placeholder="Maintenance notes, special requirements, etc."
+                                        placeholder="Usage notes, requirements, etc."
                                     />
                                 </div>
                                 
@@ -4094,7 +4516,7 @@
                 'fleet': FleetManagement,
                 'equipment': Equipment,
                 'timesheets': Timesheets,
-                'inventory': Inventory,
+                'jobsheets': JobSheets,
                 'reports': Reports,
                 'settings': Settings
             };
@@ -4109,7 +4531,7 @@
                 'fleet': 'Fleet Management',
                 'equipment': 'Equipment',
                 'timesheets': 'Timesheets',
-                'inventory': 'Inventory',
+                'jobsheets': 'Job Sheets',
                 'reports': 'Reports',
                 'settings': 'Settings'
             };
