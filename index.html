@@ -10,26 +10,31 @@
     <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* Industrial Color Palette */
-            --bg-primary: #0a0e1a;
-            --bg-secondary: #121825;
-            --bg-tertiary: #1a2332;
-            --bg-card: #1e2939;
+            /* Light Mode - Default */
+            --bg-primary: #f5f5f5;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #fafafa;
+            --bg-card: #ffffff;
             
-            --accent-electric: #00d4ff;
-            --accent-voltage: #0099ff;
-            --accent-safety: #ff6b35;
-            --accent-success: #00ff88;
-            --accent-warning: #ffb800;
+            --accent-primary: #ff6b35;
+            --accent-primary-hover: #ff8555;
+            --accent-secondary: #ff8f35;
+            --accent-success: #28a745;
+            --accent-warning: #ffc107;
+            --accent-danger: #dc3545;
             
-            --text-primary: #e8edf5;
-            --text-secondary: #9aa5b8;
-            --text-muted: #6b7788;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --text-muted: #999999;
             
-            --border-primary: #2a3545;
-            --border-accent: #00d4ff33;
+            --border-primary: #e0e0e0;
+            --border-accent: #ff6b3533;
             
-            --grid-line: #ffffff08;
+            --grid-line: #00000008;
+            
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);
             
             /* Typography */
             --font-primary: 'Work Sans', sans-serif;
@@ -46,6 +51,34 @@
             --radius-sm: 4px;
             --radius-md: 8px;
             --radius-lg: 12px;
+        }
+        
+        /* Dark Mode */
+        [data-theme="dark"] {
+            --bg-primary: #0d0d0d;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #242424;
+            --bg-card: #2a2a2a;
+            
+            --accent-primary: #ff6b35;
+            --accent-primary-hover: #ff8555;
+            --accent-secondary: #ff8f35;
+            --accent-success: #28a745;
+            --accent-warning: #ffc107;
+            --accent-danger: #dc3545;
+            
+            --text-primary: #f5f5f5;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+            
+            --border-primary: #3a3a3a;
+            --border-accent: #ff6b3533;
+            
+            --grid-line: #ffffff08;
+            
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.5);
         }
         
         * {
@@ -92,22 +125,10 @@
         .sidebar {
             width: 240px;
             background: var(--bg-secondary);
-            border-right: 2px solid var(--border-primary);
+            border-right: 1px solid var(--border-primary);
             position: relative;
             transition: transform 0.3s ease;
-        }
-        
-        .sidebar::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 1px;
-            height: 100%;
-            background: linear-gradient(180deg, 
-                var(--accent-electric)00 0%, 
-                var(--accent-electric)44 50%, 
-                var(--accent-electric)00 100%);
+            box-shadow: var(--shadow-sm);
         }
         
         .sidebar-header {
@@ -116,29 +137,21 @@
         }
         
         .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            background: linear-gradient(135deg, var(--accent-electric), var(--accent-voltage));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            text-transform: uppercase;
-            position: relative;
-            display: inline-block;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
         }
         
-        .logo::after {
-            content: 'ELECTRICAL';
-            position: absolute;
-            bottom: -12px;
-            left: 0;
-            font-size: 0.5rem;
-            letter-spacing: 0.15em;
-            font-weight: 500;
-            background: var(--text-secondary);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .logo-img {
+            height: 40px;
+            width: auto;
+        }
+        
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
         }
         
         .nav-menu {
@@ -171,9 +184,9 @@
         }
         
         .nav-link.active {
-            color: var(--accent-electric);
+            color: var(--accent-primary);
             background: var(--bg-tertiary);
-            border-left-color: var(--accent-electric);
+            border-left-color: var(--accent-primary);
         }
         
         .nav-link.active::before {
@@ -182,10 +195,9 @@
             right: 0;
             top: 50%;
             transform: translateY(-50%);
-            width: 4px;
+            width: 3px;
             height: 60%;
-            background: var(--accent-electric);
-            box-shadow: 0 0 10px var(--accent-electric);
+            background: var(--accent-primary);
             border-radius: 2px;
         }
         
@@ -211,19 +223,26 @@
             justify-content: space-between;
             padding: 0 var(--spacing-xl);
             position: relative;
+            box-shadow: var(--shadow-sm);
         }
         
-        .header::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, 
-                var(--accent-electric)00 0%, 
-                var(--accent-electric)44 50%, 
-                var(--accent-electric)00 100%);
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .theme-toggle:hover {
+            background: var(--bg-card);
+            border-color: var(--accent-primary);
         }
         
         .header-title {
@@ -279,22 +298,13 @@
             padding: var(--spacing-lg);
             position: relative;
             overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            transition: all 0.2s ease;
         }
         
-        .card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, var(--accent-electric), var(--accent-voltage));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .card:hover::before {
-            opacity: 1;
+        .card:hover {
+            box-shadow: var(--shadow-md);
+            border-color: var(--border-accent);
         }
         
         .card-header {
@@ -325,6 +335,8 @@
             padding: var(--spacing-lg);
             position: relative;
             overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            transition: all 0.2s ease;
         }
         
         .kpi-card::before {
@@ -334,8 +346,12 @@
             left: 0;
             width: 4px;
             height: 100%;
-            background: var(--accent-electric);
-            box-shadow: 0 0 10px var(--accent-electric);
+            background: var(--accent-primary);
+        }
+        
+        .kpi-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
         }
         
         .kpi-label {
@@ -383,14 +399,15 @@
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent-electric), var(--accent-voltage));
-            color: var(--bg-primary);
-            box-shadow: 0 4px 12px var(--accent-electric)33;
+            background: var(--accent-primary);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
         }
         
         .btn-primary:hover {
+            background: var(--accent-primary-hover);
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px var(--accent-electric)55;
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
         }
         
         .btn-secondary {
@@ -401,7 +418,8 @@
         
         .btn-secondary:hover {
             background: var(--bg-card);
-            border-color: var(--accent-electric)44;
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
         }
         
         /* Job Grid */
@@ -418,11 +436,13 @@
             cursor: pointer;
             transition: all 0.3s ease;
             position: relative;
+            box-shadow: var(--shadow-sm);
         }
         
         .job-card:hover {
-            border-color: var(--accent-electric)66;
+            border-color: var(--accent-primary);
             transform: translateX(4px);
+            box-shadow: var(--shadow-md);
         }
         
         .job-header {
@@ -435,7 +455,7 @@
         .job-id {
             font-family: var(--font-mono);
             font-size: 0.85rem;
-            color: var(--accent-electric);
+            color: var(--accent-primary);
             font-weight: 600;
         }
         
@@ -481,9 +501,9 @@
         }
         
         .status-planned {
-            background: var(--accent-voltage)22;
-            color: var(--accent-voltage);
-            border: 1px solid var(--accent-voltage)44;
+            background: #6c757d22;
+            color: #6c757d;
+            border: 1px solid #6c757d44;
         }
         
         .status-scheduled {
@@ -493,9 +513,9 @@
         }
         
         .status-in_progress {
-            background: var(--accent-electric)22;
-            color: var(--accent-electric);
-            border: 1px solid var(--accent-electric)44;
+            background: var(--accent-primary)22;
+            color: var(--accent-primary);
+            border: 1px solid var(--accent-primary)44;
         }
         
         .status-completed {
@@ -505,9 +525,9 @@
         }
         
         .status-invoiced {
-            background: var(--text-secondary)22;
-            color: var(--text-secondary);
-            border: 1px solid var(--text-secondary)44;
+            background: #007bff22;
+            color: #007bff;
+            border: 1px solid #007bff44;
         }
         
         /* Modal */
@@ -517,7 +537,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(10, 14, 26, 0.8);
+            background: rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
@@ -535,7 +555,7 @@
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            box-shadow: var(--shadow-lg);
         }
         
         .modal-header {
@@ -608,8 +628,8 @@
         .form-select:focus,
         .form-textarea:focus {
             outline: none;
-            border-color: var(--accent-electric);
-            box-shadow: 0 0 0 3px var(--accent-electric)22;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px var(--accent-primary)22;
         }
         
         .form-textarea {
@@ -694,8 +714,8 @@
         
         .calendar-job {
             padding: var(--spacing-xs) var(--spacing-sm);
-            background: var(--accent-electric)22;
-            border-left: 3px solid var(--accent-electric);
+            background: var(--accent-primary)22;
+            border-left: 3px solid var(--accent-primary);
             border-radius: 2px;
             font-size: 0.75rem;
             cursor: move;
@@ -816,7 +836,7 @@
             width: 20px;
             height: 20px;
             border: 3px solid var(--border-primary);
-            border-top-color: var(--accent-electric);
+            border-top-color: var(--accent-primary);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
@@ -831,6 +851,39 @@
     
     <script type="text/babel">
         const { useState, useEffect, createContext, useContext } = React;
+        
+        // Theme Management
+        const getInitialTheme = () => {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) return savedTheme;
+            
+            // Auto-detect user preference
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                return 'dark';
+            }
+            return 'light';
+        };
+        
+        const ThemeContext = createContext();
+        
+        const ThemeProvider = ({ children }) => {
+            const [theme, setTheme] = useState(getInitialTheme());
+            
+            useEffect(() => {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+            }, [theme]);
+            
+            const toggleTheme = () => {
+                setTheme(prev => prev === 'light' ? 'dark' : 'light');
+            };
+            
+            return (
+                <ThemeContext.Provider value={{ theme, toggleTheme }}>
+                    {children}
+                </ThemeContext.Provider>
+            );
+        };
         
         // Data Context
         const DataContext = createContext();
@@ -1026,6 +1079,9 @@
                 { id: 'schedule', label: 'Schedule', icon: '📅' },
                 { id: 'purchase-orders', label: 'Purchase Orders', icon: '📦' },
                 { id: 'employees', label: 'Employees', icon: '👷' },
+                { id: 'timesheets', label: 'Timesheets', icon: '⏱️' },
+                { id: 'inventory', label: 'Inventory', icon: '📋' },
+                { id: 'reports', label: 'Reports', icon: '📈' },
                 { id: 'settings', label: 'Settings', icon: '⚙️' }
             ];
             
@@ -1037,7 +1093,12 @@
             return (
                 <div className={`sidebar ${isMobileOpen ? 'open' : ''}`}>
                     <div className="sidebar-header">
-                        <div className="logo">Bromar Ops</div>
+                        <div className="logo">
+                            {/* Replace this img src with your actual logo path */}
+                            <img src="bromar-logo.png" alt="Bromar" className="logo-img" 
+                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                            <div className="logo-text" style={{ display: 'none' }}>BROMAR OPS</div>
+                        </div>
                     </div>
                     <ul className="nav-menu">
                         {menuItems.map(item => (
@@ -1062,6 +1123,8 @@
         
         // Header Component
         const Header = ({ title, isMobileOpen, setIsMobileOpen }) => {
+            const { theme, toggleTheme } = useContext(ThemeContext);
+            
             return (
                 <div className="header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1074,6 +1137,9 @@
                         <h1 className="header-title">{title}</h1>
                     </div>
                     <div className="header-actions">
+                        <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
+                            {theme === 'light' ? '🌙' : '☀️'}
+                        </button>
                         <div className="user-badge">
                             <span className="status-dot"></span>
                             <span>ADMIN</span>
@@ -1942,6 +2008,323 @@
             );
         };
         
+        // Timesheets Page
+        const Timesheets = () => {
+            const { jobs, technicians } = useContext(DataContext);
+            const [selectedWeek, setSelectedWeek] = useState(new Date());
+            
+            // Get week date range
+            const getWeekRange = (date) => {
+                const start = new Date(date);
+                start.setDate(start.getDate() - start.getDay()); // Sunday
+                const end = new Date(start);
+                end.setDate(end.getDate() + 6); // Saturday
+                return { start, end };
+            };
+            
+            const { start, end } = getWeekRange(selectedWeek);
+            const weekStr = `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+            
+            // Mock timesheet data
+            const mockTimesheets = technicians.map(tech => ({
+                techId: tech.id,
+                techName: tech.name,
+                entries: [
+                    { day: 'Mon', hours: 8, jobId: 'JOB-2024-001' },
+                    { day: 'Tue', hours: 7.5, jobId: 'JOB-2024-001' },
+                    { day: 'Wed', hours: 8, jobId: 'JOB-2024-002' },
+                    { day: 'Thu', hours: 6, jobId: 'JOB-2024-002' },
+                    { day: 'Fri', hours: 8, jobId: 'JOB-2024-001' }
+                ],
+                totalHours: 37.5
+            }));
+            
+            return (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
+                        <div>
+                            <h2 style={{ fontSize: '1.3rem', fontWeight: 600, marginBottom: '0.5rem' }}>Timesheets</h2>
+                            <div style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
+                                Week: {weekStr}
+                            </div>
+                        </div>
+                        <button className="btn btn-primary">+ New Entry</button>
+                    </div>
+                    
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Technician</th>
+                                    <th>Mon</th>
+                                    <th>Tue</th>
+                                    <th>Wed</th>
+                                    <th>Thu</th>
+                                    <th>Fri</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {mockTimesheets.map(sheet => (
+                                    <tr key={sheet.techId}>
+                                        <td style={{ fontWeight: 600 }}>{sheet.techName}</td>
+                                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => {
+                                            const entry = sheet.entries.find(e => e.day === day);
+                                            return (
+                                                <td key={day} style={{ fontFamily: 'var(--font-mono)' }}>
+                                                    {entry ? entry.hours : '-'}
+                                                </td>
+                                            );
+                                        })}
+                                        <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                            {sheet.totalHours}h
+                                        </td>
+                                        <td>
+                                            <span className="status-badge status-completed">Approved</span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 'var(--spacing-lg)', marginTop: 'var(--spacing-xl)' }}>
+                        <div className="card">
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Total Hours This Week</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
+                                {mockTimesheets.reduce((sum, s) => sum + s.totalHours, 0)}h
+                            </div>
+                        </div>
+                        <div className="card">
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Labor Cost</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                                ${(mockTimesheets.reduce((sum, s) => sum + s.totalHours, 0) * 80).toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="card">
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Pending Approval</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                                0
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Inventory Page
+        const Inventory = () => {
+            const [inventoryItems] = useState([
+                { id: 'INV-001', name: 'LED Panel 600x600mm', category: 'Lighting', quantity: 48, minStock: 20, unitPrice: 45.00, location: 'Warehouse A' },
+                { id: 'INV-002', name: 'Electrical Cable 2.5mm²', category: 'Cable', quantity: 1200, minStock: 500, unitPrice: 2.50, location: 'Warehouse A' },
+                { id: 'INV-003', name: 'Circuit Breaker 20A', category: 'Protection', quantity: 8, minStock: 15, unitPrice: 18.00, location: 'Van 1' },
+                { id: 'INV-004', name: 'Junction Box IP65', category: 'Accessories', quantity: 35, minStock: 25, unitPrice: 12.50, location: 'Warehouse B' },
+                { id: 'INV-005', name: 'LED Driver 40W', category: 'Lighting', quantity: 22, minStock: 20, unitPrice: 28.00, location: 'Warehouse A' }
+            ]);
+            
+            const lowStockItems = inventoryItems.filter(item => item.quantity < item.minStock);
+            const totalValue = inventoryItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            
+            return (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
+                        <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>Inventory</h2>
+                        <button className="btn btn-primary">+ Add Item</button>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Total Items</div>
+                            <div className="kpi-value">{inventoryItems.length}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Low Stock Alerts</div>
+                            <div className="kpi-value" style={{ color: lowStockItems.length > 0 ? 'var(--accent-danger)' : 'var(--accent-success)' }}>
+                                {lowStockItems.length}
+                            </div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Total Value</div>
+                            <div className="kpi-value">${(totalValue/1000).toFixed(1)}K</div>
+                        </div>
+                    </div>
+                    
+                    {lowStockItems.length > 0 && (
+                        <div className="card" style={{ marginBottom: 'var(--spacing-xl)', borderLeft: '4px solid var(--accent-danger)' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--accent-danger)', marginBottom: 'var(--spacing-md)' }}>
+                                ⚠️ Low Stock Alert
+                            </div>
+                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                {lowStockItems.length} items below minimum stock level
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Item Code</th>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Quantity</th>
+                                    <th>Min Stock</th>
+                                    <th>Unit Price</th>
+                                    <th>Location</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {inventoryItems.map(item => (
+                                    <tr key={item.id}>
+                                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{item.id}</td>
+                                        <td style={{ fontWeight: 600 }}>{item.name}</td>
+                                        <td>{item.category}</td>
+                                        <td style={{ fontFamily: 'var(--font-mono)' }}>{item.quantity}</td>
+                                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{item.minStock}</td>
+                                        <td style={{ fontFamily: 'var(--font-mono)' }}>${item.unitPrice.toFixed(2)}</td>
+                                        <td>{item.location}</td>
+                                        <td>
+                                            <span className={`status-badge ${item.quantity < item.minStock ? 'status-in_progress' : 'status-completed'}`}>
+                                                {item.quantity < item.minStock ? 'Low Stock' : 'In Stock'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Reports Page
+        const Reports = () => {
+            const { jobs, purchaseOrders, technicians } = useContext(DataContext);
+            
+            const revenueByMonth = [
+                { month: 'Jan', revenue: 45000 },
+                { month: 'Feb', revenue: 52000 },
+                { month: 'Mar', revenue: 48000 },
+                { month: 'Apr', revenue: 58000 }
+            ];
+            
+            const jobsByStatus = {
+                planned: jobs.filter(j => j.status === 'planned').length,
+                scheduled: jobs.filter(j => j.status === 'scheduled').length,
+                in_progress: jobs.filter(j => j.status === 'in_progress').length,
+                completed: jobs.filter(j => j.status === 'completed').length,
+                invoiced: jobs.filter(j => j.status === 'invoiced').length
+            };
+            
+            return (
+                <div>
+                    <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+                        <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>Reports & Analytics</h2>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
+                        <div className="card">
+                            <div className="card-header">
+                                <h3 className="card-title">Revenue Trend</h3>
+                            </div>
+                            <div style={{ marginTop: 'var(--spacing-md)' }}>
+                                {revenueByMonth.map((data) => (
+                                    <div key={data.month} style={{ marginBottom: 'var(--spacing-md)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
+                                            <span>{data.month}</span>
+                                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                                ${(data.revenue/1000).toFixed(0)}K
+                                            </span>
+                                        </div>
+                                        <div style={{ 
+                                            height: '8px', 
+                                            background: 'var(--bg-tertiary)', 
+                                            borderRadius: '4px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{ 
+                                                width: `${(data.revenue/60000)*100}%`, 
+                                                height: '100%', 
+                                                background: 'var(--accent-primary)',
+                                                transition: 'width 0.3s ease'
+                                            }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="card">
+                            <div className="card-header">
+                                <h3 className="card-title">Jobs by Status</h3>
+                            </div>
+                            <div style={{ marginTop: 'var(--spacing-md)' }}>
+                                {Object.entries(jobsByStatus).map(([status, count]) => (
+                                    <div key={status} style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        padding: 'var(--spacing-sm)', 
+                                        marginBottom: 'var(--spacing-xs)',
+                                        background: 'var(--bg-tertiary)',
+                                        borderRadius: 'var(--radius-sm)'
+                                    }}>
+                                        <span style={{ textTransform: 'capitalize' }}>{status.replace('_', ' ')}</span>
+                                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                            {count}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="card">
+                            <div className="card-header">
+                                <h3 className="card-title">Tech Performance</h3>
+                            </div>
+                            <div style={{ marginTop: 'var(--spacing-md)' }}>
+                                {technicians.map(tech => (
+                                    <div key={tech.id} style={{ marginBottom: 'var(--spacing-md)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
+                                            <span>{tech.name}</span>
+                                            <span style={{ fontFamily: 'var(--font-mono)' }}>
+                                                {tech.assignedJobs.length} jobs
+                                            </span>
+                                        </div>
+                                        <div style={{ 
+                                            height: '6px', 
+                                            background: 'var(--bg-tertiary)', 
+                                            borderRadius: '3px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{ 
+                                                width: `${(tech.assignedJobs.length/3)*100}%`, 
+                                                height: '100%', 
+                                                background: 'var(--accent-primary)'
+                                            }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="card">
+                        <div className="card-header">
+                            <h3 className="card-title">Quick Reports</h3>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-md)' }}>
+                            <button className="btn btn-secondary">Export Jobs Report</button>
+                            <button className="btn btn-secondary">Export Timesheet Report</button>
+                            <button className="btn btn-secondary">Export PO Report</button>
+                            <button className="btn btn-secondary">Export Financial Summary</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
         // Settings Page
         const Settings = () => {
             const { jobs, technicians, purchaseOrders } = useContext(DataContext);
@@ -2031,6 +2414,9 @@
                 'schedule': Schedule,
                 'purchase-orders': PurchaseOrders,
                 'employees': Employees,
+                'timesheets': Timesheets,
+                'inventory': Inventory,
+                'reports': Reports,
                 'settings': Settings
             };
             
@@ -2040,32 +2426,37 @@
                 'schedule': 'Schedule',
                 'purchase-orders': 'Purchase Orders',
                 'employees': 'Employees',
+                'timesheets': 'Timesheets',
+                'inventory': 'Inventory',
+                'reports': 'Reports',
                 'settings': 'Settings'
             };
             
             const CurrentPageComponent = pageComponents[currentPage] || Dashboard;
             
             return (
-                <DataProvider>
-                    <div className="app-container">
-                        <Sidebar 
-                            currentPage={currentPage} 
-                            setCurrentPage={setCurrentPage}
-                            isMobileOpen={isMobileOpen}
-                            setIsMobileOpen={setIsMobileOpen}
-                        />
-                        <div className="main-content">
-                            <Header 
-                                title={pageTitles[currentPage]} 
+                <ThemeProvider>
+                    <DataProvider>
+                        <div className="app-container">
+                            <Sidebar 
+                                currentPage={currentPage} 
+                                setCurrentPage={setCurrentPage}
                                 isMobileOpen={isMobileOpen}
                                 setIsMobileOpen={setIsMobileOpen}
                             />
-                            <div className="content-area">
-                                <CurrentPageComponent />
+                            <div className="main-content">
+                                <Header 
+                                    title={pageTitles[currentPage]} 
+                                    isMobileOpen={isMobileOpen}
+                                    setIsMobileOpen={setIsMobileOpen}
+                                />
+                                <div className="content-area">
+                                    <CurrentPageComponent />
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </DataProvider>
+                    </DataProvider>
+                </ThemeProvider>
             );
         };
         
