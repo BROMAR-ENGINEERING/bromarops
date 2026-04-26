@@ -844,6 +844,123 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        /* FullCalendar Custom Styling */
+        .fc {
+            font-family: var(--font-primary);
+        }
+        
+        .fc .fc-toolbar-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .fc .fc-button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+        }
+        
+        .fc .fc-button:hover {
+            background: var(--bg-card);
+            border-color: var(--accent-primary);
+        }
+        
+        .fc .fc-button-primary:not(:disabled).fc-button-active,
+        .fc .fc-button-primary:not(:disabled):active {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: white;
+        }
+        
+        .fc .fc-col-header-cell {
+            background: var(--bg-tertiary);
+            border-color: var(--border-primary);
+            padding: 0.75rem;
+        }
+        
+        .fc .fc-col-header-cell-cushion {
+            color: var(--text-primary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            font-family: var(--font-mono);
+        }
+        
+        .fc .fc-datagrid-cell {
+            background: var(--bg-card);
+            border-color: var(--border-primary);
+        }
+        
+        .fc .fc-datagrid-cell-cushion {
+            color: var(--text-primary);
+            padding: 0.75rem;
+        }
+        
+        .fc .fc-timeline-slot {
+            border-color: var(--border-primary);
+        }
+        
+        .fc .fc-timeline-slot-frame {
+            background: var(--bg-card);
+        }
+        
+        .fc .fc-scrollgrid {
+            border-color: var(--border-primary);
+        }
+        
+        .fc-theme-standard td,
+        .fc-theme-standard th {
+            border-color: var(--border-primary);
+        }
+        
+        /* Event styling */
+        .fc-event {
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: 4px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .fc-event:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .fc-event-title {
+            font-weight: 600;
+        }
+        
+        .fc-event-time {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }
+        
+        /* Today highlight */
+        .fc .fc-timeline-slot-lane.fc-day-today {
+            background: var(--accent-primary)11;
+        }
+        
+        .fc .fc-col-header-cell.fc-day-today {
+            background: var(--accent-primary)22;
+        }
+        
+        /* Resource cells */
+        .fc-timeline-lane {
+            transition: background 0.2s ease;
+        }
+        
+        .fc-timeline-lane:hover {
+            background: var(--bg-tertiary);
+        }
     </style>
 </head>
 <body>
@@ -1377,6 +1494,8 @@
         
         // Sidebar Component
         const Sidebar = ({ currentPage, setCurrentPage, isMobileOpen, setIsMobileOpen }) => {
+            const { theme } = useContext(ThemeContext);
+            
             const menuItems = [
                 { id: 'dashboard', label: 'Dashboard', icon: '📊' },
                 { id: 'jobs', label: 'Jobs', icon: '🔧' },
@@ -1397,13 +1516,23 @@
                 setIsMobileOpen(false);
             };
             
+            // Determine which logo to use based on theme
+            const logoSrc = theme === 'dark' ? 'bromar-logo-white.png' : 'bromar-logo-colour.png';
+            
             return (
                 <div className={`sidebar ${isMobileOpen ? 'open' : ''}`}>
                     <div className="sidebar-header">
                         <div className="logo">
-                            {/* Replace this img src with your actual logo path */}
-                            <img src="bromar-logo.png" alt="Bromar" className="logo-img" 
-                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                            {/* Logo switches based on theme */}
+                            <img 
+                                src={logoSrc} 
+                                alt="Bromar" 
+                                className="logo-img" 
+                                onError={(e) => { 
+                                    e.target.style.display = 'none'; 
+                                    e.target.nextSibling.style.display = 'block'; 
+                                }} 
+                            />
                             <div className="logo-text" style={{ display: 'none' }}>BROMAR OPS</div>
                         </div>
                     </div>
@@ -1781,107 +1910,218 @@
             );
         };
         
-        // Schedule Page
+        // Schedule Page (Advanced Drag & Drop Scheduler)
         const Schedule = () => {
-            const { jobs, technicians } = useContext(DataContext);
-            const [currentDate, setCurrentDate] = useState(new Date());
+            const { jobs, setJobs, technicians } = useContext(DataContext);
+            const calendarRef = React.useRef(null);
+            const calendarInstance = React.useRef(null);
+            const [unscheduledJobs, setUnscheduledJobs] = useState([]);
+            const [selectedJobForDrag, setSelectedJobForDrag] = useState(null);
             
-            // Get current month calendar
-            const getDaysInMonth = () => {
-                const year = currentDate.getFullYear();
-                const month = currentDate.getMonth();
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const days = [];
+            useEffect(() => {
+                // Filter unscheduled jobs (no scheduledDate or status is 'planned')
+                const unscheduled = jobs.filter(j => !j.scheduledDate || j.status === 'planned');
+                setUnscheduledJobs(unscheduled);
+            }, [jobs]);
+            
+            useEffect(() => {
+                if (!calendarRef.current || calendarInstance.current) return;
                 
-                // Add empty cells for days before month starts
-                for (let i = 0; i < firstDay.getDay(); i++) {
-                    days.push(null);
+                // Load FullCalendar script if not already loaded
+                if (!window.FullCalendar) {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar-scheduler@6.1.10/index.global.min.js';
+                    script.onload = initCalendar;
+                    document.head.appendChild(script);
+                    
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = 'https://cdn.jsdelivr.net/npm/fullcalendar-scheduler@6.1.10/index.global.min.css';
+                    document.head.appendChild(link);
+                } else {
+                    initCalendar();
                 }
                 
-                // Add all days in month
-                for (let i = 1; i <= lastDay.getDate(); i++) {
-                    days.push(new Date(year, month, i));
+                function initCalendar() {
+                    if (!window.FullCalendar || !calendarRef.current) return;
+                    
+                    // Prepare resources (technicians)
+                    const resources = technicians.map(tech => ({
+                        id: tech.id,
+                        title: tech.name
+                    }));
+                    
+                    // Prepare scheduled events
+                    const events = jobs
+                        .filter(j => j.scheduledDate && j.assignedTechs && j.assignedTechs.length > 0)
+                        .map(j => ({
+                            id: j.id,
+                            title: j.clientName,
+                            start: j.scheduledDate,
+                            end: j.scheduledDate, // Could calculate based on estimatedHours
+                            resourceId: j.assignedTechs[0], // Primary tech
+                            extendedProps: {
+                                jobId: j.id,
+                                status: j.status,
+                                description: j.description,
+                                estimatedHours: j.estimatedHours
+                            },
+                            className: `status-${j.status}`,
+                            backgroundColor: getJobColor(j.status),
+                            borderColor: getJobColor(j.status)
+                        }));
+                    
+                    calendarInstance.current = new window.FullCalendar.Calendar(calendarRef.current, {
+                        schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives',
+                        initialView: 'resourceTimelineWeek',
+                        height: '100%',
+                        resources: resources,
+                        events: events,
+                        editable: true,
+                        droppable: true,
+                        headerToolbar: {
+                            left: 'prev,next today',
+                            center: 'title',
+                            right: 'resourceTimelineDay,resourceTimelineWeek,resourceTimelineMonth'
+                        },
+                        slotDuration: '24:00:00',
+                        slotLabelFormat: [
+                            { weekday: 'short' },
+                            { day: 'numeric', month: 'short' }
+                        ],
+                        resourceAreaHeaderContent: 'Technicians',
+                        resourceAreaWidth: '200px',
+                        eventClick: function(info) {
+                            const jobId = info.event.extendedProps.jobId;
+                            alert(`Job: ${info.event.title}\nID: ${jobId}\nClick to edit (coming soon)`);
+                        },
+                        eventDrop: function(info) {
+                            // Update job when event is moved
+                            const jobId = info.event.extendedProps.jobId;
+                            const newDate = info.event.start.toISOString().split('T')[0];
+                            const newTechId = info.event.getResources()[0].id;
+                            
+                            updateJobSchedule(jobId, newDate, newTechId);
+                        },
+                        drop: function(info) {
+                            // Handle external job drop
+                            if (selectedJobForDrag) {
+                                const newDate = info.date.toISOString().split('T')[0];
+                                const techId = info.resource ? info.resource.id : null;
+                                
+                                updateJobSchedule(selectedJobForDrag.id, newDate, techId);
+                                setSelectedJobForDrag(null);
+                            }
+                        }
+                    });
+                    
+                    calendarInstance.current.render();
                 }
                 
-                return days;
+                return () => {
+                    if (calendarInstance.current) {
+                        calendarInstance.current.destroy();
+                        calendarInstance.current = null;
+                    }
+                };
+            }, [technicians, jobs]);
+            
+            const getJobColor = (status) => {
+                const colors = {
+                    planned: '#6c757d',
+                    scheduled: '#ffc107',
+                    in_progress: '#ff6b35',
+                    completed: '#28a745',
+                    invoiced: '#007bff'
+                };
+                return colors[status] || '#6c757d';
             };
             
-            const getJobsForDate = (date) => {
-                if (!date) return [];
-                const dateStr = date.toISOString().split('T')[0];
-                return jobs.filter(j => j.scheduledDate === dateStr);
+            const updateJobSchedule = (jobId, newDate, newTechId) => {
+                const updatedJobs = jobs.map(j => {
+                    if (j.id === jobId) {
+                        return {
+                            ...j,
+                            scheduledDate: newDate,
+                            assignedTechs: newTechId ? [newTechId] : j.assignedTechs,
+                            status: 'scheduled',
+                            updatedAt: new Date().toISOString()
+                        };
+                    }
+                    return j;
+                });
+                
+                setJobs(updatedJobs);
+                
+                // Refresh calendar
+                if (calendarInstance.current) {
+                    calendarInstance.current.refetchEvents();
+                }
             };
             
-            const prevMonth = () => {
-                setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+            const handleDragStart = (job) => (e) => {
+                setSelectedJobForDrag(job);
+                e.dataTransfer.effectAllowed = 'move';
             };
-            
-            const nextMonth = () => {
-                setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
-            };
-            
-            const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
             
             return (
-                <div>
-                    <div className="calendar-container">
-                        <div className="calendar-header">
-                            <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>{monthName}</h2>
-                            <div className="calendar-nav">
-                                <button className="btn btn-secondary" onClick={prevMonth}>← Prev</button>
-                                <button className="btn btn-secondary" onClick={nextMonth}>Next →</button>
+                <div style={{ height: 'calc(100vh - 140px)', display: 'flex', gap: 'var(--spacing-md)' }}>
+                    {/* Unscheduled Jobs Panel */}
+                    <div style={{
+                        width: '280px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: 'var(--spacing-lg)',
+                        overflowY: 'auto'
+                    }}>
+                        <h3 style={{ marginTop: 0, marginBottom: 'var(--spacing-lg)' }}>Unscheduled Jobs</h3>
+                        
+                        {unscheduledJobs.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 'var(--spacing-xl)' }}>
+                                <div style={{ fontSize: '2rem', marginBottom: 'var(--spacing-sm)' }}>✅</div>
+                                <div>All jobs scheduled!</div>
                             </div>
-                        </div>
-                        <div className="calendar-grid">
-                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                <div key={day} className="calendar-day-header">{day}</div>
-                            ))}
-                            {getDaysInMonth().map((date, idx) => (
-                                <div key={idx} className="calendar-day">
-                                    {date && (
-                                        <>
-                                            <div className="calendar-day-number">{date.getDate()}</div>
-                                            <div className="calendar-jobs">
-                                                {getJobsForDate(date).map(job => (
-                                                    <div key={job.id} className="calendar-job">
-                                                        {job.clientName}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
+                        ) : (
+                            unscheduledJobs.map(job => (
+                                <div
+                                    key={job.id}
+                                    draggable
+                                    onDragStart={handleDragStart(job)}
+                                    style={{
+                                        padding: 'var(--spacing-md)',
+                                        marginBottom: 'var(--spacing-sm)',
+                                        background: getJobColor(job.status),
+                                        color: 'white',
+                                        borderRadius: 'var(--radius-sm)',
+                                        cursor: 'grab',
+                                        userSelect: 'none'
+                                    }}
+                                >
+                                    <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                                        {job.clientName}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
+                                        {job.id} • {job.estimatedHours}h
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.25rem' }}>
+                                        {job.description.substring(0, 40)}...
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
+                            ))
+                        )}
                     </div>
                     
-                    <div className="card" style={{ marginTop: 'var(--spacing-xl)' }}>
-                        <div className="card-header">
-                            <h2 className="card-title">Technician Availability</h2>
-                        </div>
-                        <div style={{ display: 'grid', gap: 'var(--spacing-md)' }}>
-                            {technicians.map(tech => (
-                                <div key={tech.id} style={{ 
-                                    padding: 'var(--spacing-md)', 
-                                    background: 'var(--bg-tertiary)',
-                                    borderRadius: 'var(--radius-sm)',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center'
-                                }}>
-                                    <div>
-                                        <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{tech.name}</div>
-                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                            {tech.assignedJobs.length} active jobs
-                                        </div>
-                                    </div>
-                                    <span className={`status-badge status-${tech.status === 'active' ? 'completed' : 'planned'}`}>
-                                        {tech.status}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
+                    {/* Calendar */}
+                    <div style={{
+                        flex: 1,
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: 'var(--spacing-md)',
+                        overflow: 'hidden'
+                    }}>
+                        <div ref={calendarRef} style={{ height: '100%' }}></div>
                     </div>
                 </div>
             );
