@@ -1026,6 +1026,270 @@
                 ];
                 StorageManager.save('purchaseOrders', samplePOs);
             }
+            
+            if (!localStorage.getItem('clients')) {
+                const sampleClients = [
+                    {
+                        id: 'CLI-001',
+                        companyName: 'Melbourne Commercial Centre',
+                        contactName: 'John Smith',
+                        email: 'john.smith@melbcc.com.au',
+                        phone: '03 9123 4567',
+                        mobile: '0412 345 678',
+                        address: '123 Collins St, Melbourne VIC 3000',
+                        abn: '12 345 678 901',
+                        billingAddress: '123 Collins St, Melbourne VIC 3000',
+                        notes: 'Preferred customer - 30 day payment terms',
+                        status: 'active',
+                        totalJobs: 12,
+                        createdAt: new Date('2023-01-15').toISOString()
+                    },
+                    {
+                        id: 'CLI-002',
+                        companyName: 'Brunswick Apartments',
+                        contactName: 'Sarah Johnson',
+                        email: 'sarah.j@brunswickapts.com.au',
+                        phone: '03 9234 5678',
+                        mobile: '0423 456 789',
+                        address: '456 Sydney Rd, Brunswick VIC 3056',
+                        abn: '23 456 789 012',
+                        billingAddress: 'PO Box 123, Brunswick VIC 3056',
+                        notes: 'Annual maintenance contract',
+                        status: 'active',
+                        totalJobs: 8,
+                        createdAt: new Date('2023-03-20').toISOString()
+                    },
+                    {
+                        id: 'CLI-003',
+                        companyName: 'Richmond Office Park',
+                        contactName: 'Mike Chen',
+                        email: 'mchen@richmondoffice.com',
+                        phone: '03 9345 6789',
+                        mobile: '0434 567 890',
+                        address: '789 Bridge Rd, Richmond VIC 3121',
+                        abn: '34 567 890 123',
+                        billingAddress: '789 Bridge Rd, Richmond VIC 3121',
+                        notes: 'New client - quote approved',
+                        status: 'active',
+                        totalJobs: 2,
+                        createdAt: new Date('2024-04-10').toISOString()
+                    }
+                ];
+                StorageManager.save('clients', sampleClients);
+            }
+            
+            if (!localStorage.getItem('equipment')) {
+                const sampleEquipment = [
+                    {
+                        id: 'EQ-001',
+                        type: 'tool',
+                        name: 'Cable Fault Locator',
+                        serialNumber: 'CFL-2023-001',
+                        assignedTo: 'TECH-003',
+                        status: 'in_use',
+                        purchaseDate: '2023-06-20',
+                        lastCalibration: '2024-01-10',
+                        nextCalibration: '2025-01-10',
+                        notes: 'Annual calibration required'
+                    },
+                    {
+                        id: 'EQ-002',
+                        type: 'tool',
+                        name: 'Thermal Imaging Camera',
+                        serialNumber: 'TIC-2022-045',
+                        assignedTo: null,
+                        status: 'available',
+                        purchaseDate: '2022-11-05',
+                        lastCalibration: '2023-11-05',
+                        nextCalibration: '2024-11-05',
+                        notes: 'Store in protective case when not in use'
+                    },
+                    {
+                        id: 'EQ-003',
+                        type: 'tool',
+                        name: 'Generator - 5.5kVA',
+                        serialNumber: 'GEN-2021-012',
+                        assignedTo: null,
+                        status: 'maintenance',
+                        purchaseDate: '2021-05-12',
+                        lastService: '2024-04-10',
+                        nextService: '2024-10-10',
+                        notes: 'In for repairs - carburetor issue'
+                    },
+                    {
+                        id: 'EQ-004',
+                        type: 'tool',
+                        name: 'Multimeter - Fluke 87V',
+                        serialNumber: 'FLK-2023-089',
+                        assignedTo: 'TECH-001',
+                        status: 'in_use',
+                        purchaseDate: '2023-02-14',
+                        lastCalibration: '2024-02-14',
+                        nextCalibration: '2025-02-14',
+                        notes: 'Primary field meter'
+                    },
+                    {
+                        id: 'EQ-005',
+                        type: 'tool',
+                        name: 'Ladder - 6m Extension',
+                        serialNumber: 'LAD-2022-003',
+                        assignedTo: 'TECH-002',
+                        status: 'in_use',
+                        purchaseDate: '2022-07-10',
+                        lastService: '2024-01-15',
+                        nextService: '2025-01-15',
+                        notes: 'Annual safety inspection required'
+                    }
+                ];
+                StorageManager.save('equipment', sampleEquipment);
+            }
+            
+            if (!localStorage.getItem('fleet')) {
+                const sampleFleet = [
+                    {
+                        id: 'VEH-001',
+                        name: 'Van 1 - Toyota HiAce',
+                        registration: 'ABC123',
+                        make: 'Toyota',
+                        model: 'HiAce',
+                        year: 2022,
+                        vin: '1HGBH41JXMN109186',
+                        assignedTo: 'TECH-001',
+                        status: 'active',
+                        purchaseDate: '2022-03-15',
+                        lastService: '2024-03-01',
+                        nextService: '2024-09-01',
+                        odometerReading: 45230,
+                        fuelType: 'Diesel',
+                        insuranceExpiry: '2024-12-31',
+                        regoExpiry: '2024-11-15',
+                        notes: 'Regular service required every 6 months'
+                    },
+                    {
+                        id: 'VEH-002',
+                        name: 'Van 2 - Ford Transit',
+                        registration: 'DEF456',
+                        make: 'Ford',
+                        model: 'Transit',
+                        year: 2023,
+                        vin: '2FMDK3KC8NBA12345',
+                        assignedTo: 'TECH-002',
+                        status: 'active',
+                        purchaseDate: '2023-01-10',
+                        lastService: '2024-02-15',
+                        nextService: '2024-08-15',
+                        odometerReading: 28450,
+                        fuelType: 'Diesel',
+                        insuranceExpiry: '2025-01-31',
+                        regoExpiry: '2024-12-10',
+                        notes: 'New tires installed Feb 2024'
+                    },
+                    {
+                        id: 'VEH-003',
+                        name: 'Van 3 - Mercedes Sprinter',
+                        registration: 'GHI789',
+                        make: 'Mercedes-Benz',
+                        model: 'Sprinter',
+                        year: 2023,
+                        vin: 'WD3PE7CC5EP123456',
+                        assignedTo: null,
+                        status: 'available',
+                        purchaseDate: '2023-08-22',
+                        lastService: '2024-04-20',
+                        nextService: '2024-10-20',
+                        odometerReading: 15670,
+                        fuelType: 'Diesel',
+                        insuranceExpiry: '2025-08-31',
+                        regoExpiry: '2024-08-22',
+                        notes: 'Backup vehicle'
+                    }
+                ];
+                StorageManager.save('fleet', sampleFleet);
+            }
+            
+            if (!localStorage.getItem('maintenanceRequests')) {
+                const sampleMaintenanceRequests = [
+                    {
+                        id: 'MR-2024-001',
+                        vehicleId: 'VEH-001',
+                        submittedBy: 'TECH-001',
+                        submittedDate: '2024-04-20',
+                        odometer: 45230,
+                        issueType: 'scheduled_service',
+                        priority: 'medium',
+                        description: 'Due for 45,000km service',
+                        status: 'pending',
+                        estimatedCost: 450,
+                        notes: ''
+                    },
+                    {
+                        id: 'MR-2024-002',
+                        vehicleId: 'VEH-002',
+                        submittedBy: 'TECH-002',
+                        submittedDate: '2024-04-18',
+                        odometer: 28450,
+                        issueType: 'brake_issue',
+                        priority: 'high',
+                        description: 'Brake pedal feels soft, possible fluid leak',
+                        status: 'in_progress',
+                        estimatedCost: 650,
+                        notes: 'Booked with mechanic for tomorrow'
+                    }
+                ];
+                StorageManager.save('maintenanceRequests', sampleMaintenanceRequests);
+            }
+            
+            if (!localStorage.getItem('maintenanceAudits')) {
+                const sampleMaintenanceAudits = [
+                    {
+                        id: 'MA-2024-001',
+                        vehicleId: 'VEH-001',
+                        auditDate: '2024-03-01',
+                        auditedBy: 'TECH-001',
+                        odometer: 42100,
+                        serviceType: 'routine_service',
+                        workPerformed: [
+                            'Oil and filter change',
+                            'Brake inspection',
+                            'Tire rotation',
+                            'Fluid top-ups'
+                        ],
+                        partsReplaced: [
+                            { part: 'Engine Oil 5W-30', qty: 6, cost: 85 },
+                            { part: 'Oil Filter', qty: 1, cost: 25 }
+                        ],
+                        totalCost: 110,
+                        nextServiceDue: 48100,
+                        nextServiceDate: '2024-09-01',
+                        mechanic: 'City Auto Service',
+                        notes: 'All systems normal, no issues found',
+                        approved: true
+                    },
+                    {
+                        id: 'MA-2024-002',
+                        vehicleId: 'VEH-002',
+                        auditDate: '2024-02-15',
+                        auditedBy: 'TECH-002',
+                        odometer: 26200,
+                        serviceType: 'tire_replacement',
+                        workPerformed: [
+                            'Replace all 4 tires',
+                            'Wheel alignment',
+                            'Balance wheels'
+                        ],
+                        partsReplaced: [
+                            { part: 'Michelin LTX M/S2 225/70R15', qty: 4, cost: 720 }
+                        ],
+                        totalCost: 820,
+                        nextServiceDue: 32200,
+                        nextServiceDate: '2024-08-15',
+                        mechanic: 'Brunswick Tire Centre',
+                        notes: 'Old tires worn below safe limit',
+                        approved: true
+                    }
+                ];
+                StorageManager.save('maintenanceAudits', sampleMaintenanceAudits);
+            }
         };
         
         // Data Provider Component
@@ -1033,6 +1297,11 @@
             const [jobs, setJobs] = useState([]);
             const [technicians, setTechnicians] = useState([]);
             const [purchaseOrders, setPurchaseOrders] = useState([]);
+            const [clients, setClients] = useState([]);
+            const [equipment, setEquipment] = useState([]);
+            const [fleet, setFleet] = useState([]);
+            const [maintenanceRequests, setMaintenanceRequests] = useState([]);
+            const [maintenanceAudits, setMaintenanceAudits] = useState([]);
             
             useEffect(() => {
                 initializeSampleData();
@@ -1043,6 +1312,11 @@
                 setJobs(StorageManager.load('jobs', []));
                 setTechnicians(StorageManager.load('technicians', []));
                 setPurchaseOrders(StorageManager.load('purchaseOrders', []));
+                setClients(StorageManager.load('clients', []));
+                setEquipment(StorageManager.load('equipment', []));
+                setFleet(StorageManager.load('fleet', []));
+                setMaintenanceRequests(StorageManager.load('maintenanceRequests', []));
+                setMaintenanceAudits(StorageManager.load('maintenanceAudits', []));
             };
             
             const saveJobs = (newJobs) => {
@@ -1060,11 +1334,41 @@
                 setPurchaseOrders(newPOs);
             };
             
+            const saveClients = (newClients) => {
+                StorageManager.save('clients', newClients);
+                setClients(newClients);
+            };
+            
+            const saveEquipment = (newEquipment) => {
+                StorageManager.save('equipment', newEquipment);
+                setEquipment(newEquipment);
+            };
+            
+            const saveFleet = (newFleet) => {
+                StorageManager.save('fleet', newFleet);
+                setFleet(newFleet);
+            };
+            
+            const saveMaintenanceRequests = (newRequests) => {
+                StorageManager.save('maintenanceRequests', newRequests);
+                setMaintenanceRequests(newRequests);
+            };
+            
+            const saveMaintenanceAudits = (newAudits) => {
+                StorageManager.save('maintenanceAudits', newAudits);
+                setMaintenanceAudits(newAudits);
+            };
+            
             return (
                 <DataContext.Provider value={{
                     jobs, setJobs: saveJobs,
                     technicians, setTechnicians: saveTechnicians,
-                    purchaseOrders, setPurchaseOrders: savePurchaseOrders
+                    purchaseOrders, setPurchaseOrders: savePurchaseOrders,
+                    clients, setClients: saveClients,
+                    equipment, setEquipment: saveEquipment,
+                    fleet, setFleet: saveFleet,
+                    maintenanceRequests, setMaintenanceRequests: saveMaintenanceRequests,
+                    maintenanceAudits, setMaintenanceAudits: saveMaintenanceAudits
                 }}>
                     {children}
                 </DataContext.Provider>
@@ -1077,8 +1381,11 @@
                 { id: 'dashboard', label: 'Dashboard', icon: '📊' },
                 { id: 'jobs', label: 'Jobs', icon: '🔧' },
                 { id: 'schedule', label: 'Schedule', icon: '📅' },
+                { id: 'clients', label: 'Clients', icon: '👥' },
                 { id: 'purchase-orders', label: 'Purchase Orders', icon: '📦' },
                 { id: 'employees', label: 'Employees', icon: '👷' },
+                { id: 'fleet', label: 'Fleet Management', icon: '🚐' },
+                { id: 'equipment', label: 'Equipment', icon: '🔧' },
                 { id: 'timesheets', label: 'Timesheets', icon: '⏱️' },
                 { id: 'inventory', label: 'Inventory', icon: '📋' },
                 { id: 'reports', label: 'Reports', icon: '📈' },
@@ -2008,6 +2315,345 @@
             );
         };
         
+        // Clients Page
+        const Clients = () => {
+            const { clients, setClients } = useContext(DataContext);
+            const [showModal, setShowModal] = useState(false);
+            const [editingClient, setEditingClient] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            
+            const filteredClients = clients.filter(client => 
+                client.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                client.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                client.email.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            
+            const activeClients = clients.filter(c => c.status === 'active').length;
+            const totalRevenue = clients.reduce((sum, c) => sum + (c.totalJobs * 5000), 0); // Estimated
+            
+            const handleCreateClient = (clientData) => {
+                const newClient = {
+                    ...clientData,
+                    id: `CLI-${String(clients.length + 1).padStart(3, '0')}`,
+                    totalJobs: 0,
+                    createdAt: new Date().toISOString()
+                };
+                setClients([...clients, newClient]);
+                setShowModal(false);
+            };
+            
+            const handleUpdateClient = (clientData) => {
+                const updatedClients = clients.map(c => 
+                    c.id === editingClient.id ? { ...clientData } : c
+                );
+                setClients(updatedClients);
+                setShowModal(false);
+                setEditingClient(null);
+            };
+            
+            const handleDeleteClient = (clientId) => {
+                if (confirm('Are you sure you want to delete this client?')) {
+                    setClients(clients.filter(c => c.id !== clientId));
+                }
+            };
+            
+            return (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
+                        <div style={{ flex: 1, maxWidth: '400px' }}>
+                            <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Search clients..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                            + New Client
+                        </button>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Total Clients</div>
+                            <div className="kpi-value">{clients.length}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Active Clients</div>
+                            <div className="kpi-value">{activeClients}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Est. Revenue</div>
+                            <div className="kpi-value">${(totalRevenue/1000).toFixed(0)}K</div>
+                        </div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gap: 'var(--spacing-lg)' }}>
+                        {filteredClients.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">👥</div>
+                                <div className="empty-state-text">No clients found</div>
+                                <div className="empty-state-subtext">
+                                    {searchTerm ? 'Try a different search term' : 'Add your first client to get started'}
+                                </div>
+                            </div>
+                        ) : (
+                            filteredClients.map(client => (
+                                <div key={client.id} className="card" style={{ cursor: 'pointer' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 'var(--spacing-md)' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: '0.5rem' }}>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{client.companyName}</div>
+                                                <span className={`status-badge status-${client.status === 'active' ? 'completed' : 'planned'}`}>
+                                                    {client.status}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                {client.id}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Contact Person</div>
+                                            <div style={{ fontWeight: 500 }}>{client.contactName}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Email</div>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>{client.email}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Phone</div>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>{client.phone}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Mobile</div>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>{client.mobile}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ padding: 'var(--spacing-md)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--spacing-md)' }}>
+                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Address</div>
+                                        <div style={{ fontSize: '0.95rem' }}>{client.address}</div>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--border-primary)' }}>
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-lg)' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Total Jobs</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
+                                                    {client.totalJobs}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>ABN</div>
+                                                <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                    {client.abn}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                                            <button 
+                                                className="btn btn-secondary"
+                                                onClick={() => {
+                                                    setEditingClient(client);
+                                                    setShowModal(true);
+                                                }}
+                                            >
+                                                Edit
+                                            </button>
+                                            <button 
+                                                className="btn btn-secondary"
+                                                onClick={() => handleDeleteClient(client.id)}
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {client.notes && (
+                                        <div style={{ marginTop: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                            💡 {client.notes}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    
+                    {showModal && (
+                        <ClientModal
+                            client={editingClient}
+                            onClose={() => {
+                                setShowModal(false);
+                                setEditingClient(null);
+                            }}
+                            onSave={editingClient ? handleUpdateClient : handleCreateClient}
+                        />
+                    )}
+                </div>
+            );
+        };
+        
+        // Client Modal Component
+        const ClientModal = ({ client, onClose, onSave }) => {
+            const [formData, setFormData] = useState(client || {
+                companyName: '',
+                contactName: '',
+                email: '',
+                phone: '',
+                mobile: '',
+                address: '',
+                abn: '',
+                billingAddress: '',
+                notes: '',
+                status: 'active'
+            });
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave(formData);
+            };
+            
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2 className="modal-title">{client ? 'Edit Client' : 'New Client'}</h2>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <form onSubmit={handleSubmit}>
+                                <div className="form-group">
+                                    <label className="form-label">Company Name</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.companyName}
+                                        onChange={(e) => setFormData({...formData, companyName: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Contact Name</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.contactName}
+                                        onChange={(e) => setFormData({...formData, contactName: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Email</label>
+                                        <input
+                                            type="email"
+                                            className="form-input"
+                                            value={formData.email}
+                                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">ABN</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={formData.abn}
+                                            onChange={(e) => setFormData({...formData, abn: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Phone</label>
+                                        <input
+                                            type="tel"
+                                            className="form-input"
+                                            value={formData.phone}
+                                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Mobile</label>
+                                        <input
+                                            type="tel"
+                                            className="form-input"
+                                            value={formData.mobile}
+                                            onChange={(e) => setFormData({...formData, mobile: e.target.value})}
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Physical Address</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.address}
+                                        onChange={(e) => setFormData({...formData, address: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Billing Address</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.billingAddress}
+                                        onChange={(e) => setFormData({...formData, billingAddress: e.target.value})}
+                                        placeholder="Leave blank if same as physical address"
+                                    />
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Notes</label>
+                                    <textarea
+                                        className="form-textarea"
+                                        value={formData.notes}
+                                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                                        placeholder="Payment terms, special requirements, etc."
+                                    />
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Status</label>
+                                    <select
+                                        className="form-select"
+                                        value={formData.status}
+                                        onChange={(e) => setFormData({...formData, status: e.target.value})}
+                                    >
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                </div>
+                                
+                                <div className="form-actions">
+                                    <button type="button" className="btn btn-secondary" onClick={onClose}>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="btn btn-primary">
+                                        {client ? 'Update Client' : 'Create Client'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
         // Timesheets Page
         const Timesheets = () => {
             const { jobs, technicians } = useContext(DataContext);
@@ -2325,6 +2971,811 @@
             );
         };
         
+        // Equipment Page (Tools Only)
+        const Equipment = () => {
+            const { equipment, setEquipment, technicians } = useContext(DataContext);
+            const [showModal, setShowModal] = useState(false);
+            const [editingEquipment, setEditingEquipment] = useState(null);
+            
+            const inUse = equipment.filter(e => e.status === 'in_use').length;
+            const needsCalibration = equipment.filter(e => {
+                if (e.nextCalibration) {
+                    return new Date(e.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                }
+                return false;
+            }).length;
+            
+            const handleCreateEquipment = (equipmentData) => {
+                const newEquipment = {
+                    ...equipmentData,
+                    id: `EQ-${String(equipment.length + 1).padStart(3, '0')}`,
+                    type: 'tool'
+                };
+                setEquipment([...equipment, newEquipment]);
+                setShowModal(false);
+            };
+            
+            const handleUpdateEquipment = (equipmentData) => {
+                const updatedEquipment = equipment.map(e => 
+                    e.id === editingEquipment.id ? { ...equipmentData } : e
+                );
+                setEquipment(updatedEquipment);
+                setShowModal(false);
+                setEditingEquipment(null);
+            };
+            
+            const handleDeleteEquipment = (equipmentId) => {
+                if (confirm('Are you sure you want to delete this equipment?')) {
+                    setEquipment(equipment.filter(e => e.id !== equipmentId));
+                }
+            };
+            
+            const getAssignedTechName = (techId) => {
+                if (!techId) return 'Unassigned';
+                const tech = technicians.find(t => t.id === techId);
+                return tech ? tech.name : 'Unknown';
+            };
+            
+            return (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
+                        <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>Tools & Equipment</h2>
+                        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                            + Add Equipment
+                        </button>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Total Equipment</div>
+                            <div className="kpi-value">{equipment.length}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">In Use</div>
+                            <div className="kpi-value">{inUse}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Calibration Due</div>
+                            <div className="kpi-value" style={{ color: needsCalibration > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                                {needsCalibration}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {needsCalibration > 0 && (
+                        <div className="card" style={{ marginBottom: 'var(--spacing-xl)', borderLeft: '4px solid var(--accent-warning)' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--accent-warning)', marginBottom: 'var(--spacing-md)' }}>
+                                ⚠️ Calibration Due
+                            </div>
+                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                {needsCalibration} items require calibration within the next 30 days
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div style={{ display: 'grid', gap: 'var(--spacing-lg)' }}>
+                        {equipment.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">🔧</div>
+                                <div className="empty-state-text">No equipment found</div>
+                                <div className="empty-state-subtext">Add tools and equipment to start tracking</div>
+                            </div>
+                        ) : (
+                            equipment.map(item => (
+                                <div key={item.id} className="card">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 'var(--spacing-md)' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: '0.5rem' }}>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>
+                                                    {item.type === 'vehicle' ? '🚐' : '🔧'} {item.name}
+                                                </div>
+                                                <span className={`status-badge ${
+                                                    item.status === 'in_use' ? 'status-in_progress' :
+                                                    item.status === 'available' ? 'status-completed' :
+                                                    'status-scheduled'
+                                                }`}>
+                                                    {item.status.replace('_', ' ')}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                {item.id}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+                                        {item.type === 'vehicle' && (
+                                            <>
+                                                <div>
+                                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Registration</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{item.registration}</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Odometer</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)' }}>{item.odometerReading?.toLocaleString()} km</div>
+                                                </div>
+                                            </>
+                                        )}
+                                        {item.type === 'tool' && (
+                                            <div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Serial Number</div>
+                                                <div style={{ fontFamily: 'var(--font-mono)' }}>{item.serialNumber}</div>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Assigned To</div>
+                                            <div style={{ fontWeight: 500 }}>{getAssignedTechName(item.assignedTo)}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Purchase Date</div>
+                                            <div>{new Date(item.purchaseDate).toLocaleDateString()}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                                        gap: 'var(--spacing-md)', 
+                                        padding: 'var(--spacing-md)', 
+                                        background: 'var(--bg-tertiary)', 
+                                        borderRadius: 'var(--radius-sm)',
+                                        marginBottom: 'var(--spacing-md)'
+                                    }}>
+                                        {item.lastService && (
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Service</div>
+                                                <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                    {new Date(item.lastService).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {item.nextService && (
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Next Service</div>
+                                                <div style={{ 
+                                                    fontSize: '0.9rem', 
+                                                    fontFamily: 'var(--font-mono)',
+                                                    color: new Date(item.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'var(--accent-warning)' : 'inherit'
+                                                }}>
+                                                    {new Date(item.nextService).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {item.lastCalibration && (
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Calibration</div>
+                                                <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                    {new Date(item.lastCalibration).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {item.nextCalibration && (
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Next Calibration</div>
+                                                <div style={{ 
+                                                    fontSize: '0.9rem', 
+                                                    fontFamily: 'var(--font-mono)',
+                                                    color: new Date(item.nextCalibration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'var(--accent-warning)' : 'inherit'
+                                                }}>
+                                                    {new Date(item.nextCalibration).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {item.notes && (
+                                        <div style={{ marginBottom: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                            💡 {item.notes}
+                                        </div>
+                                    )}
+                                    
+                                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--border-primary)' }}>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ flex: 1 }}
+                                            onClick={() => {
+                                                setEditingEquipment(item);
+                                                setShowModal(true);
+                                            }}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ flex: 1 }}
+                                            onClick={() => handleDeleteEquipment(item.id)}
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    
+                    {showModal && (
+                        <EquipmentModal
+                            equipment={editingEquipment}
+                            technicians={technicians}
+                            onClose={() => {
+                                setShowModal(false);
+                                setEditingEquipment(null);
+                            }}
+                            onSave={editingEquipment ? handleUpdateEquipment : handleCreateEquipment}
+                        />
+                    )}
+                </div>
+            );
+        };
+        
+        // Equipment Modal Component
+        const EquipmentModal = ({ equipment, technicians, onClose, onSave }) => {
+            const [formData, setFormData] = useState(equipment || {
+                type: 'vehicle',
+                name: '',
+                registration: '',
+                serialNumber: '',
+                assignedTo: null,
+                status: 'available',
+                purchaseDate: new Date().toISOString().split('T')[0],
+                lastService: '',
+                nextService: '',
+                lastCalibration: '',
+                nextCalibration: '',
+                odometerReading: 0,
+                notes: ''
+            });
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave(formData);
+            };
+            
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2 className="modal-title">{equipment ? 'Edit Equipment' : 'Add Equipment'}</h2>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <form onSubmit={handleSubmit}>
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Type</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.type}
+                                            onChange={(e) => setFormData({...formData, type: e.target.value})}
+                                        >
+                                            <option value="vehicle">Vehicle</option>
+                                            <option value="tool">Tool/Equipment</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Status</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.status}
+                                            onChange={(e) => setFormData({...formData, status: e.target.value})}
+                                        >
+                                            <option value="available">Available</option>
+                                            <option value="in_use">In Use</option>
+                                            <option value="maintenance">Maintenance</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Name/Description</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                        placeholder="e.g., Van 1 - Toyota HiAce"
+                                        required
+                                    />
+                                </div>
+                                
+                                {formData.type === 'vehicle' ? (
+                                    <>
+                                        <div className="form-row">
+                                            <div className="form-group">
+                                                <label className="form-label">Registration</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    value={formData.registration}
+                                                    onChange={(e) => setFormData({...formData, registration: e.target.value})}
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label className="form-label">Odometer (km)</label>
+                                                <input
+                                                    type="number"
+                                                    className="form-input"
+                                                    value={formData.odometerReading}
+                                                    onChange={(e) => setFormData({...formData, odometerReading: parseInt(e.target.value) || 0})}
+                                                />
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="form-group">
+                                        <label className="form-label">Serial Number</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={formData.serialNumber}
+                                            onChange={(e) => setFormData({...formData, serialNumber: e.target.value})}
+                                        />
+                                    </div>
+                                )}
+                                
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Assigned To</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.assignedTo || ''}
+                                            onChange={(e) => setFormData({...formData, assignedTo: e.target.value || null})}
+                                        >
+                                            <option value="">Unassigned</option>
+                                            {technicians.map(tech => (
+                                                <option key={tech.id} value={tech.id}>{tech.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Purchase Date</label>
+                                        <input
+                                            type="date"
+                                            className="form-input"
+                                            value={formData.purchaseDate}
+                                            onChange={(e) => setFormData({...formData, purchaseDate: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Last Service/Calibration</label>
+                                        <input
+                                            type="date"
+                                            className="form-input"
+                                            value={formData.lastService || formData.lastCalibration || ''}
+                                            onChange={(e) => {
+                                                if (formData.type === 'vehicle') {
+                                                    setFormData({...formData, lastService: e.target.value});
+                                                } else {
+                                                    setFormData({...formData, lastCalibration: e.target.value});
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Next Service/Calibration</label>
+                                        <input
+                                            type="date"
+                                            className="form-input"
+                                            value={formData.nextService || formData.nextCalibration || ''}
+                                            onChange={(e) => {
+                                                if (formData.type === 'vehicle') {
+                                                    setFormData({...formData, nextService: e.target.value});
+                                                } else {
+                                                    setFormData({...formData, nextCalibration: e.target.value});
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Notes</label>
+                                    <textarea
+                                        className="form-textarea"
+                                        value={formData.notes}
+                                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                                        placeholder="Maintenance notes, special requirements, etc."
+                                    />
+                                </div>
+                                
+                                <div className="form-actions">
+                                    <button type="button" className="btn btn-secondary" onClick={onClose}>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="btn btn-primary">
+                                        {equipment ? 'Update' : 'Add Equipment'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Fleet Management Page
+        const FleetManagement = () => {
+            const { fleet, setFleet, maintenanceRequests, setMaintenanceRequests, maintenanceAudits, setMaintenanceAudits, technicians } = useContext(DataContext);
+            const [activeTab, setActiveTab] = useState('vehicles'); // vehicles, requests, audits
+            const [showVehicleModal, setShowVehicleModal] = useState(false);
+            const [showRequestModal, setShowRequestModal] = useState(false);
+            const [showAuditModal, setShowAuditModal] = useState(false);
+            const [editingVehicle, setEditingVehicle] = useState(null);
+            
+            const activeVehicles = fleet.filter(v => v.status === 'active').length;
+            const pendingRequests = maintenanceRequests.filter(r => r.status === 'pending').length;
+            const serviceDue = fleet.filter(v => {
+                if (v.nextService) {
+                    return new Date(v.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                }
+                return false;
+            }).length;
+            
+            const getVehicleName = (vehicleId) => {
+                const vehicle = fleet.find(v => v.id === vehicleId);
+                return vehicle ? vehicle.name : 'Unknown Vehicle';
+            };
+            
+            const getTechName = (techId) => {
+                if (!techId) return 'Unassigned';
+                const tech = technicians.find(t => t.id === techId);
+                return tech ? tech.name : 'Unknown';
+            };
+            
+            return (
+                <div>
+                    <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+                        <h2 style={{ fontSize: '1.3rem', fontWeight: 600, marginBottom: 'var(--spacing-md)' }}>Fleet Management</h2>
+                        
+                        {/* Tab Navigation */}
+                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', borderBottom: '2px solid var(--border-primary)', marginBottom: 'var(--spacing-lg)' }}>
+                            <button
+                                onClick={() => setActiveTab('vehicles')}
+                                style={{
+                                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                                    background: activeTab === 'vehicles' ? 'var(--bg-tertiary)' : 'transparent',
+                                    border: 'none',
+                                    borderBottom: activeTab === 'vehicles' ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                                    color: activeTab === 'vehicles' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    fontWeight: activeTab === 'vehicles' ? 600 : 400,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                🚐 Vehicles
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('requests')}
+                                style={{
+                                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                                    background: activeTab === 'requests' ? 'var(--bg-tertiary)' : 'transparent',
+                                    border: 'none',
+                                    borderBottom: activeTab === 'requests' ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                                    color: activeTab === 'requests' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    fontWeight: activeTab === 'requests' ? 600 : 400,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                🔧 Maintenance Requests {pendingRequests > 0 && `(${pendingRequests})`}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('audits')}
+                                style={{
+                                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                                    background: activeTab === 'audits' ? 'var(--bg-tertiary)' : 'transparent',
+                                    border: 'none',
+                                    borderBottom: activeTab === 'audits' ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                                    color: activeTab === 'audits' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    fontWeight: activeTab === 'audits' ? 600 : 400,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                📋 Maintenance Audits
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* KPIs */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)' }}>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Total Vehicles</div>
+                            <div className="kpi-value">{fleet.length}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Active</div>
+                            <div className="kpi-value">{activeVehicles}</div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Service Due</div>
+                            <div className="kpi-value" style={{ color: serviceDue > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                                {serviceDue}
+                            </div>
+                        </div>
+                        <div className="kpi-card">
+                            <div className="kpi-label">Pending Requests</div>
+                            <div className="kpi-value" style={{ color: pendingRequests > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                                {pendingRequests}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Tab Content */}
+                    {activeTab === 'vehicles' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-lg)' }}>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Fleet Vehicles</h3>
+                                <button className="btn btn-primary" onClick={() => setShowVehicleModal(true)}>
+                                    + Add Vehicle
+                                </button>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gap: 'var(--spacing-lg)' }}>
+                                {fleet.map(vehicle => (
+                                    <div key={vehicle.id} className="card">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 'var(--spacing-md)' }}>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: '0.5rem' }}>
+                                                    <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>
+                                                        🚐 {vehicle.name}
+                                                    </div>
+                                                    <span className={`status-badge status-completed`}>
+                                                        {vehicle.status}
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                    {vehicle.id} • {vehicle.registration}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Make & Model</div>
+                                                <div style={{ fontWeight: 500 }}>{vehicle.make} {vehicle.model} ({vehicle.year})</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Odometer</div>
+                                                <div style={{ fontFamily: 'var(--font-mono)' }}>{vehicle.odometerReading?.toLocaleString()} km</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Assigned To</div>
+                                                <div style={{ fontWeight: 500 }}>{getTechName(vehicle.assignedTo)}</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Fuel Type</div>
+                                                <div>{vehicle.fuelType}</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ 
+                                            display: 'grid', 
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                                            gap: 'var(--spacing-md)', 
+                                            padding: 'var(--spacing-md)', 
+                                            background: 'var(--bg-tertiary)', 
+                                            borderRadius: 'var(--radius-sm)',
+                                            marginBottom: 'var(--spacing-md)'
+                                        }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Service</div>
+                                                <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                    {new Date(vehicle.lastService).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Next Service</div>
+                                                <div style={{ 
+                                                    fontSize: '0.9rem', 
+                                                    fontFamily: 'var(--font-mono)',
+                                                    color: new Date(vehicle.nextService) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'var(--accent-warning)' : 'inherit'
+                                                }}>
+                                                    {new Date(vehicle.nextService).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Rego Expiry</div>
+                                                <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                    {new Date(vehicle.regoExpiry).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Insurance Expiry</div>
+                                                <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)' }}>
+                                                    {new Date(vehicle.insuranceExpiry).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {vehicle.notes && (
+                                            <div style={{ marginBottom: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                                💡 {vehicle.notes}
+                                            </div>
+                                        )}
+                                        
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--border-primary)' }}>
+                                            <button className="btn btn-secondary" style={{ flex: 1 }}>
+                                                View History
+                                            </button>
+                                            <button className="btn btn-secondary" style={{ flex: 1 }}>
+                                                Edit
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {activeTab === 'requests' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-lg)' }}>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Maintenance Requests</h3>
+                                <button className="btn btn-primary" onClick={() => setShowRequestModal(true)}>
+                                    + New Request
+                                </button>
+                            </div>
+                            
+                            <div className="table-container">
+                                <table className="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Request ID</th>
+                                            <th>Vehicle</th>
+                                            <th>Submitted By</th>
+                                            <th>Date</th>
+                                            <th>Odometer</th>
+                                            <th>Issue Type</th>
+                                            <th>Priority</th>
+                                            <th>Status</th>
+                                            <th>Est. Cost</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {maintenanceRequests.map(request => (
+                                            <tr key={request.id}>
+                                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{request.id}</td>
+                                                <td>{getVehicleName(request.vehicleId)}</td>
+                                                <td>{getTechName(request.submittedBy)}</td>
+                                                <td>{new Date(request.submittedDate).toLocaleDateString()}</td>
+                                                <td style={{ fontFamily: 'var(--font-mono)' }}>{request.odometer.toLocaleString()} km</td>
+                                                <td style={{ textTransform: 'capitalize' }}>{request.issueType.replace('_', ' ')}</td>
+                                                <td>
+                                                    <span className={`status-badge ${
+                                                        request.priority === 'high' ? 'status-in_progress' :
+                                                        request.priority === 'medium' ? 'status-scheduled' :
+                                                        'status-planned'
+                                                    }`}>
+                                                        {request.priority}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span className={`status-badge ${
+                                                        request.status === 'completed' ? 'status-completed' :
+                                                        request.status === 'in_progress' ? 'status-in_progress' :
+                                                        'status-scheduled'
+                                                    }`}>
+                                                        {request.status.replace('_', ' ')}
+                                                    </span>
+                                                </td>
+                                                <td style={{ fontFamily: 'var(--font-mono)' }}>${request.estimatedCost}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {activeTab === 'audits' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-lg)' }}>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Maintenance Audits</h3>
+                                <button className="btn btn-primary" onClick={() => setShowAuditModal(true)}>
+                                    + New Audit
+                                </button>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gap: 'var(--spacing-lg)' }}>
+                                {maintenanceAudits.map(audit => (
+                                    <div key={audit.id} className="card">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 'var(--spacing-md)' }}>
+                                            <div>
+                                                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)', marginBottom: '0.25rem' }}>
+                                                    {audit.id}
+                                                </div>
+                                                <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                                                    {getVehicleName(audit.vehicleId)}
+                                                </div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                    {new Date(audit.auditDate).toLocaleDateString()} • Odometer: {audit.odometer.toLocaleString()} km
+                                                </div>
+                                            </div>
+                                            <span className={`status-badge ${audit.approved ? 'status-completed' : 'status-scheduled'}`}>
+                                                {audit.approved ? 'Approved' : 'Pending'}
+                                            </span>
+                                        </div>
+                                        
+                                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>Service Type</div>
+                                            <div style={{ textTransform: 'capitalize' }}>{audit.serviceType.replace('_', ' ')}</div>
+                                        </div>
+                                        
+                                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>Work Performed</div>
+                                            <ul style={{ marginLeft: '1.5rem', fontSize: '0.9rem' }}>
+                                                {audit.workPerformed.map((work, idx) => (
+                                                    <li key={idx}>{work}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                        
+                                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>Parts Replaced</div>
+                                            <div className="table-container">
+                                                <table className="table" style={{ fontSize: '0.85rem' }}>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Part</th>
+                                                            <th>Qty</th>
+                                                            <th>Cost</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {audit.partsReplaced.map((part, idx) => (
+                                                            <tr key={idx}>
+                                                                <td>{part.part}</td>
+                                                                <td>{part.qty}</td>
+                                                                <td style={{ fontFamily: 'var(--font-mono)' }}>${part.cost.toFixed(2)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--spacing-md)', padding: 'var(--spacing-md)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Total Cost</div>
+                                                <div style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
+                                                    ${audit.totalCost.toFixed(2)}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Mechanic</div>
+                                                <div>{audit.mechanic}</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Next Service</div>
+                                                <div style={{ fontFamily: 'var(--font-mono)' }}>
+                                                    {new Date(audit.nextServiceDate).toLocaleDateString()} ({audit.nextServiceDue.toLocaleString()} km)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {audit.notes && (
+                                            <div style={{ marginTop: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                                💡 {audit.notes}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
         // Settings Page
         const Settings = () => {
             const { jobs, technicians, purchaseOrders } = useContext(DataContext);
@@ -2412,8 +3863,11 @@
                 'dashboard': Dashboard,
                 'jobs': Jobs,
                 'schedule': Schedule,
+                'clients': Clients,
                 'purchase-orders': PurchaseOrders,
                 'employees': Employees,
+                'fleet': FleetManagement,
+                'equipment': Equipment,
                 'timesheets': Timesheets,
                 'inventory': Inventory,
                 'reports': Reports,
@@ -2424,8 +3878,11 @@
                 'dashboard': 'Dashboard',
                 'jobs': 'Jobs',
                 'schedule': 'Schedule',
+                'clients': 'Clients',
                 'purchase-orders': 'Purchase Orders',
                 'employees': 'Employees',
+                'fleet': 'Fleet Management',
+                'equipment': 'Equipment',
                 'timesheets': 'Timesheets',
                 'inventory': 'Inventory',
                 'reports': 'Reports',
