@@ -1155,7 +1155,6 @@
                         mobile: '0412 345 678',
                         address: '123 Collins St, Melbourne VIC 3000',
                         abn: '12 345 678 901',
-                        billingAddress: '123 Collins St, Melbourne VIC 3000',
                         notes: 'Preferred customer - 30 day payment terms',
                         status: 'active',
                         totalJobs: 12,
@@ -1170,7 +1169,6 @@
                         mobile: '0423 456 789',
                         address: '456 Sydney Rd, Brunswick VIC 3056',
                         abn: '23 456 789 012',
-                        billingAddress: 'PO Box 123, Brunswick VIC 3056',
                         notes: 'Annual maintenance contract',
                         status: 'active',
                         totalJobs: 8,
@@ -1185,7 +1183,6 @@
                         mobile: '0434 567 890',
                         address: '789 Bridge Rd, Richmond VIC 3121',
                         abn: '34 567 890 123',
-                        billingAddress: '789 Bridge Rd, Richmond VIC 3121',
                         notes: 'New client - quote approved',
                         status: 'active',
                         totalJobs: 2,
@@ -2747,7 +2744,6 @@
                 mobile: '',
                 address: '',
                 abn: '',
-                billingAddress: '',
                 notes: '',
                 status: 'active'
             });
@@ -2836,24 +2832,13 @@
                                 </div>
                                 
                                 <div className="form-group">
-                                    <label className="form-label">Physical Address</label>
+                                    <label className="form-label">Address</label>
                                     <input
                                         type="text"
                                         className="form-input"
                                         value={formData.address}
                                         onChange={(e) => setFormData({...formData, address: e.target.value})}
                                         required
-                                    />
-                                </div>
-                                
-                                <div className="form-group">
-                                    <label className="form-label">Billing Address</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={formData.billingAddress}
-                                        onChange={(e) => setFormData({...formData, billingAddress: e.target.value})}
-                                        placeholder="Leave blank if same as physical address"
                                     />
                                 </div>
                                 
