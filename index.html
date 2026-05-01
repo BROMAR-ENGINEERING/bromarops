@@ -1376,6 +1376,45 @@
             StorageManager.save('quotes', sampleQuotes);
         }
         
+        if (!localStorage.getItem('banners')) {
+            const sampleBanners = [
+                {
+                    id: 'BAN-001',
+                    message: 'Fleet service scheduled - All vans in workshop Friday 2pm',
+                    type: 'warning',
+                    priority: 'high',
+                    status: 'active',
+                    startDate: '2024-05-01',
+                    endDate: '2024-05-03',
+                    createdBy: 'Admin',
+                    createdAt: new Date('2024-04-28').toISOString()
+                },
+                {
+                    id: 'BAN-002',
+                    message: 'New timesheets available - Please submit by COB Friday',
+                    type: 'info',
+                    priority: 'medium',
+                    status: 'active',
+                    startDate: '2024-05-01',
+                    endDate: '2024-05-05',
+                    createdBy: 'Admin',
+                    createdAt: new Date('2024-04-30').toISOString()
+                },
+                {
+                    id: 'BAN-003',
+                    message: 'Public holiday Monday May 8 - Office closed',
+                    type: 'success',
+                    priority: 'medium',
+                    status: 'scheduled',
+                    startDate: '2024-05-06',
+                    endDate: '2024-05-08',
+                    createdBy: 'Admin',
+                    createdAt: new Date('2024-04-25').toISOString()
+                }
+            ];
+            StorageManager.save('banners', sampleBanners);
+        }
+        
         if (!localStorage.getItem('fleet')) {
             const sampleFleet = [
                 {
@@ -1535,6 +1574,7 @@
         const [maintenanceRequests, setMaintenanceRequests] = useState([]);
         const [maintenanceAudits, setMaintenanceAudits] = useState([]);
         const [quotes, setQuotes] = useState([]);
+        const [banners, setBanners] = useState([]);
         
         useEffect(() => {
             initializeSampleData();
@@ -1551,6 +1591,7 @@
             setMaintenanceRequests(StorageManager.load('maintenanceRequests', []));
             setMaintenanceAudits(StorageManager.load('maintenanceAudits', []));
             setQuotes(StorageManager.load('quotes', []));
+            setBanners(StorageManager.load('banners', []));
         };
         
         const saveJobs = (newJobs) => {
@@ -1598,6 +1639,11 @@
             setQuotes(newQuotes);
         };
         
+        const saveBanners = (newBanners) => {
+            StorageManager.save('banners', newBanners);
+            setBanners(newBanners);
+        };
+        
         return (
             <DataContext.Provider value={{
                 jobs, setJobs: saveJobs,
@@ -1608,7 +1654,8 @@
                 fleet, setFleet: saveFleet,
                 maintenanceRequests, setMaintenanceRequests: saveMaintenanceRequests,
                 maintenanceAudits, setMaintenanceAudits: saveMaintenanceAudits,
-                quotes, setQuotes: saveQuotes
+                quotes, setQuotes: saveQuotes,
+                banners, setBanners: saveBanners
             }}>
                 {children}
             </DataContext.Provider>
@@ -1631,6 +1678,7 @@
             { id: 'equipment', label: 'Equipment', icon: '🔧' },
             { id: 'timesheets', label: 'Timesheets', icon: '⏱️' },
             { id: 'jobsheets', label: 'Job Sheets', icon: '📄' },
+            { id: 'banners', label: 'Messages to Hub', icon: '📢' },
             { id: 'reports', label: 'Reports', icon: '📈' },
             { id: 'settings', label: 'Settings', icon: '⚙️' }
         ];
@@ -4861,6 +4909,513 @@
         );
     };
     
+    // Banners Page (Messages to Bromar Hub)
+    const Banners = () => {
+        const { banners, setBanners } = useContext(DataContext);
+        const [showModal, setShowModal] = useState(false);
+        const [editingBanner, setEditingBanner] = useState(null);
+        const [filterStatus, setFilterStatus] = useState('all');
+        
+        const getActiveBanners = () => {
+            const today = new Date().toISOString().split('T')[0];
+            return banners.filter(b => 
+                b.status === 'active' &&
+                b.startDate <= today &&
+                b.endDate >= today
+            );
+        };
+        
+        const getScheduledBanners = () => {
+            const today = new Date().toISOString().split('T')[0];
+            return banners.filter(b => 
+                b.status === 'scheduled' || 
+                (b.status === 'active' && b.startDate > today)
+            );
+        };
+        
+        const getInactiveBanners = () => {
+            return banners.filter(b => b.status === 'inactive');
+        };
+        
+        const activeBanners = getActiveBanners();
+        const scheduledBanners = getScheduledBanners();
+        const inactiveBanners = getInactiveBanners();
+        
+        const handleCreateBanner = (bannerData) => {
+            const newBanner = {
+                ...bannerData,
+                id: `BAN-${String(banners.length + 1).padStart(3, '0')}`,
+                createdBy: 'Admin',
+                createdAt: new Date().toISOString()
+            };
+            setBanners([...banners, newBanner]);
+            setShowModal(false);
+        };
+        
+        const handleUpdateBanner = (bannerData) => {
+            const updatedBanners = banners.map(b => 
+                b.id === editingBanner.id ? { ...bannerData } : b
+            );
+            setBanners(updatedBanners);
+            setShowModal(false);
+            setEditingBanner(null);
+        };
+        
+        const handleDeleteBanner = (bannerId) => {
+            if (confirm('Are you sure you want to delete this banner?')) {
+                setBanners(banners.filter(b => b.id !== bannerId));
+            }
+        };
+        
+        const handleDeactivate = (bannerId) => {
+            const updatedBanners = banners.map(b => 
+                b.id === bannerId ? { ...b, status: 'inactive' } : b
+            );
+            setBanners(updatedBanners);
+        };
+        
+        const handleReactivate = (bannerId) => {
+            const updatedBanners = banners.map(b => 
+                b.id === bannerId ? { ...b, status: 'active' } : b
+            );
+            setBanners(updatedBanners);
+        };
+        
+        const getBannerIcon = (type) => {
+            const icons = {
+                info: 'ℹ️',
+                warning: '⚠️',
+                alert: '🚨',
+                success: '✅'
+            };
+            return icons[type] || 'ℹ️';
+        };
+        
+        const getBannerColor = (type) => {
+            const colors = {
+                info: '#3498db',
+                warning: '#f39c12',
+                alert: '#e74c3c',
+                success: '#27ae60'
+            };
+            return colors[type] || '#3498db';
+        };
+        
+        const exportBannerJSON = () => {
+            const activeBanner = activeBanners[0];
+            if (!activeBanner) {
+                alert('No active banners to export');
+                return;
+            }
+            
+            const bannerJSON = {
+                message: activeBanner.message,
+                type: activeBanner.type,
+                active: true,
+                startDate: activeBanner.startDate,
+                endDate: activeBanner.endDate,
+                priority: activeBanner.priority
+            };
+            
+            const blob = new Blob([JSON.stringify(bannerJSON, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'bromar-hub-banner.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+        
+        return (
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
+                    <div>
+                        <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>Messages to Bromar Hub</h2>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                            Manage banner messages displayed on Bromar Hub site
+                        </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                        <button className="btn btn-secondary" onClick={exportBannerJSON}>
+                            📥 Export Active Banner
+                        </button>
+                        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                            + New Message
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Currently Active Banners */}
+                <div className="card" style={{ marginBottom: 'var(--spacing-xl)' }}>
+                    <div className="card-header">
+                        <h3 className="card-title">🟢 Currently Active on Bromar Hub</h3>
+                    </div>
+                    {activeBanners.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-secondary)' }}>
+                            No active messages
+                        </div>
+                    ) : (
+                        activeBanners.map(banner => (
+                            <div key={banner.id} style={{ marginBottom: 'var(--spacing-md)' }}>
+                                {/* Banner Preview */}
+                                <div style={{
+                                    background: getBannerColor(banner.type),
+                                    color: 'white',
+                                    padding: 'var(--spacing-md)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    marginBottom: 'var(--spacing-sm)',
+                                    fontWeight: 600,
+                                    textAlign: 'center'
+                                }}>
+                                    {getBannerIcon(banner.type)} {banner.message}
+                                </div>
+                                
+                                {/* Banner Details */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--bg-tertiary)',
+                                    borderRadius: 'var(--radius-sm)'
+                                }}>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{banner.id}</span>
+                                        {' • '}
+                                        {new Date(banner.startDate).toLocaleDateString()} - {new Date(banner.endDate).toLocaleDateString()}
+                                        {' • '}
+                                        Priority: {banner.priority}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                                        <button 
+                                            className="btn btn-secondary"
+                                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                            onClick={() => {
+                                                setEditingBanner(banner);
+                                                setShowModal(true);
+                                            }}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            className="btn btn-secondary"
+                                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                            onClick={() => handleDeactivate(banner.id)}
+                                        >
+                                            Deactivate
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+                
+                {/* Scheduled Banners */}
+                <div className="card" style={{ marginBottom: 'var(--spacing-xl)' }}>
+                    <div className="card-header">
+                        <h3 className="card-title">🕐 Scheduled Messages</h3>
+                    </div>
+                    {scheduledBanners.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-secondary)' }}>
+                            No scheduled messages
+                        </div>
+                    ) : (
+                        <div className="table-container">
+                            <table className="table">
+                                <thead>
+                                    <tr>
+                                        <th>Preview</th>
+                                        <th>Type</th>
+                                        <th>Start Date</th>
+                                        <th>End Date</th>
+                                        <th>Priority</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {scheduledBanners.map(banner => (
+                                        <tr key={banner.id}>
+                                            <td style={{ maxWidth: '400px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    <span style={{ fontSize: '1.2rem' }}>{getBannerIcon(banner.type)}</span>
+                                                    <span>{banner.message}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ textTransform: 'capitalize' }}>{banner.type}</td>
+                                            <td>{new Date(banner.startDate).toLocaleDateString()}</td>
+                                            <td>{new Date(banner.endDate).toLocaleDateString()}</td>
+                                            <td style={{ textTransform: 'capitalize' }}>{banner.priority}</td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                                                    <button 
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                                        onClick={() => {
+                                                            setEditingBanner(banner);
+                                                            setShowModal(true);
+                                                        }}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button 
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                                        onClick={() => handleDeleteBanner(banner.id)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+                
+                {/* Inactive Banners */}
+                <div className="card">
+                    <div className="card-header">
+                        <h3 className="card-title">⚫ Inactive Messages</h3>
+                    </div>
+                    {inactiveBanners.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-secondary)' }}>
+                            No inactive messages
+                        </div>
+                    ) : (
+                        <div className="table-container">
+                            <table className="table">
+                                <thead>
+                                    <tr>
+                                        <th>Message</th>
+                                        <th>Type</th>
+                                        <th>Date Range</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {inactiveBanners.map(banner => (
+                                        <tr key={banner.id}>
+                                            <td style={{ maxWidth: '400px' }}>{banner.message}</td>
+                                            <td style={{ textTransform: 'capitalize' }}>{banner.type}</td>
+                                            <td>
+                                                {new Date(banner.startDate).toLocaleDateString()} - {new Date(banner.endDate).toLocaleDateString()}
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                                                    <button 
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                                        onClick={() => handleReactivate(banner.id)}
+                                                    >
+                                                        Reactivate
+                                                    </button>
+                                                    <button 
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                                        onClick={() => handleDeleteBanner(banner.id)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+                
+                {showModal && (
+                    <BannerModal
+                        banner={editingBanner}
+                        onClose={() => {
+                            setShowModal(false);
+                            setEditingBanner(null);
+                        }}
+                        onSave={editingBanner ? handleUpdateBanner : handleCreateBanner}
+                    />
+                )}
+            </div>
+        );
+    };
+    
+    // Banner Modal Component
+    const BannerModal = ({ banner, onClose, onSave }) => {
+        const [formData, setFormData] = useState(banner || {
+            message: '',
+            type: 'info',
+            priority: 'medium',
+            status: 'active',
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        });
+        
+        const [previewVisible, setPreviewVisible] = useState(true);
+        
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+        
+        const getBannerIcon = (type) => {
+            const icons = {
+                info: 'ℹ️',
+                warning: '⚠️',
+                alert: '🚨',
+                success: '✅'
+            };
+            return icons[type] || 'ℹ️';
+        };
+        
+        const getBannerColor = (type) => {
+            const colors = {
+                info: '#3498db',
+                warning: '#f39c12',
+                alert: '#e74c3c',
+                success: '#27ae60'
+            };
+            return colors[type] || '#3498db';
+        };
+        
+        return (
+            <div className="modal-overlay" onClick={onClose}>
+                <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+                    <div className="modal-header">
+                        <h2 className="modal-title">{banner ? 'Edit Message' : 'New Message to Hub'}</h2>
+                        <button className="modal-close" onClick={onClose}>×</button>
+                    </div>
+                    <div className="modal-body">
+                        <form onSubmit={handleSubmit}>
+                            <div className="form-group">
+                                <label className="form-label">Message</label>
+                                <textarea
+                                    className="form-textarea"
+                                    value={formData.message}
+                                    onChange={(e) => setFormData({...formData, message: e.target.value})}
+                                    placeholder="Enter message to display on Bromar Hub..."
+                                    rows="3"
+                                    required
+                                />
+                            </div>
+                            
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label className="form-label">Type</label>
+                                    <select
+                                        className="form-select"
+                                        value={formData.type}
+                                        onChange={(e) => setFormData({...formData, type: e.target.value})}
+                                    >
+                                        <option value="info">ℹ️ Info (Blue)</option>
+                                        <option value="warning">⚠️ Warning (Yellow)</option>
+                                        <option value="alert">🚨 Alert (Red)</option>
+                                        <option value="success">✅ Success (Green)</option>
+                                    </select>
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Priority</label>
+                                    <select
+                                        className="form-select"
+                                        value={formData.priority}
+                                        onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                                    >
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label className="form-label">Start Date</label>
+                                    <input
+                                        type="date"
+                                        className="form-input"
+                                        value={formData.startDate}
+                                        onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">End Date</label>
+                                    <input
+                                        type="date"
+                                        className="form-input"
+                                        value={formData.endDate}
+                                        onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Status</label>
+                                <select
+                                    className="form-select"
+                                    value={formData.status}
+                                    onChange={(e) => setFormData({...formData, status: e.target.value})}
+                                >
+                                    <option value="active">Active (Show Now)</option>
+                                    <option value="scheduled">Scheduled (Show on Start Date)</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
+                            
+                            {/* Preview */}
+                            <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    marginBottom: 'var(--spacing-sm)'
+                                }}>
+                                    <label className="form-label" style={{ marginBottom: 0 }}>Preview</label>
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                                        onClick={() => setPreviewVisible(!previewVisible)}
+                                    >
+                                        {previewVisible ? 'Hide' : 'Show'} Preview
+                                    </button>
+                                </div>
+                                {previewVisible && formData.message && (
+                                    <div style={{
+                                        background: getBannerColor(formData.type),
+                                        color: 'white',
+                                        padding: 'var(--spacing-md)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        fontWeight: 600,
+                                        textAlign: 'center'
+                                    }}>
+                                        {getBannerIcon(formData.type)} {formData.message}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="form-actions">
+                                <button type="button" className="btn btn-secondary" onClick={onClose}>
+                                    Cancel
+                                </button>
+                                <button type="submit" className="btn btn-primary">
+                                    {banner ? 'Update Message' : 'Create Message'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+    
     // Settings Page
     const Settings = () => {
         const { jobs, technicians, purchaseOrders } = useContext(DataContext);
@@ -4956,6 +5511,7 @@
             'equipment': Equipment,
             'timesheets': Timesheets,
             'jobsheets': JobSheets,
+            'banners': Banners,
             'reports': Reports,
             'settings': Settings
         };
@@ -4972,6 +5528,7 @@
             'equipment': 'Equipment',
             'timesheets': 'Timesheets',
             'jobsheets': 'Job Sheets',
+            'banners': 'Messages to Hub',
             'reports': 'Reports',
             'settings': 'Settings'
         };
