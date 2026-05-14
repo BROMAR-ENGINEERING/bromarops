@@ -57,11 +57,12 @@ const BromarOps = (() => {
   const NAV_ITEMS = [
     { id: 'dashboard',  label: 'Dashboard',               icon: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
     { id: 'jobs',       label: 'Jobs',                    icon: 'M20 7h-4V5l-2-2h-4l-2 2v2H4a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z' },
+    { id: 'quotes',     label: 'Quotes',                  icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13zM8 13h8v2H8v-2zm0 4h8v2H8v-2z' },
     { id: 'scheduling', label: 'Scheduling',              icon: 'M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2z' },
     { id: 'timesheets', label: 'Timesheets',              icon: 'M12 2a10 10 0 100 20 10 10 0 000-20zm.5-15H11v6l5 3 .75-1.23-4.25-2.52z' },
     { id: 'employees',  label: 'Employees',               icon: 'M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z' },
     { id: 'fleet',      label: 'Fleet Management',        icon: 'M20 8h-3V4H3a2 2 0 00-2 2v11h2a3 3 0 006 0h6a3 3 0 006 0h2v-5l-3-4zM6 18.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm12 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z' },
-    { id: 'equipment',  label: 'Equipment & Calibration', icon: 'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24z' },
+    { id: 'equipment',  label: 'Equipment',               icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
     { id: 'clients',    label: 'Clients',                 icon: 'M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z' },
     { id: 'tasks',      label: 'Tasks',                   icon: 'M19 3h-4.18A2.99 2.99 0 0012 1a2.99 2.99 0 00-2.82 2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-9 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
     { id: 'materials',  label: 'Materials & Procurement', icon: 'M20 4H4v2h16V4zM4 14h6v6H4v-6zm0-9v7h16V5H4zm12 9h4v6h-4v-6zm-6 0h4v6h-4v-6z' },
