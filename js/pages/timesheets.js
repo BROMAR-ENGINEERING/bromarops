@@ -190,7 +190,7 @@ window.BromarPages.timesheets = {
 
         .ts-table-wrap {
           background: var(--bg-secondary); border: 1px solid var(--border);
-          border-radius: var(--radius); overflow: hidden;
+          border-radius: var(--radius); overflow: auto;
         }
         .ts-table { width: 100%; border-collapse: collapse; }
         .ts-table th {
@@ -224,7 +224,9 @@ window.BromarPages.timesheets = {
           width: 14px; height: 14px;
           stroke: currentColor; stroke-width: 2;
           stroke-linecap: round; stroke-linejoin: round; fill: none;
+          pointer-events: none;
         }
+        .ts-view-btn span { pointer-events: none; }
 
         .ts-pill {
           display: inline-flex; align-items: center; gap: 0.4rem;
@@ -288,6 +290,10 @@ window.BromarPages.timesheets = {
           gap: 0.75rem; margin-bottom: 1.5rem;
         }
         .ts-detail-grid .ts-stat .num { font-size: 1.3rem; }
+
+        .ts-entries-table { min-width: 900px; }
+        .ts-entries-table td { white-space: nowrap; }
+        .ts-entries-table td:last-child { white-space: normal; min-width: 160px; }
 
         .ts-flags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
         .ts-flag {
@@ -646,35 +652,38 @@ window.BromarPages.timesheets = {
 
         ${flags.length ? `<div class="ts-flags">${flags.map(f => `<span class="ts-flag">${f}</span>`).join('')}</div>` : ''}
 
-        ${t.general_comments ? `<div class="ts-comment"><strong>Comments:</strong> ${t.general_comments}</div>` : ''}
-
         <div class="section-label">Entries</div>
         ${entries.length === 0
           ? `<div class="ts-empty">No entries recorded.</div>`
-          : `<div class="ts-table-wrap"><table class="ts-table">
+          : `<div class="ts-table-wrap"><table class="ts-table ts-entries-table">
               <thead><tr>
-                <th>Day</th><th>Type</th><th class="hide-mobile">Job / Client</th>
-                <th>Normal</th><th>OT</th><th>Travel</th><th class="hide-mobile">Allowances</th>
+                <th>Day</th><th>Shift</th><th>Type</th>
+                <th>Normal</th><th>OT</th><th>Travel</th>
+                <th>Job #</th><th>Client</th><th>Allowances</th><th>Comment</th>
               </tr></thead>
               <tbody>
                 ${entries.map(e => `
                   <tr>
-                    <td><strong>${e.day || '—'}</strong><br><span style="font-size:0.78rem;color:var(--text-secondary)">${e.date ? fmtDateShort(e.date) : ''}</span></td>
-                    <td>${e.type || '—'}${e.shift ? ` <span style="color:var(--text-secondary);font-size:0.78rem">(${e.shift})</span>` : ''}</td>
-                    <td class="hide-mobile">
-                      ${e.job_number ? `<strong>${e.job_number}</strong><br>` : ''}
-                      <span style="color:var(--text-secondary);font-size:0.85rem">${e.client || ''}</span>
-                    </td>
-                    <td>${(+e.normal_hours || 0).toFixed(2)}</td>
-                    <td>${(+e.overtime_hours || 0).toFixed(2)}</td>
-                    <td>${(+e.travel_hours || 0).toFixed(2)}</td>
-                    <td class="hide-mobile" style="font-size:0.82rem;color:var(--text-secondary)">${e.allowances || ''}</td>
+                    <td><strong>${e.day || '—'}</strong>${e.date ? `<br><span style="font-size:0.78rem;color:var(--text-secondary)">${fmtDateShort(e.date)}</span>` : ''}</td>
+                    <td>${e.shift || '—'}</td>
+                    <td>${e.type || '—'}</td>
+                    <td>${+e.normal_hours ? (+e.normal_hours).toFixed(2) : '—'}</td>
+                    <td>${+e.overtime_hours ? (+e.overtime_hours).toFixed(2) : '—'}</td>
+                    <td>${+e.travel_hours ? (+e.travel_hours).toFixed(2) : '—'}</td>
+                    <td>${e.job_number || '—'}</td>
+                    <td>${e.client || '—'}</td>
+                    <td>${e.allowances || '—'}</td>
+                    <td>${e.comment || '—'}</td>
                   </tr>
-                  ${e.comment ? `<tr><td colspan="7" style="font-size:0.85rem;color:var(--text-secondary);font-style:italic;padding-top:0;padding-bottom:0.65rem">↳ ${e.comment}</td></tr>` : ''}
                 `).join('')}
               </tbody>
             </table></div>`
         }
+
+        ${t.general_comments ? `
+          <div class="section-label">General Comments</div>
+          <div class="ts-comment">${t.general_comments}</div>
+        ` : ''}
       `;
 
       document.getElementById('ts-modal').classList.add('show');
