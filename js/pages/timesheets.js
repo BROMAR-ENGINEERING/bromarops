@@ -28,7 +28,18 @@ window.BromarPages.timesheets = {
       lookupEmployee: 'all'
     };
 
-    function isoDate(d) { return d.toISOString().slice(0, 10); }
+    /* ── DATE HELPERS (all local time, never UTC) ── */
+    function isoDate(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    function parseISO(isoStr) {
+      // Parse YYYY-MM-DD as LOCAL date, not UTC
+      const [y, m, d] = isoStr.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
     function getCurrentPayWeek() {
       const now = new Date();
       const day = now.getDay();
@@ -46,16 +57,15 @@ window.BromarPages.timesheets = {
       return isoDate(d);
     }
     function addDays(isoStr, n) {
-      const d = new Date(isoStr); d.setDate(d.getDate() + n);
+      const d = parseISO(isoStr);
+      d.setDate(d.getDate() + n);
       return isoDate(d);
     }
     function fmtDate(isoStr) {
-      const d = new Date(isoStr);
-      return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+      return parseISO(isoStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     function fmtDateShort(isoStr) {
-      const d = new Date(isoStr);
-      return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+      return parseISO(isoStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
     }
 
     async function sbFetch(path, params = {}) {
@@ -305,7 +315,7 @@ window.BromarPages.timesheets = {
       const submitted = expected.filter(e => submittedEmails.has(e.email.toLowerCase()));
       const missing   = expected.filter(e => !submittedEmails.has(e.email.toLowerCase()));
 
-      const tueDeadline = new Date(state.weekStarting);
+      const tueDeadline = parseISO(state.weekStarting);
       tueDeadline.setDate(tueDeadline.getDate() + 8);
       tueDeadline.setHours(9, 0, 0, 0);
       const lateEmails = new Set(
