@@ -36,7 +36,15 @@ window.BromarPages.timesheets = {
       return `${y}-${m}-${day}`;
     }
     function parseISO(isoStr) {
-      const [y, m, d] = isoStr.split('-').map(Number);
+      if (!isoStr) return null;
+      // Already a Date object
+      if (isoStr instanceof Date) return isoStr;
+      // Coerce to string for everything else
+      const s = String(isoStr);
+      // Strip time portion if present (handles ISO timestamps like "2026-05-11T00:00:00Z")
+      const datePart = s.split('T')[0];
+      const [y, m, d] = datePart.split('-').map(Number);
+      if (!y || !m || !d) return null;
       return new Date(y, m - 1, d);
     }
     function getCurrentPayWeek() {
@@ -61,10 +69,12 @@ window.BromarPages.timesheets = {
       return isoDate(d);
     }
     function fmtDate(isoStr) {
-      return parseISO(isoStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+      const d = parseISO(isoStr);
+      return d ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
     }
     function fmtDateShort(isoStr) {
-      return parseISO(isoStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+      const d = parseISO(isoStr);
+      return d ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '—';
     }
 
     async function sbFetch(path, params = {}) {
