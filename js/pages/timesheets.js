@@ -36,7 +36,6 @@ window.BromarPages.timesheets = {
       return `${y}-${m}-${day}`;
     }
     function parseISO(isoStr) {
-      // Parse YYYY-MM-DD as LOCAL date, not UTC
       const [y, m, d] = isoStr.split('-').map(Number);
       return new Date(y, m - 1, d);
     }
@@ -205,8 +204,27 @@ window.BromarPages.timesheets = {
           color: var(--text-primary); border-bottom: 1px solid var(--border);
         }
         .ts-table tr:last-child td { border-bottom: none; }
-        .ts-table tr.clickable { cursor: pointer; transition: background 0.15s ease; }
-        .ts-table tr.clickable:hover { background: var(--card-hover); }
+        .ts-table th.action-col, .ts-table td.action-col {
+          text-align: right; width: 1%; white-space: nowrap;
+        }
+
+        .ts-view-btn {
+          font-family: 'Outfit', sans-serif; font-size: 0.82rem; font-weight: 600;
+          padding: 0.45rem 0.95rem; border-radius: var(--radius-sm);
+          border: 1px solid var(--border); background: var(--bg-main);
+          color: var(--text-primary); cursor: pointer;
+          display: inline-flex; align-items: center; gap: 0.4rem;
+          transition: all 0.2s ease;
+        }
+        .ts-view-btn:hover {
+          border-color: var(--accent); color: var(--accent);
+          background: var(--card-hover);
+        }
+        .ts-view-btn svg {
+          width: 14px; height: 14px;
+          stroke: currentColor; stroke-width: 2;
+          stroke-linecap: round; stroke-linejoin: round; fill: none;
+        }
 
         .ts-pill {
           display: inline-flex; align-items: center; gap: 0.4rem;
@@ -291,6 +309,8 @@ window.BromarPages.timesheets = {
           .ts-field { width: 100%; }
           .ts-table th, .ts-table td { padding: 0.65rem 0.75rem; font-size: 0.85rem; }
           .ts-table .hide-mobile { display: none; }
+          .ts-view-btn { padding: 0.4rem 0.7rem; font-size: 0.78rem; }
+          .ts-view-btn span { display: none; }
         }
       </style>
 
@@ -306,6 +326,13 @@ window.BromarPages.timesheets = {
           <div class="ts-modal-body" id="ts-modal-body"></div>
         </div>
       </div>
+    `;
+
+    const VIEW_BTN = (id) => `
+      <button class="ts-view-btn" data-view-ts="${id}">
+        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>View</span>
+      </button>
     `;
 
     function renderStatusView() {
@@ -366,7 +393,11 @@ window.BromarPages.timesheets = {
         ${submitted.length === 0
           ? `<div class="ts-table-wrap"><div class="ts-empty">No submissions yet for this week.</div></div>`
           : `<div class="ts-table-wrap"><table class="ts-table">
-              <thead><tr><th>Name</th><th class="hide-mobile">Role</th><th>Total Hours</th><th class="hide-mobile">Submitted</th><th>Status</th></tr></thead>
+              <thead><tr>
+                <th>Name</th><th class="hide-mobile">Role</th><th>Total Hours</th>
+                <th class="hide-mobile">Submitted</th><th>Status</th>
+                <th class="action-col"></th>
+              </tr></thead>
               <tbody>
                 ${state.timesheets
                   .filter(t => submittedEmails.has((t.employee_email || '').toLowerCase()))
@@ -374,7 +405,7 @@ window.BromarPages.timesheets = {
                   .map(t => {
                     const late = lateEmails.has((t.employee_email || '').toLowerCase());
                     return `
-                    <tr class="clickable" data-ts-id="${t.id}">
+                    <tr>
                       <td>${t.employee_name}</td>
                       <td class="hide-mobile">${t.employee_type || '—'}</td>
                       <td>${(+t.total_hours).toFixed(2)}</td>
@@ -382,6 +413,7 @@ window.BromarPages.timesheets = {
                       <td>${late
                           ? `<span class="ts-pill late"><span class="dot"></span>Late</span>`
                           : `<span class="ts-pill submitted"><span class="dot"></span>On time</span>`}</td>
+                      <td class="action-col">${VIEW_BTN(t.id)}</td>
                     </tr>`;
                   }).join('')}
               </tbody>
@@ -423,10 +455,14 @@ window.BromarPages.timesheets = {
       }
       return `
         <div class="ts-table-wrap"><table class="ts-table">
-          <thead><tr><th>Employee</th><th class="hide-mobile">Type</th><th>Normal</th><th>OT</th><th>Travel</th><th>Total</th><th class="hide-mobile">Submitted</th></tr></thead>
+          <thead><tr>
+            <th>Employee</th><th class="hide-mobile">Type</th><th>Normal</th><th>OT</th><th>Travel</th><th>Total</th>
+            <th class="hide-mobile">Submitted</th>
+            <th class="action-col"></th>
+          </tr></thead>
           <tbody>
             ${rows.map(t => `
-              <tr class="clickable" data-ts-id="${t.id}">
+              <tr>
                 <td>${t.employee_name}</td>
                 <td class="hide-mobile">${t.employee_type || '—'}</td>
                 <td>${(+t.total_normal_hours).toFixed(2)}</td>
@@ -434,6 +470,7 @@ window.BromarPages.timesheets = {
                 <td>${(+t.total_travel_hours).toFixed(2)}</td>
                 <td><strong>${(+t.total_hours).toFixed(2)}</strong></td>
                 <td class="hide-mobile">${new Date(t.submitted_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                <td class="action-col">${VIEW_BTN(t.id)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -658,8 +695,11 @@ window.BromarPages.timesheets = {
     }
 
     function bindViewEvents() {
-      container.querySelectorAll('tr.clickable').forEach(tr => {
-        tr.addEventListener('click', () => openDetail(tr.dataset.tsId));
+      container.querySelectorAll('.ts-view-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openDetail(btn.dataset.viewTs);
+        });
       });
 
       if (state.view === 'status') {
