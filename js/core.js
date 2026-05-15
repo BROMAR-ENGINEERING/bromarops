@@ -9,11 +9,16 @@ const BromarOps = (() => {
   /* ── VERSION ──
      Bumped manually when files are updated.
      Format: V<major>.<minor>  (minor is two digits, e.g. V1.07) */
-  const APP_VERSION = 'V1.07';
+  const APP_VERSION = 'V1.08';
 
-  function renderVersion() {
+  function renderVersion(pageVersion, pageId) {
     const el = document.getElementById('app-version');
-    if (el) el.textContent = APP_VERSION;
+    if (!el) return;
+    if (pageVersion && pageId) {
+      el.textContent = `${APP_VERSION} · ${pageId} ${pageVersion}`;
+    } else {
+      el.textContent = APP_VERSION;
+    }
   }
 
   /* ── THEME ── */
@@ -115,6 +120,8 @@ const BromarOps = (() => {
     container.innerHTML = '';
     page.render(container);
     currentPage = page;
+
+    renderVersion(page.version, pageId);
 
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebar-overlay')?.classList.remove('show');
