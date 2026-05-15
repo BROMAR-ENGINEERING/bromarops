@@ -695,13 +695,6 @@ window.BromarPages.timesheets = {
     }
 
     function bindViewEvents() {
-      container.querySelectorAll('.ts-view-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openDetail(btn.dataset.viewTs);
-        });
-      });
-
       if (state.view === 'status') {
         document.getElementById('ts-prev-week')?.addEventListener('click', () => {
           state.weekStarting = addDays(state.weekStarting, -7); loadWeekData();
@@ -755,6 +748,15 @@ window.BromarPages.timesheets = {
         if (state.view === 'analysis') loadRangeData();
         else loadWeekData();
       });
+    });
+
+    // Delegated listener for View buttons (works across re-renders)
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('.ts-view-btn');
+      if (!btn) return;
+      e.stopPropagation();
+      const id = btn.getAttribute('data-view-ts');
+      if (id) openDetail(id);
     });
 
     document.getElementById('ts-modal-close').addEventListener('click', closeDetail);
