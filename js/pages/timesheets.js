@@ -310,13 +310,25 @@ window.BromarPages.timesheets = {
           border-radius: var(--radius-sm); font-size: 0.9rem; color: var(--text-primary);
         }
 
+        .ts-mobile-meta { display: none; }
+
         @media (max-width: 700px) {
           .ts-field input, .ts-field select { min-width: 0; width: 100%; }
           .ts-field { width: 100%; }
-          .ts-table th, .ts-table td { padding: 0.65rem 0.75rem; font-size: 0.85rem; }
+          .ts-table th, .ts-table td { padding: 0.65rem 0.6rem; font-size: 0.85rem; }
           .ts-table .hide-mobile { display: none; }
-          .ts-view-btn { padding: 0.4rem 0.7rem; font-size: 0.78rem; }
+          .ts-view-btn { padding: 0.4rem 0.55rem; font-size: 0.78rem; }
           .ts-view-btn span { display: none; }
+          .ts-mobile-meta {
+            display: block; margin-top: 2px;
+            font-size: 0.75rem; font-weight: 400; color: var(--text-secondary);
+          }
+          .ts-pill { padding: 0.25rem 0.55rem; font-size: 0.72rem; }
+          .ts-stats { grid-template-columns: repeat(2, 1fr); }
+          .ts-stat { padding: 0.75rem 0.85rem; }
+          .ts-stat .num { font-size: 1.35rem; }
+          .ts-week-banner { padding: 0.85rem 1rem; }
+          .ts-week-banner .range { font-size: 0.92rem; }
         }
       </style>
 
@@ -400,8 +412,11 @@ window.BromarPages.timesheets = {
           ? `<div class="ts-table-wrap"><div class="ts-empty">No submissions yet for this week.</div></div>`
           : `<div class="ts-table-wrap"><table class="ts-table">
               <thead><tr>
-                <th>Name</th><th class="hide-mobile">Role</th><th>Total Hours</th>
-                <th class="hide-mobile">Submitted</th><th>Status</th>
+                <th>Name</th>
+                <th class="hide-mobile">Role</th>
+                <th class="hide-mobile">Total Hours</th>
+                <th class="hide-mobile">Submitted</th>
+                <th>Status</th>
                 <th class="action-col"></th>
               </tr></thead>
               <tbody>
@@ -412,9 +427,12 @@ window.BromarPages.timesheets = {
                     const late = lateEmails.has((t.employee_email || '').toLowerCase());
                     return `
                     <tr>
-                      <td>${t.employee_name}</td>
+                      <td>
+                        ${t.employee_name}
+                        <span class="ts-mobile-meta">${(+t.total_hours).toFixed(2)} hrs · ${t.employee_type || '—'}</span>
+                      </td>
                       <td class="hide-mobile">${t.employee_type || '—'}</td>
-                      <td>${(+t.total_hours).toFixed(2)}</td>
+                      <td class="hide-mobile">${(+t.total_hours).toFixed(2)}</td>
                       <td class="hide-mobile">${new Date(t.submitted_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                       <td>${late
                           ? `<span class="ts-pill late"><span class="dot"></span>Late</span>`
@@ -462,18 +480,26 @@ window.BromarPages.timesheets = {
       return `
         <div class="ts-table-wrap"><table class="ts-table">
           <thead><tr>
-            <th>Employee</th><th class="hide-mobile">Type</th><th>Normal</th><th>OT</th><th>Travel</th><th>Total</th>
+            <th>Employee</th>
+            <th class="hide-mobile">Type</th>
+            <th class="hide-mobile">Normal</th>
+            <th class="hide-mobile">OT</th>
+            <th class="hide-mobile">Travel</th>
+            <th>Total</th>
             <th class="hide-mobile">Submitted</th>
             <th class="action-col"></th>
           </tr></thead>
           <tbody>
             ${rows.map(t => `
               <tr>
-                <td>${t.employee_name}</td>
+                <td>
+                  ${t.employee_name}
+                  <span class="ts-mobile-meta">${t.employee_type || '—'} · ${new Date(t.submitted_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
+                </td>
                 <td class="hide-mobile">${t.employee_type || '—'}</td>
-                <td>${(+t.total_normal_hours).toFixed(2)}</td>
-                <td>${(+t.total_overtime_hours).toFixed(2)}</td>
-                <td>${(+t.total_travel_hours).toFixed(2)}</td>
+                <td class="hide-mobile">${(+t.total_normal_hours).toFixed(2)}</td>
+                <td class="hide-mobile">${(+t.total_overtime_hours).toFixed(2)}</td>
+                <td class="hide-mobile">${(+t.total_travel_hours).toFixed(2)}</td>
                 <td><strong>${(+t.total_hours).toFixed(2)}</strong></td>
                 <td class="hide-mobile">${new Date(t.submitted_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                 <td class="action-col">${VIEW_BTN(t.id)}</td>
@@ -553,7 +579,11 @@ window.BromarPages.timesheets = {
         grandTotals.ot     += +t.total_overtime_hours;
         grandTotals.travel += +t.total_travel_hours;
 
-        const entries = Array.isArray(t.timesheet_entries) ? t.timesheet_entries : [];
+        let entries = t.timesheet_entries;
+        if (typeof entries === 'string') {
+          try { entries = JSON.parse(entries); } catch (_) { entries = []; }
+        }
+        if (!Array.isArray(entries)) entries = [];
         entries.forEach(ent => {
           const type = (ent.type || '').split(':')[0].trim() || 'Unknown';
           const h = (+ent.normal_hours || 0) + (+ent.overtime_hours || 0) + (+ent.travel_hours || 0);
@@ -636,7 +666,12 @@ window.BromarPages.timesheets = {
       if (t.allowance_first_aid) flags.push('First Aid Allowance');
       if (t.allowance_construction_wiring) flags.push('Construction Wiring Allowance');
 
-      const entries = Array.isArray(t.timesheet_entries) ? t.timesheet_entries : [];
+      // timesheet_entries may arrive as an array or as a JSON string
+      let entries = t.timesheet_entries;
+      if (typeof entries === 'string') {
+        try { entries = JSON.parse(entries); } catch (_) { entries = []; }
+      }
+      if (!Array.isArray(entries)) entries = [];
 
       document.getElementById('ts-modal-title').textContent = t.employee_name;
       document.getElementById('ts-modal-sub').textContent =
@@ -765,7 +800,13 @@ window.BromarPages.timesheets = {
       if (!btn) return;
       e.stopPropagation();
       const id = btn.getAttribute('data-view-ts');
-      if (id) openDetail(id);
+      if (!id) return;
+      try {
+        openDetail(id);
+      } catch (err) {
+        console.error('Failed to open timesheet:', err);
+        alert('Could not open this timesheet. Check the browser console for details.');
+      }
     });
 
     document.getElementById('ts-modal-close').addEventListener('click', closeDetail);
