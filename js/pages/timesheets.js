@@ -805,7 +805,7 @@ window.BromarPages.timesheets = {
         openDetail(id);
       } catch (err) {
         console.error('Failed to open timesheet:', err);
-        alert('Could not open this timesheet. Check the browser console for details.');
+        alert('Could not open this timesheet.\n\nError: ' + (err && err.message ? err.message : String(err)));
       }
     });
 
