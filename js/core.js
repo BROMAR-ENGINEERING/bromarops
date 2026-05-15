@@ -9,15 +9,18 @@ const BromarOps = (() => {
   /* ── VERSION ──
      Bumped manually when files are updated.
      Format: V<major>.<minor>  (minor is two digits, e.g. V1.07) */
-  const APP_VERSION = 'V1.08';
+  const APP_VERSION = 'V1.09';
 
   function renderVersion(pageVersion, pageId) {
-    const el = document.getElementById('app-version');
-    if (!el) return;
+    const coreEl = document.getElementById('core-version');
+    if (coreEl) coreEl.textContent = APP_VERSION;
+
+    const pageEl = document.getElementById('app-version');
+    if (!pageEl) return;
     if (pageVersion && pageId) {
-      el.textContent = `${APP_VERSION} · ${pageId} ${pageVersion}`;
+      pageEl.textContent = `${pageId} ${pageVersion}`;
     } else {
-      el.textContent = APP_VERSION;
+      pageEl.textContent = '';
     }
   }
 
@@ -77,6 +80,7 @@ const BromarOps = (() => {
           <span class="brand-text">OPS</span>
         </div>
         <nav class="sidebar-nav">${items}</nav>
+        <div class="sidebar-footer" id="core-version"></div>
       </aside>
       <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
