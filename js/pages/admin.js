@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.02',
+  version: 'V1.05',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -214,6 +214,7 @@ window.BromarPages.admin = {
           display: inline-block; width: 5px; height: 5px; background: #fbbf24;
           border-radius: 50%; margin-left: 3px; vertical-align: middle;
         }
+        .co-cal-initials { display: none; }
 
         /* ── List view ── */
         .co-list-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
@@ -263,20 +264,64 @@ window.BromarPages.admin = {
         .co-mobile-meta {
           display: none; font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;
         }
+        .co-cal-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .co-cal-initials { display: none; }
+
         @media (max-width: 600px) {
           .admin-nav-grid { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
           .admin-nav-tile { padding: 1rem 0.5rem; font-size: 0.75rem; }
           .admin-nav-tile svg { width: 22px !important; height: 22px !important; }
-          .co-cal-day { min-height: 60px; padding: 0.2rem; }
-          .co-cal-entry { font-size: 0.55rem; }
-          .co-cal-hdr { font-size: 0.65rem; padding: 0.35rem 0.15rem; }
+
+          /* Toolbar: wrap nicely */
+          .co-toolbar { gap: 0.35rem; width: 100%; flex-wrap: wrap; }
+          .co-toolbar .btn-secondary,
+          .co-toolbar .co-download-link,
+          .co-toolbar .co-upload-btn {
+            padding: 0.45rem 0.6rem; font-size: 0.75rem;
+          }
+
+          /* Calendar: force minimum width so all 7 cols always visible */
+          .co-cal-grid { gap: 0; min-width: 480px; }
+          .co-cal-day { min-height: 44px; padding: 0.15rem; }
+          .co-cal-day .day-num { font-size: 0.65rem; margin-bottom: 1px; }
+          .co-cal-hdr { font-size: 0.6rem; padding: 0.3rem 0.1rem; }
+          .co-cal-entry {
+            font-size: 0.6rem; padding: 1px 3px; margin-bottom: 1px;
+            text-align: center; border-radius: 2px;
+          }
+          .co-cal-fullname { display: none; }
+          .co-cal-initials { display: inline; }
+          .co-cal-entry.expanded .co-cal-fullname { display: inline; }
+          .co-cal-entry.expanded .co-cal-initials { display: none; }
+          .co-cal-entry.expanded {
+            white-space: normal; position: relative; z-index: 5;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          }
+          .co-cal-entry .co-note-dot { width: 4px; height: 4px; margin-left: 1px; }
+
+          /* Calendar nav */
+          .co-cal-nav { gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
+          .co-cal-nav .co-cal-title { font-size: 0.95rem; min-width: auto; }
+
+          /* List */
           .co-list-table .hide-mobile { display: none; }
           .co-mobile-meta { display: block; }
-          .co-toolbar { gap: 0.35rem; }
-          .co-toolbar .btn-secondary { padding: 0.5rem 0.75rem; font-size: 0.8rem; }
         }
         @media (max-width: 380px) {
           .admin-nav-grid { grid-template-columns: repeat(2, 1fr); }
+          .co-cal-day { min-height: 38px; }
+          .co-cal-entry { font-size: 0.55rem; padding: 1px 2px; }
+          .co-cal-hdr { font-size: 0.55rem; }
+
+          /* Stack toolbar buttons */
+          .co-toolbar {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem;
+          }
+          .co-toolbar .btn-secondary,
+          .co-toolbar .co-download-link,
+          .co-toolbar .co-upload-btn {
+            text-align: center; justify-content: center;
+          }
         }
 
         /* ── Download & Instructions links ── */
@@ -348,6 +393,13 @@ window.BromarPages.admin = {
       if (viewBtn) {
         this._calloutView = viewBtn.dataset.coView;
         this._renderCallout(container.querySelector('#admin-section-content'));
+        return;
+      }
+
+      /* Tap calendar entry on mobile to toggle full name */
+      const calEntry = e.target.closest('.co-cal-entry');
+      if (calEntry) {
+        calEntry.classList.toggle('expanded');
         return;
       }
 
@@ -424,7 +476,7 @@ window.BromarPages.admin = {
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
               <input type="file" accept=".xlsx,.xls" class="co-file-input">
             </label>
-            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" download class="btn-secondary co-download-link">
+            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
             </a>
             <button class="btn-secondary co-instructions-btn" data-co-instructions>
@@ -553,7 +605,8 @@ window.BromarPages.admin = {
         const colour = this._getEmpColour(r.employee_name);
         const note = r.notes ? '<span class="co-note-dot"></span>' : '';
         const title = r.notes ? r.employee_name + ' — ' + r.notes : r.employee_name;
-        entryHtml += '<div class="co-cal-entry" style="background:' + colour + '" title="' + title + '">' + r.employee_name + note + '</div>';
+        const initials = r.employee_name.split(' ').map(w => w[0]).join('').toUpperCase();
+        entryHtml += '<div class="co-cal-entry" style="background:' + colour + '" title="' + title + '"><span class="co-cal-fullname">' + r.employee_name + '</span><span class="co-cal-initials">' + initials + '</span>' + note + '</div>';
       });
 
       cells += '<div class="' + classes + '"><div class="day-num">' + cellDate.getDate() + '</div>' + entryHtml + '</div>';
@@ -570,7 +623,7 @@ window.BromarPages.admin = {
           <svg viewBox="0 0 24 24" style="width:16px;height:16px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </button>
       </div>
-      <div class="co-cal-grid">${cells}</div>
+      <div class="co-cal-scroll"><div class="co-cal-grid">${cells}</div></div>
     `;
   },
 
