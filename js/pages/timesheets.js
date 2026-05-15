@@ -6,8 +6,13 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
+  version: 'V1.01',
 
   render(container) {
+    // Display this page's version in the footer
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = this.version;
+
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
 
