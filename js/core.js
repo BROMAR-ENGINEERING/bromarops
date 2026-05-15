@@ -6,32 +6,14 @@
 
 const BromarOps = (() => {
 
-  /* ── VERSION ── */
-  const VERSION_KEY = 'bromar_ops_version';
-  function getVersion() {
-    try {
-      const v = JSON.parse(localStorage.getItem(VERSION_KEY));
-      if (v && typeof v.major === 'number') return v;
-    } catch (_) {}
-    return { major: 1, minor: 0 };
-  }
-  function setVersion(v) { localStorage.setItem(VERSION_KEY, JSON.stringify(v)); }
-  function formatVersion(v) { return `V${v.major}.${String(v.minor).padStart(2, '0')}`; }
-  function incrementMinor() {
-    const v = getVersion();
-    v.minor += 1;
-    if (v.minor > 99) { v.major += 1; v.minor = 0; }
-    setVersion(v); return v;
-  }
-  function majorVersionBump() {
-    const v = getVersion();
-    v.major += 1; v.minor = 0;
-    setVersion(v); renderVersion();
-    return v;
-  }
+  /* ── VERSION ──
+     Bumped manually when files are updated.
+     Format: V<major>.<minor>  (minor is two digits, e.g. V1.07) */
+  const APP_VERSION = 'V1.07';
+
   function renderVersion() {
     const el = document.getElementById('app-version');
-    if (el) el.textContent = formatVersion(getVersion());
+    if (el) el.textContent = APP_VERSION;
   }
 
   /* ── THEME ── */
@@ -146,8 +128,6 @@ const BromarOps = (() => {
 
   /* ── INIT ── */
   function init() {
-    incrementMinor();
-
     const app = document.getElementById('app');
     if (!app) return;
     app.className = 'app-layout';
@@ -173,7 +153,7 @@ const BromarOps = (() => {
     navigate(getPageFromHash());
   }
 
-  return { init, navigate, toggleTheme, majorVersionBump, getVersion, formatVersion };
+  return { init, navigate, toggleTheme, version: APP_VERSION };
 })();
 
 document.addEventListener('DOMContentLoaded', BromarOps.init);
