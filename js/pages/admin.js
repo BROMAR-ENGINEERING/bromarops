@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.01',
+  version: 'V1.02',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -278,6 +278,54 @@ window.BromarPages.admin = {
         @media (max-width: 380px) {
           .admin-nav-grid { grid-template-columns: repeat(2, 1fr); }
         }
+
+        /* ── Download & Instructions links ── */
+        .co-download-link {
+          text-decoration: none; display: inline-flex; align-items: center;
+        }
+
+        /* ── Instructions modal ── */
+        .co-modal-overlay {
+          display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+          z-index: 200; align-items: center; justify-content: center;
+          animation: fadeIn 0.2s ease;
+        }
+        .co-modal-overlay.show { display: flex; }
+        .co-modal {
+          background: var(--bg-secondary); border: 1px solid var(--border);
+          border-radius: 16px; width: 90%; max-width: 560px; max-height: 80vh;
+          display: flex; flex-direction: column;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+          animation: fadeIn 0.3s ease;
+        }
+        .co-modal-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+        }
+        .co-modal-header h3 {
+          font-size: 1.1rem; font-weight: 700; color: var(--text-primary);
+          display: flex; align-items: center; gap: 0.5rem;
+        }
+        .co-modal-header h3::before {
+          content: ''; width: 4px; height: 18px;
+          background: linear-gradient(180deg, var(--accent), var(--accent-light));
+          border-radius: 4px;
+        }
+        .co-modal-body {
+          padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1;
+        }
+        .co-inst-section { margin-bottom: 1.25rem; }
+        .co-inst-section:last-child { margin-bottom: 0; }
+        .co-inst-section h4 {
+          font-size: 0.85rem; font-weight: 700; color: var(--accent);
+          text-transform: uppercase; letter-spacing: 0.05em;
+          margin-bottom: 0.5rem;
+        }
+        .co-inst-section p {
+          font-size: 0.88rem; color: var(--text-primary); line-height: 1.6;
+          margin-bottom: 0.3rem;
+        }
+        .co-inst-section p strong { color: var(--text-primary); }
       </style>
     `;
 
@@ -317,6 +365,18 @@ window.BromarPages.admin = {
           this._calloutYear = new Date().getFullYear();
         }
         this._renderCalendar(container.querySelector('#co-calendar-container'));
+        return;
+      }
+
+      /* Instructions modal */
+      if (e.target.closest('[data-co-instructions]')) {
+        const modal = container.querySelector('#co-instructions-modal');
+        if (modal) modal.classList.add('show');
+        return;
+      }
+      if (e.target.closest('[data-co-modal-close]') || (e.target.classList && e.target.classList.contains('co-modal-overlay'))) {
+        const modal = container.querySelector('#co-instructions-modal');
+        if (modal) modal.classList.remove('show');
         return;
       }
     });
@@ -364,12 +424,64 @@ window.BromarPages.admin = {
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
               <input type="file" accept=".xlsx,.xls" class="co-file-input">
             </label>
+            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" download class="btn-secondary co-download-link">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
+            </a>
+            <button class="btn-secondary co-instructions-btn" data-co-instructions>
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/></svg>Instructions
+            </button>
           </div>
         </div>
         <div id="co-view-area">
           <div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading roster…</p></div>
         </div>
         <div id="co-upload-feedback"></div>
+      </div>
+
+      <!-- Instructions Modal -->
+      <div class="co-modal-overlay" id="co-instructions-modal">
+        <div class="co-modal">
+          <div class="co-modal-header">
+            <h3>Call Out Roster — Instructions</h3>
+            <button class="control-btn co-modal-close" data-co-modal-close aria-label="Close">
+              <svg viewBox="0 0 24 24" style="pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="co-modal-body">
+            <div class="co-inst-section">
+              <h4>Filling the Template</h4>
+              <p><strong>Employee Name</strong> — Full name, spelled consistently every time (required)</p>
+              <p><strong>Start Date</strong> — First day on call, DD/MM/YYYY or YYYY-MM-DD (required)</p>
+              <p><strong>End Date</strong> — Last day on call, inclusive, same format (required)</p>
+              <p><strong>Shift Type</strong> — e.g. "Weekday + Weekend" (optional)</p>
+              <p><strong>Notes</strong> — Public holidays, special info — shows as a yellow dot on the calendar (optional)</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Uploading</h4>
+              <p>Click <strong>Upload XLSX</strong>, select your file. The system reads the headers automatically.</p>
+              <p>Save as <strong>.xlsx</strong> — don't rename the columns or change to .csv.</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>How Updates Work</h4>
+              <p>The system checks the date range in your file and <strong>only replaces records within that range</strong>.</p>
+              <p>Historical entries outside the range are never touched. You can safely re-upload corrections.</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Rules</h4>
+              <p>• Don't rename column headers — the parser matches them exactly</p>
+              <p>• Don't add contact info or procedures below roster rows — the parser will stop there</p>
+              <p>• Use Australian date format (DD/MM/YYYY), not American (MM/DD/YYYY)</p>
+              <p>• Entries can overlap if multiple people are on call at the same time</p>
+              <p>• Each employee gets a consistent colour across all views</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Troubleshooting</h4>
+              <p><strong>"Could not find header row"</strong> — Check that row 4 has "Employee Name" and "Start Date" spelled exactly</p>
+              <p><strong>"No valid roster entries found"</strong> — Make sure Name, Start Date, and End Date are all filled in</p>
+              <p><strong>"Insert failed"</strong> — Supabase permissions issue. RLS policies need anon access enabled</p>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
