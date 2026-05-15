@@ -449,36 +449,39 @@ window.BromarPages.admin = {
           </div>
           <div class="co-modal-body">
             <div class="co-inst-section">
-              <h4>Filling the Template</h4>
-              <p><strong>Employee Name</strong> — Full name, spelled consistently every time (required)</p>
-              <p><strong>Start Date</strong> — First day on call, DD/MM/YYYY or YYYY-MM-DD (required)</p>
-              <p><strong>End Date</strong> — Last day on call, inclusive, same format (required)</p>
-              <p><strong>Shift Type</strong> — e.g. "Weekday + Weekend" (optional)</p>
-              <p><strong>Notes</strong> — Public holidays, special info — shows as a yellow dot on the calendar (optional)</p>
+              <h4>Step 1 — Download the Template</h4>
+              <p>Click the <strong>Template</strong> button to download a blank spreadsheet.</p>
             </div>
             <div class="co-inst-section">
-              <h4>Uploading</h4>
-              <p>Click <strong>Upload XLSX</strong>, select your file. The system reads the headers automatically.</p>
-              <p>Save as <strong>.xlsx</strong> — don't rename the columns or change to .csv.</p>
+              <h4>Step 2 — Fill It In</h4>
+              <p><strong>Employee Name</strong> — Full name, always spelled the same way</p>
+              <p><strong>Start Date</strong> — First day on call (use DD/MM/YYYY, e.g. 02/06/2026)</p>
+              <p><strong>End Date</strong> — Last day on call (same format)</p>
+              <p><strong>Shift Type</strong> — e.g. "Weekday + Weekend" (leave blank if unsure)</p>
+              <p><strong>Notes</strong> — Optional, e.g. "Public Holiday" (shows as a dot on the calendar)</p>
+              <p style="margin-top:0.5rem;color:var(--text-secondary);font-size:0.82rem">Delete the grey example rows before adding your own entries.</p>
             </div>
             <div class="co-inst-section">
-              <h4>How Updates Work</h4>
-              <p>The system checks the date range in your file and <strong>only replaces records within that range</strong>.</p>
-              <p>Historical entries outside the range are never touched. You can safely re-upload corrections.</p>
+              <h4>Step 3 — Save &amp; Upload</h4>
+              <p>Save the file (keep it as an Excel file, don't change to CSV).</p>
+              <p>Click <strong>Upload XLSX</strong> here and select your saved file.</p>
+              <p>You'll see a green success message when it's done.</p>
             </div>
             <div class="co-inst-section">
-              <h4>Rules</h4>
-              <p>• Don't rename column headers — the parser matches them exactly</p>
-              <p>• Don't add contact info or procedures below roster rows — the parser will stop there</p>
-              <p>• Use Australian date format (DD/MM/YYYY), not American (MM/DD/YYYY)</p>
-              <p>• Entries can overlap if multiple people are on call at the same time</p>
-              <p>• Each employee gets a consistent colour across all views</p>
+              <h4>Updating the Roster Later</h4>
+              <p>Just fill in a new spreadsheet with the updated entries and upload it again.</p>
+              <p>The system will only update the dates in your new file — it won't delete anything outside that range.</p>
             </div>
             <div class="co-inst-section">
-              <h4>Troubleshooting</h4>
-              <p><strong>"Could not find header row"</strong> — Check that row 4 has "Employee Name" and "Start Date" spelled exactly</p>
-              <p><strong>"No valid roster entries found"</strong> — Make sure Name, Start Date, and End Date are all filled in</p>
-              <p><strong>"Insert failed"</strong> — Supabase permissions issue. RLS policies need anon access enabled</p>
+              <h4>Important</h4>
+              <p>• Don't change the column names in the top row</p>
+              <p>• Don't add anything below the roster entries (no phone numbers, notes, etc.)</p>
+              <p>• Use Australian dates — day first, then month (e.g. 15/07/2026)</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Something Not Working?</h4>
+              <p>If you get an error when uploading, check that every row has a name, start date, and end date filled in.</p>
+              <p>If it still doesn't work, contact your system administrator.</p>
             </div>
           </div>
         </div>
