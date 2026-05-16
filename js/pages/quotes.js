@@ -5,12 +5,13 @@
    21 dynamic section types with per-section visibility/include
    toggles, reordering, duplication, and typed presets.
    Token system for merge fields ({{Contact Name}}, etc.)
+   Auto-save with In Progress status.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V2.01',
+  version: 'V2.02',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -22,7 +23,6 @@ window.BromarPages.quotes = {
     const QUOTE_PREFIX = 'BQ';
     const QUOTE_PAD = 6;
 
-    // SECTION REGISTRY — defines every section type, defaults, and shape
     const SECTION_TYPES = {
       summary:       { name: 'Summary / Overview',          priced: false, defaultShow: true,  defaultInclude: false, shape: 'text' },
       scope:         { name: 'Scope of Works',              priced: false, defaultShow: true,  defaultInclude: false, shape: 'bullets' },
@@ -47,7 +47,6 @@ window.BromarPages.quotes = {
       custom:        { name: 'Custom Block',                priced: false, defaultShow: true,  defaultInclude: false, shape: 'text' }
     };
 
-    // Tokens available for merge replacement
     const TOKENS = [
       { key: 'Contact Name', desc: 'Client contact (falls back to client name)' },
       { key: 'Site name',    desc: 'Job title' },
@@ -58,18 +57,18 @@ window.BromarPages.quotes = {
       { key: 'Today',        desc: 'Today\u2019s date' }
     ];
 
-    // Text-bearing section shapes that should resolve tokens in preview/PDF/email
     const TOKEN_SHAPES = ['text', 'bullets'];
 
     /* ── STATE ── */
     let quotes = loadQuotes();
     let presets = loadPresets();
-    let view = 'dashboard'; // dashboard | editor | preview
+    let view = 'dashboard';
     let activeQuoteId = null;
     let activeSectionId = '__details__';
     let filterStatus = 'all';
     let searchTerm = '';
-    let lastFocusedTextInput = null; // for token picker insertion
+    let lastFocusedTextInput = null;
+    let saveTimer = null;
 
     /* ── PERSISTENCE ── */
     function loadQuotes() {
@@ -79,7 +78,23 @@ window.BromarPages.quotes = {
       } catch (_) {}
       return seedQuotes();
     }
-    function saveQuotes() { localStorage.setItem(STORAGE_KEY, JSON.stringify(quotes)); }
+    function saveQuotes() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(quotes));
+      flashSaved();
+    }
+    function flashSaved() {
+      const el = document.getElementById('save-indicator');
+      if (!el) return;
+      el.textContent = 'Saving…';
+      el.classList.add('saving');
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        el.textContent = 'Saved';
+        el.classList.remove('saving');
+        el.classList.add('saved');
+        setTimeout(() => el.classList.remove('saved'), 1200);
+      }, 250);
+    }
 
     function loadPresets() {
       try {
@@ -149,7 +164,6 @@ window.BromarPages.quotes = {
     function todayISO() { return new Date().toISOString().split('T')[0]; }
     function defaultExpiry() { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; }
 
-    /* ── TOKEN RESOLUTION ── */
     function tokenValues(q) {
       return {
         'Contact Name': (q.clientContact || '').trim() || q.client || '',
@@ -164,23 +178,34 @@ window.BromarPages.quotes = {
     function resolveTokens(text, q) {
       if (!text) return '';
       const values = tokenValues(q);
-      return text.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (match, key) => {
-        return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match;
-      });
+      return text.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (m, k) => Object.prototype.hasOwnProperty.call(values, k) ? values[k] : m);
     }
 
+    // STATUS HELPERS — In Progress label & traffic-light bucketing
+    function isInProgress(q) {
+      return q.status === 'draft' && (q.sections || []).length > 0;
+    }
     function effectiveStatus(q) {
       if (q.status === 'accepted' || q.status === 'converted') return 'accepted';
       if (q.status === 'rejected') return 'rejected';
-      if (q.expiresAt && q.expiresAt < todayISO() && q.status !== 'allocated' && q.status !== 'draft') return 'overdue';
+      // Drafts (including In Progress) and Allocated → red (needs attention)
+      if (q.status === 'draft' || q.status === 'allocated') return 'inProgress';
+      // Sent but expired → overdue (also red)
+      if (q.expiresAt && q.expiresAt < todayISO() && q.status === 'sent') return 'overdue';
+      // Sent and not expired → pending (amber)
       return 'pending';
     }
-    function statusLabel(s) {
-      return ({ draft: 'Draft', allocated: 'Allocated', sent: 'Sent for Approval',
-                accepted: 'Accepted', rejected: 'Rejected', converted: 'Converted to Job' })[s] || s;
+    function statusLabel(q) {
+      if (typeof q === 'string') {
+        return ({ draft: 'Draft', allocated: 'Allocated', sent: 'Sent for Approval',
+                  accepted: 'Accepted', rejected: 'Rejected', converted: 'Converted to Job' })[q] || q;
+      }
+      // Object passed: use In Progress label when applicable
+      if (isInProgress(q)) return 'In Progress';
+      return statusLabel(q.status);
     }
     function statusColor(eff) {
-      return ({ accepted: 'green', pending: 'amber', overdue: 'red', rejected: 'red' })[eff] || 'amber';
+      return ({ accepted: 'green', pending: 'amber', overdue: 'red', inProgress: 'red', rejected: 'red' })[eff] || 'amber';
     }
 
     /* ── SECTION DEFAULTS ── */
@@ -250,7 +275,6 @@ window.BromarPages.quotes = {
         default: return 0;
       }
     }
-
     function quoteTotal(q) {
       return (q.sections || []).reduce((s, sec) => {
         if (!sec.include || sec.internal) return s;
@@ -273,7 +297,7 @@ window.BromarPages.quotes = {
 
     /* ── DASHBOARD ── */
     function renderDashboard() {
-      const counts = { accepted: 0, pending: 0, overdue: 0, rejected: 0 };
+      const counts = { accepted: 0, pending: 0, overdue: 0, inProgress: 0, rejected: 0 };
       quotes.forEach(q => { counts[effectiveStatus(q)]++; });
       const filtered = filterQuotes();
 
@@ -286,8 +310,8 @@ window.BromarPages.quotes = {
         <div class="quote-stats">
           ${statCard('accepted', 'Accepted', counts.accepted, 'green')}
           ${statCard('pending', 'Pending', counts.pending, 'amber')}
+          ${statCard('inProgress', 'In Progress', counts.inProgress, 'red')}
           ${statCard('overdue', 'Overdue', counts.overdue, 'red')}
-          ${statCard('all', 'All Quotes', quotes.length, 'neutral')}
         </div>
 
         <div class="card">
@@ -296,7 +320,7 @@ window.BromarPages.quotes = {
               <input type="text" id="quote-search" class="quote-input" placeholder="Search by number, client, or job…" value="${escape(searchTerm)}">
             </div>
             <div class="filter-pills">
-              ${pill('all','All')} ${pill('accepted','Accepted','green')} ${pill('pending','Pending','amber')} ${pill('overdue','Overdue','red')}
+              ${pill('all','All')} ${pill('accepted','Accepted','green')} ${pill('pending','Pending','amber')} ${pill('inProgress','In Progress','red')} ${pill('overdue','Overdue','red')}
             </div>
             <button class="btn-primary" id="new-quote-btn">+ New Quote</button>
           </div>
@@ -363,8 +387,8 @@ window.BromarPages.quotes = {
           <div class="row-main">
             <div class="row-top">
               <span class="row-number">${escape(displayNumber(q))}</span>
-              <span class="row-badge badge-${color}">${statusLabel(q.status)}</span>
-              ${!isPublished ? '<span class="row-badge badge-draft">Unpublished</span>' : ''}
+              <span class="row-badge badge-${color}">${statusLabel(q)}</span>
+              ${!isPublished && q.status !== 'draft' && q.status !== 'allocated' ? '<span class="row-badge badge-draft">Unpublished</span>' : ''}
             </div>
             <div class="row-title">${escape(q.jobTitle || 'Untitled')}</div>
             <div class="row-meta">
@@ -451,16 +475,20 @@ window.BromarPages.quotes = {
         if (!(q.sections || []).find(s => s.id === activeSectionId)) activeSectionId = '__details__';
       }
 
+      const statusTag = isPublished
+        ? '<span class="pub-tag">Published</span>'
+        : (isInProgress(q) ? '<span class="pub-tag pub-progress">In Progress</span>' : '<span class="pub-tag pub-draft">Draft</span>');
+
       container.innerHTML = `
         <div class="page-title-wrapper editor-header">
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar">
-            <h1>${escape(displayNumber(q))} ${isPublished ? '<span class="pub-tag">Published</span>' : '<span class="pub-tag pub-draft">Draft</span>'}</h1>
+            <h1>${escape(displayNumber(q))} ${statusTag}</h1>
             <p class="subtitle">${escape(q.client)} · ${revLabel}</p>
           </div>
           <div class="editor-actions">
+            <span class="save-indicator" id="save-indicator">Saved</span>
             <button class="btn-secondary" id="preview-btn">Preview</button>
-            <button class="btn-secondary" id="save-btn">Save</button>
             ${isPublished
               ? `<button class="btn-secondary" id="unpublish-btn">Unpublish</button><button class="btn-primary" id="email-btn">Email</button>`
               : `<button class="btn-primary" id="publish-btn">Publish</button>`}
@@ -531,7 +559,6 @@ window.BromarPages.quotes = {
       const get = id => document.getElementById(id);
       get('back-btn').addEventListener('click', backToDashboard);
       get('preview-btn').addEventListener('click', () => { saveQuotes(); openPreview(q.id); });
-      get('save-btn').addEventListener('click', () => { saveQuotes(); toast('Quote saved.'); });
 
       const publishBtn = get('publish-btn');
       if (publishBtn) publishBtn.addEventListener('click', () => {
@@ -735,14 +762,12 @@ window.BromarPages.quotes = {
       switch (meta.shape) {
         case 'text':
           return `<textarea class="quote-input quote-textarea token-target" id="f-text" rows="8" placeholder="Enter content…">${escape(d.text || '')}</textarea>`;
-
         case 'bullets':
           return `
             <div class="bullets-list" id="bullets-list">
               ${(d.bullets || ['']).map((b, i) => bulletRow(b, i)).join('')}
             </div>
             <button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Bullet</button>`;
-
         case 'lumpSum':
           return `
             <div class="form-grid">
@@ -750,7 +775,6 @@ window.BromarPages.quotes = {
               <div class="form-row"><label>Note (optional)</label><input class="quote-input" id="f-note" value="${escape(d.note || '')}" placeholder="e.g. 'lump sum, all trades'"></div>
             </div>
             <div class="section-foot">Total <strong>${fmt(d.amount || 0)}</strong></div>`;
-
         case 'items':
           return `
             <div class="items-head">
@@ -761,7 +785,6 @@ window.BromarPages.quotes = {
             </div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Item</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, globalMarkup))}</strong></div>`;
-
         case 'hire':
           return `
             <div class="items-head hire-head">
@@ -772,7 +795,6 @@ window.BromarPages.quotes = {
             </div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Equipment</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, globalMarkup))}</strong></div>`;
-
         case 'addons':
           return `
             <p class="hint">Optional extras the client can toggle on. Only selected items roll into the total.</p>
@@ -780,14 +802,12 @@ window.BromarPages.quotes = {
               ${(d.items || []).map(a => addonRowEd(a)).join('')}
             </div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Add-on</button>`;
-
         case 'groups':
           return `
             <div class="groups-list" id="groups-list">
               ${(d.groups || []).map(g => groupCardEd(g, globalMarkup)).join('')}
             </div>
             <button class="btn-secondary add-btn-sm" id="add-group">+ Add Group</button>`;
-
         case 'photos':
           return `
             <p class="hint">Add image URLs (Supabase storage will replace this with real uploads).</p>
@@ -918,7 +938,6 @@ window.BromarPages.quotes = {
         refreshRailAmounts(q);
       };
 
-      // Name / toggles
       get('s-name').addEventListener('input', e => {
         sec.name = e.target.value; saveQuotes(); refreshRailAmounts(q);
         const railName = document.querySelector(`.rail-item-section[data-sid="${sec.id}"] .rail-name`);
@@ -929,7 +948,6 @@ window.BromarPages.quotes = {
       if (incEl) incEl.addEventListener('change', e => { sec.include = e.target.checked; saveQuotes(); renderEditor(); });
       get('s-internal').addEventListener('change', e => { sec.internal = e.target.checked; saveQuotes(); renderEditor(); });
 
-      // Presets
       const loadSel = get('preset-load');
       if (loadSel) loadSel.addEventListener('change', () => {
         const pid = loadSel.value; if (!pid) return;
@@ -953,10 +971,8 @@ window.BromarPages.quotes = {
         delete presets[pid]; savePresets(); renderEditor();
       });
 
-      // Token picker (only shown for text/bullets sections)
       bindTokenPicker(sec);
 
-      // Shape-specific bindings
       const meta = SECTION_TYPES[sec.type];
       const d = sec.data;
 
@@ -965,12 +981,10 @@ window.BromarPages.quotes = {
         ta.addEventListener('input', e => { d.text = e.target.value; saveQuotes(); });
         ta.addEventListener('focus', () => { lastFocusedTextInput = ta; });
       }
-
       if (meta.shape === 'lumpSum') {
         get('f-amount').addEventListener('input', e => { d.amount = Number(e.target.value) || 0; saveQuotes(); refreshFoot(); });
         get('f-note').addEventListener('input', e => { d.note = e.target.value; saveQuotes(); });
       }
-
       if (meta.shape === 'bullets') {
         document.querySelectorAll('.bullet-row').forEach((row, idx) => {
           const input = row.querySelector('.bullet-input');
@@ -982,7 +996,6 @@ window.BromarPages.quotes = {
         });
         get('add-bullet').addEventListener('click', () => { d.bullets.push(''); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'items') {
         const bindItemRows = () => document.querySelectorAll('.item-row').forEach((row, idx) => {
           row.querySelector('.li-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; saveQuotes(); });
@@ -995,7 +1008,6 @@ window.BromarPages.quotes = {
         bindItemRows();
         get('add-item').addEventListener('click', () => { d.items.push({ desc: '', qty: 1, price: 0, markup: null }); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'hire') {
         const bindHireRows = () => document.querySelectorAll('.hire-row').forEach((row, idx) => {
           row.querySelector('.hi-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; saveQuotes(); });
@@ -1009,7 +1021,6 @@ window.BromarPages.quotes = {
         bindHireRows();
         get('add-item').addEventListener('click', () => { d.items.push({ desc: '', qty: 1, rate: 0, unit: 'day', markup: null }); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'addons') {
         document.querySelectorAll('.addon-row').forEach((row, idx) => {
           row.querySelector('.ad-selected').addEventListener('change', e => { d.items[idx].selected = e.target.checked; saveQuotes(); refreshFoot(); });
@@ -1019,7 +1030,6 @@ window.BromarPages.quotes = {
         });
         get('add-item').addEventListener('click', () => { d.items.push({ desc: '', price: 0, selected: false }); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'groups') {
         document.querySelectorAll('.group-card').forEach(card => {
           const gIdx = d.groups.findIndex(g => g.id === card.dataset.gid);
@@ -1045,7 +1055,6 @@ window.BromarPages.quotes = {
           saveQuotes(); renderEditor();
         });
       }
-
       if (meta.shape === 'photos') {
         document.querySelectorAll('.photo-row').forEach((row, idx) => {
           row.querySelector('.ph-url').addEventListener('input', e => { d.items[idx].url = e.target.value; saveQuotes(); });
@@ -1062,22 +1071,16 @@ window.BromarPages.quotes = {
       const menu = document.getElementById('token-menu');
       if (!btn || !menu) return;
 
-      // Track focus on token-target inputs so we know where to insert
       document.querySelectorAll('.token-target').forEach(el => {
         el.addEventListener('focus', () => { lastFocusedTextInput = el; });
       });
-      // Default focus = first token-target in panel
       const firstTarget = document.querySelector('.token-target');
       if (firstTarget && !lastFocusedTextInput) lastFocusedTextInput = firstTarget;
 
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        menu.hidden = !menu.hidden;
-      });
+      btn.addEventListener('click', e => { e.stopPropagation(); menu.hidden = !menu.hidden; });
       document.addEventListener('click', e => {
         if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) menu.hidden = true;
       }, { once: true });
-
       menu.querySelectorAll('.token-item').forEach(item => {
         item.addEventListener('click', e => {
           e.preventDefault();
@@ -1091,10 +1094,7 @@ window.BromarPages.quotes = {
     function insertAtCursor(text, sec) {
       const meta = SECTION_TYPES[sec.type];
       let target = lastFocusedTextInput;
-      // Re-resolve target if it has been replaced by a re-render
-      if (!target || !document.body.contains(target)) {
-        target = document.querySelector('.token-target');
-      }
+      if (!target || !document.body.contains(target)) target = document.querySelector('.token-target');
       if (!target) { toast('Click into a text field first.'); return; }
       target.focus();
       const start = target.selectionStart ?? target.value.length;
@@ -1103,8 +1103,6 @@ window.BromarPages.quotes = {
       target.value = newVal;
       const caret = start + text.length;
       target.setSelectionRange(caret, caret);
-
-      // Persist back to data model
       if (meta.shape === 'text') {
         sec.data.text = newVal;
       } else if (meta.shape === 'bullets') {
@@ -1146,7 +1144,7 @@ window.BromarPages.quotes = {
             <div class="preview-meta-right">
               <div><span>Issued</span><strong>${escape(q.publishedAt || q.createdAt || '')}</strong></div>
               <div><span>Expires</span><strong>${escape(q.expiresAt || '')}</strong></div>
-              <div><span>Status</span><strong>${statusLabel(q.status)}</strong></div>
+              <div><span>Status</span><strong>${statusLabel(q)}</strong></div>
             </div>
           </div>
 
@@ -1418,7 +1416,7 @@ Bromar Electrical Services (AUST)`, q);
   <div class="meta">
     <div>Issued: ${escape(q.publishedAt || q.createdAt || '')}</div>
     <div>Expires: ${escape(q.expiresAt || '')}</div>
-    <div>Status: ${statusLabel(q.status)}</div>
+    <div>Status: ${statusLabel(q)}</div>
   </div>
 </div>
 ${sectionsHtml}
@@ -1519,8 +1517,24 @@ ${sectionsHtml}
         .editor-titlebar h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
         .pub-tag { display: inline-block; font-size: 0.7rem; padding: 0.2rem 0.6rem; background: var(--success-bg); color: var(--success); border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
         .pub-tag.pub-draft { background: rgba(99,99,105,0.15); color: var(--text-secondary); }
+        .pub-tag.pub-progress { background: var(--error-bg); color: var(--error); }
         [data-theme="dark"] .pub-tag { background: rgba(22,163,74,0.15); color: #4ade80; }
-        .editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        [data-theme="dark"] .pub-tag.pub-progress { background: rgba(220,38,38,0.15); color: #f87171; }
+        .editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+
+        .save-indicator {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          padding: 0.4rem 0.7rem;
+          background: var(--card-hover);
+          border-radius: 999px;
+          transition: all 0.3s ease;
+          opacity: 0.7;
+        }
+        .save-indicator.saving { color: var(--accent); opacity: 1; }
+        .save-indicator.saved { color: var(--success); opacity: 1; }
+        [data-theme="dark"] .save-indicator.saved { color: #4ade80; }
 
         .builder-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
         .builder-rail { padding: 1rem; position: sticky; top: calc(var(--header-height) + 1rem); align-self: start; max-height: calc(100vh - var(--header-height) - 2rem); overflow-y: auto; }
@@ -1558,21 +1572,9 @@ ${sectionsHtml}
         .preset-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; align-items: center; padding: 0.5rem 0.75rem; background: var(--card-hover); border-radius: var(--radius-sm); position: relative; }
         .preset-select { max-width: 240px; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
         .preset-btn { padding: 0.5rem 0.9rem; font-size: 0.8rem; }
-
         .token-picker-wrap { position: relative; margin-left: auto; }
-        .token-menu {
-          position: absolute; top: calc(100% + 6px); right: 0;
-          background: var(--bg-secondary); border: 1px solid var(--border);
-          border-radius: var(--radius-sm); box-shadow: 0 12px 32px rgba(0,0,0,0.15);
-          min-width: 280px; z-index: 100; padding: 0.3rem;
-          display: flex; flex-direction: column; gap: 1px;
-        }
-        .token-item {
-          display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-          padding: 0.55rem 0.7rem; border: 1px solid transparent; background: transparent;
-          border-radius: 6px; cursor: pointer; font-family: 'Outfit', sans-serif;
-          color: var(--text-primary); text-align: left; transition: all 0.15s ease;
-        }
+        .token-menu { position: absolute; top: calc(100% + 6px); right: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 12px 32px rgba(0,0,0,0.15); min-width: 280px; z-index: 100; padding: 0.3rem; display: flex; flex-direction: column; gap: 1px; }
+        .token-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0.55rem 0.7rem; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; font-family: 'Outfit', sans-serif; color: var(--text-primary); text-align: left; transition: all 0.15s ease; }
         .token-item:hover { background: var(--card-hover); border-color: var(--border); }
         .token-key { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 600; color: var(--accent); }
         .token-desc { font-size: 0.75rem; color: var(--text-secondary); }
