@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.05',
+  version: 'V1.09',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -57,6 +57,12 @@ window.BromarPages.admin = {
   _calloutMonth: new Date().getMonth(),
   _calloutYear: new Date().getFullYear(),
 
+  /* ── RDO state ── */
+  _rdoData: [],
+  _rdoView: 'calendar',
+  _rdoMonth: new Date().getMonth(),
+  _rdoYear: new Date().getFullYear(),
+
   /* ── Employee colour map ── */
   _empColours: {},
   _colourPalette: [
@@ -83,21 +89,13 @@ window.BromarPages.admin = {
       </div>
 
       <div class="admin-nav-grid">
-        <button class="admin-nav-tile" data-section="fleet">
-          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M20 8h-3V4H3a2 2 0 00-2 2v11h2a3 3 0 006 0h6a3 3 0 006 0h2v-5l-3-4zM6 18.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm12 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"/></svg>
-          <span>Fleet Management</span>
-        </button>
         <button class="admin-nav-tile" data-section="callout">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>
           <span>Call Out Roster</span>
         </button>
-        <button class="admin-nav-tile" data-section="training">
-          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
-          <span>Training Roster</span>
-        </button>
-        <button class="admin-nav-tile" data-section="employees">
-          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-          <span>Employee Details</span>
+        <button class="admin-nav-tile" data-section="compliance">
+          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+          <span>Compliance Tool</span>
         </button>
         <button class="admin-nav-tile" data-section="rdo">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
@@ -264,7 +262,7 @@ window.BromarPages.admin = {
         .co-mobile-meta {
           display: none; font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;
         }
-        .co-cal-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .co-cal-scroll { overflow-x: hidden; }
         .co-cal-initials { display: none; }
 
         @media (max-width: 600px) {
@@ -280,13 +278,13 @@ window.BromarPages.admin = {
             padding: 0.45rem 0.6rem; font-size: 0.75rem;
           }
 
-          /* Calendar: force minimum width so all 7 cols always visible */
-          .co-cal-grid { gap: 0; min-width: 480px; }
-          .co-cal-day { min-height: 44px; padding: 0.15rem; }
-          .co-cal-day .day-num { font-size: 0.65rem; margin-bottom: 1px; }
-          .co-cal-hdr { font-size: 0.6rem; padding: 0.3rem 0.1rem; }
+          /* Calendar: fit to viewport, no overflow */
+          .co-cal-grid { gap: 0; width: 100%; }
+          .co-cal-day { min-height: 40px; padding: 0.1rem; overflow: hidden; }
+          .co-cal-day .day-num { font-size: 0.6rem; margin-bottom: 1px; }
+          .co-cal-hdr { font-size: 0.55rem; padding: 0.25rem 0; }
           .co-cal-entry {
-            font-size: 0.6rem; padding: 1px 3px; margin-bottom: 1px;
+            font-size: 0.6rem; padding: 1px 2px; margin-bottom: 1px;
             text-align: center; border-radius: 2px;
           }
           .co-cal-fullname { display: none; }
@@ -294,8 +292,8 @@ window.BromarPages.admin = {
           .co-cal-entry.expanded .co-cal-fullname { display: inline; }
           .co-cal-entry.expanded .co-cal-initials { display: none; }
           .co-cal-entry.expanded {
-            white-space: normal; position: relative; z-index: 5;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            white-space: normal; position: absolute; left: 0; right: 0; z-index: 5;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); padding: 3px 4px;
           }
           .co-cal-entry .co-note-dot { width: 4px; height: 4px; margin-left: 1px; }
 
@@ -306,12 +304,19 @@ window.BromarPages.admin = {
           /* List */
           .co-list-table .hide-mobile { display: none; }
           .co-mobile-meta { display: block; }
+
+          /* RDO mobile */
+          .rdo-cal-entry { font-size: 0.55rem; padding: 1px 2px; }
+          .rdo-cal-entry .rdo-cal-label { display: none; }
+          .rdo-cal-entry .rdo-cal-group { display: inline; font-size: 0.55rem; }
+          .rdo-expand-list { min-width: 150px; left: 0; transform: none; }
+          .rdo-list-person { display: block; margin-right: 0; }
         }
         @media (max-width: 380px) {
           .admin-nav-grid { grid-template-columns: repeat(2, 1fr); }
-          .co-cal-day { min-height: 38px; }
-          .co-cal-entry { font-size: 0.55rem; padding: 1px 2px; }
-          .co-cal-hdr { font-size: 0.55rem; }
+          .co-cal-day { min-height: 36px; }
+          .co-cal-entry { font-size: 0.55rem; padding: 1px 1px; }
+          .co-cal-hdr { font-size: 0.5rem; }
 
           /* Stack toolbar buttons */
           .co-toolbar {
@@ -323,6 +328,54 @@ window.BromarPages.admin = {
             text-align: center; justify-content: center;
           }
         }
+
+        /* ── RDO calendar entries ── */
+        .rdo-legend {
+          display: flex; gap: 1rem; margin-bottom: 1rem;
+        }
+        .rdo-legend-item {
+          display: flex; align-items: center; gap: 0.4rem;
+          font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);
+        }
+        .rdo-legend-dot {
+          width: 10px; height: 10px; border-radius: 50%;
+        }
+        .rdo-cal-entry {
+          font-size: 0.65rem; font-weight: 700; color: #fff;
+          padding: 2px 4px; border-radius: 3px; margin-bottom: 2px;
+          cursor: pointer; line-height: 1.3; position: relative;
+          text-align: center;
+        }
+        .rdo-cal-entry .rdo-cal-label { }
+        .rdo-cal-entry .rdo-cal-group { display: none; }
+        .rdo-expand-list {
+          display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+          z-index: 20; min-width: 180px; background: var(--bg-secondary);
+          border: 1px solid var(--border); border-radius: var(--radius-sm);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden;
+          text-align: left;
+        }
+        .rdo-cal-entry.expanded .rdo-expand-list { display: block; }
+        .rdo-expand-header {
+          padding: 0.4rem 0.6rem; color: #fff; font-size: 0.7rem;
+          font-weight: 700;
+        }
+        .rdo-expand-name {
+          padding: 0.3rem 0.6rem; font-size: 0.78rem; font-weight: 500;
+          color: var(--text-primary); border-bottom: 1px solid var(--border);
+        }
+        .rdo-expand-name:last-child { border-bottom: none; }
+
+        /* RDO list specifics */
+        .rdo-list-person {
+          display: inline-flex; align-items: center; margin-right: 0.75rem;
+          margin-bottom: 0.2rem; white-space: nowrap;
+        }
+        .rdo-group-badge {
+          display: inline-block; padding: 2px 8px; border-radius: 20px;
+          font-size: 0.7rem; font-weight: 600; color: #fff;
+        }
+        .rdo-people-cell { line-height: 1.8; }
 
         /* ── Download & Instructions links ── */
         .co-download-link {
@@ -427,7 +480,52 @@ window.BromarPages.admin = {
         return;
       }
       if (e.target.closest('[data-co-modal-close]') || (e.target.classList && e.target.classList.contains('co-modal-overlay'))) {
-        const modal = container.querySelector('#co-instructions-modal');
+        const modal = container.querySelector('#co-instructions-modal') || container.querySelector('#rdo-instructions-modal');
+        if (modal) modal.classList.remove('show');
+        return;
+      }
+
+      /* RDO view toggles */
+      const rdoViewBtn = e.target.closest('[data-rdo-view]');
+      if (rdoViewBtn) {
+        this._rdoView = rdoViewBtn.dataset.rdoView;
+        this._renderRDO(container.querySelector('#admin-section-content'));
+        return;
+      }
+
+      /* RDO calendar nav */
+      const rdoNavBtn = e.target.closest('[data-rdo-nav]');
+      if (rdoNavBtn) {
+        const dir = rdoNavBtn.dataset.rdoNav;
+        if (dir === 'prev') {
+          this._rdoMonth--;
+          if (this._rdoMonth < 0) { this._rdoMonth = 11; this._rdoYear--; }
+        } else if (dir === 'next') {
+          this._rdoMonth++;
+          if (this._rdoMonth > 11) { this._rdoMonth = 0; this._rdoYear++; }
+        } else if (dir === 'today') {
+          this._rdoMonth = new Date().getMonth();
+          this._rdoYear = new Date().getFullYear();
+        }
+        this._renderRdoCalendar(container.querySelector('#rdo-calendar-container'));
+        return;
+      }
+
+      /* RDO calendar entry tap to expand names */
+      const rdoEntry = e.target.closest('.rdo-cal-entry');
+      if (rdoEntry) {
+        rdoEntry.classList.toggle('expanded');
+        return;
+      }
+
+      /* RDO instructions modal */
+      if (e.target.closest('[data-rdo-instructions]')) {
+        const modal = container.querySelector('#rdo-instructions-modal');
+        if (modal) modal.classList.add('show');
+        return;
+      }
+      if (e.target.closest('[data-rdo-modal-close]') || (e.target.classList && e.target.classList.contains('rdo-modal-overlay'))) {
+        const modal = container.querySelector('#rdo-instructions-modal');
         if (modal) modal.classList.remove('show');
         return;
       }
@@ -438,16 +536,18 @@ window.BromarPages.admin = {
         const file = e.target.files[0];
         if (file) this._handleXlsxUpload(file, container.querySelector('#admin-section-content'));
       }
+      if (e.target.matches('.rdo-file-input')) {
+        const file = e.target.files[0];
+        if (file) this._handleRdoXlsxUpload(file, container.querySelector('#admin-section-content'));
+      }
     });
   },
 
   /* ── SECTION ROUTER ── */
   _renderSection(id, target) {
     const sections = {
-      fleet: this._renderFleet,
       callout: this._renderCallout,
-      training: this._renderTraining,
-      employees: this._renderEmployees,
+      compliance: this._renderCompliance,
       rdo: this._renderRDO,
       bugs: this._renderBugs,
     };
@@ -802,59 +902,361 @@ window.BromarPages.admin = {
   },
 
   /* ════════════════════════════════════════
-     SECTION: Fleet Management (placeholder)
+     SECTION: Compliance Tool (placeholder)
      ════════════════════════════════════════ */
-  _renderFleet(target) {
+  _renderCompliance(target) {
     target.innerHTML = `
       <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Fleet Management</h2></div>
+        <div class="admin-section-header"><h2>Compliance Tool</h2></div>
         <div class="admin-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 8h-3V4H3a2 2 0 00-2 2v11h2a3 3 0 006 0h6a3 3 0 006 0h2v-5l-3-4z"/></svg>
-          <p>Fleet management tools will appear here</p><span class="coming-soon">Ready to build</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+          <p>Compliance tools will appear here</p><span class="coming-soon">Ready to build</span>
         </div>
       </div>`;
   },
 
   /* ════════════════════════════════════════
-     SECTION: Training Roster (placeholder)
+     SECTION: RDO Roster
      ════════════════════════════════════════ */
-  _renderTraining(target) {
+  _rdoGroupColours: { A: '#ea580c', B: '#2563eb' },
+
+  async _renderRDO(target) {
+    const isCalendar = this._rdoView === 'calendar';
+
     target.innerHTML = `
       <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Training Roster</h2></div>
-        <div class="admin-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
-          <p>Training roster management will appear here</p><span class="coming-soon">Ready to build</span>
+        <div class="admin-section-header">
+          <h2>RDO Roster</h2>
+          <div class="co-toolbar">
+            <button class="btn-secondary ${isCalendar ? 'active' : ''}" data-rdo-view="calendar">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Calendar
+            </button>
+            <button class="btn-secondary ${!isCalendar ? 'active' : ''}" data-rdo-view="list">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>List
+            </button>
+            <label class="btn-secondary co-upload-btn">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
+              <input type="file" accept=".xlsx,.xls" class="rdo-file-input">
+            </label>
+            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/rdo-roster/bromar-rdo-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
+            </a>
+            <button class="btn-secondary" data-rdo-instructions>
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/></svg>Instructions
+            </button>
+          </div>
         </div>
-      </div>`;
+        <div class="rdo-legend">
+          <span class="rdo-legend-item"><span class="rdo-legend-dot" style="background:#ea580c"></span>Group A</span>
+          <span class="rdo-legend-item"><span class="rdo-legend-dot" style="background:#2563eb"></span>Group B</span>
+        </div>
+        <div id="rdo-view-area">
+          <div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading roster…</p></div>
+        </div>
+        <div id="rdo-upload-feedback"></div>
+      </div>
+
+      <!-- RDO Instructions Modal -->
+      <div class="co-modal-overlay rdo-modal-overlay" id="rdo-instructions-modal">
+        <div class="co-modal">
+          <div class="co-modal-header">
+            <h3>RDO Roster — Instructions</h3>
+            <button class="control-btn co-modal-close" data-rdo-modal-close aria-label="Close">
+              <svg viewBox="0 0 24 24" style="pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="co-modal-body">
+            <div class="co-inst-section">
+              <h4>Step 1 — Download the Template</h4>
+              <p>Click the <strong>Template</strong> button to download a blank spreadsheet.</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Step 2 — Fill It In</h4>
+              <p><strong>Employee Name</strong> — Full name, always spelled the same way</p>
+              <p><strong>Group</strong> — Must be <strong>A</strong> or <strong>B</strong> (capital letter)</p>
+              <p><strong>RDO Date</strong> — The RDO day (use DD/MM/YYYY, e.g. 02/06/2026)</p>
+              <p><strong>Notes</strong> — Optional, e.g. "Swapped from Group A"</p>
+              <p style="margin-top:0.5rem;color:var(--text-secondary);font-size:0.82rem">One row per person per RDO date. Multiple people on the same date is normal. Delete the grey example rows first.</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Step 3 — Save &amp; Upload</h4>
+              <p>Save the file (keep it as an Excel file).</p>
+              <p>Click <strong>Upload XLSX</strong> and select your saved file.</p>
+              <p>You'll see a green success message when it's done.</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Updating Later</h4>
+              <p>Upload a new file — only dates within the new file's range are replaced. Everything else stays.</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Important</h4>
+              <p>• Don't change the column names in the top row</p>
+              <p>• Use Australian dates — day first (DD/MM/YYYY)</p>
+              <p>• Group must be A or B — people can change groups between uploads</p>
+            </div>
+            <div class="co-inst-section">
+              <h4>Something Not Working?</h4>
+              <p>Check every row has a name, group (A or B), and date filled in.</p>
+              <p>If it still doesn't work, contact your system administrator.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await this._fetchRdoData();
+    const viewArea = target.querySelector('#rdo-view-area');
+    if (isCalendar) {
+      viewArea.innerHTML = '<div id="rdo-calendar-container"></div>';
+      this._renderRdoCalendar(viewArea.querySelector('#rdo-calendar-container'));
+    } else {
+      this._renderRdoList(viewArea);
+    }
   },
 
-  /* ════════════════════════════════════════
-     SECTION: Employee Details (placeholder)
-     ════════════════════════════════════════ */
-  _renderEmployees(target) {
-    target.innerHTML = `
-      <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Employee Details</h2></div>
-        <div class="admin-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11a3 3 0 100-6 3 3 0 000 6z"/></svg>
-          <p>Employee detail management will appear here</p><span class="coming-soon">Ready to build</span>
-        </div>
-      </div>`;
+  /* ── Fetch RDO from Supabase ── */
+  async _fetchRdoData() {
+    try {
+      const res = await fetch(
+        this._SB_URL + '/rest/v1/rdo_roster?select=*&order=rdo_date.asc',
+        { headers: this._sbHeaders() }
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      this._rdoData = Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error('RDO fetch error:', err);
+      this._rdoData = [];
+    }
   },
 
-  /* ════════════════════════════════════════
-     SECTION: RDO Roster (placeholder)
-     ════════════════════════════════════════ */
-  _renderRDO(target) {
-    target.innerHTML = `
-      <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>RDO Roster</h2></div>
-        <div class="admin-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
-          <p>RDO roster management will appear here</p><span class="coming-soon">Ready to build</span>
-        </div>
-      </div>`;
+  /* ── RDO Calendar ── */
+  _renderRdoCalendar(container) {
+    if (!container) return;
+    const year = this._rdoYear;
+    const month = this._rdoMonth;
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    const firstDay = new Date(year, month, 1);
+    const startDow = firstDay.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startOffset = startDow === 0 ? 6 : startDow - 1;
+    const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+
+    const today = new Date();
+    const todayStr = this._isoDate(today);
+
+    let cells = '';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => {
+      cells += '<div class="co-cal-hdr">' + d + '</div>';
+    });
+
+    for (let i = 0; i < totalCells; i++) {
+      const dayNum = i - startOffset + 1;
+      const cellDate = new Date(year, month, dayNum);
+      const cellStr = this._isoDate(cellDate);
+      const isOther = dayNum < 1 || dayNum > daysInMonth;
+      const isToday = cellStr === todayStr;
+
+      let classes = 'co-cal-day';
+      if (isOther) classes += ' other-month';
+      if (isToday) classes += ' today';
+
+      /* Group entries by group for this date */
+      const dayEntries = this._rdoData.filter(r => r.rdo_date === cellStr);
+      const groups = {};
+      dayEntries.forEach(r => {
+        const g = (r.rdo_group || 'A').toUpperCase();
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(r);
+      });
+
+      let entryHtml = '';
+      Object.keys(groups).sort().forEach(g => {
+        const colour = this._rdoGroupColours[g] || '#666';
+        const people = groups[g];
+        const namesList = people.map(p => {
+          const note = p.notes ? ' — ' + p.notes : '';
+          return p.employee_name + note;
+        }).join('\\n');
+        const namesHtml = people.map(p => {
+          const note = p.notes ? '<span style="color:var(--text-secondary);font-weight:400"> — ' + p.notes + '</span>' : '';
+          return '<div class="rdo-expand-name">' + p.employee_name + note + '</div>';
+        }).join('');
+
+        entryHtml += '<div class="rdo-cal-entry" style="background:' + colour + '" title="Group ' + g + ':\\n' + namesList + '">' +
+          '<span class="rdo-cal-label">RDO</span>' +
+          '<span class="rdo-cal-group">G' + g + '</span>' +
+          '<div class="rdo-expand-list">' +
+            '<div class="rdo-expand-header" style="background:' + colour + '">Group ' + g + ' — ' + people.length + ' people</div>' +
+            namesHtml +
+          '</div>' +
+        '</div>';
+      });
+
+      cells += '<div class="' + classes + '"><div class="day-num">' + cellDate.getDate() + '</div>' + entryHtml + '</div>';
+    }
+
+    container.innerHTML = `
+      <div class="co-cal-nav">
+        <button class="btn-secondary" data-rdo-nav="prev" style="padding:0.4rem 0.75rem">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="btn-secondary" data-rdo-nav="today" style="padding:0.4rem 0.75rem;font-size:0.8rem">Today</button>
+        <span class="co-cal-title">${months[month]} ${year}</span>
+        <button class="btn-secondary" data-rdo-nav="next" style="padding:0.4rem 0.75rem">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="co-cal-scroll"><div class="co-cal-grid">${cells}</div></div>
+    `;
+  },
+
+  /* ── RDO List ── */
+  _renderRdoList(container) {
+    if (!this._rdoData.length) {
+      container.innerHTML = '<div class="admin-placeholder"><p>No RDO entries found. Upload an XLSX to get started.</p></div>';
+      return;
+    }
+
+    const today = this._isoDate(new Date());
+
+    /* Group by date for the list */
+    const byDate = {};
+    this._rdoData.forEach(r => {
+      if (!byDate[r.rdo_date]) byDate[r.rdo_date] = [];
+      byDate[r.rdo_date].push(r);
+    });
+
+    const rows = Object.keys(byDate).sort().map(date => {
+      const entries = byDate[date];
+      let status, statusClass;
+      if (date < today) { status = 'Past'; statusClass = 'past'; }
+      else if (date === today) { status = 'Today'; statusClass = 'current'; }
+      else { status = 'Upcoming'; statusClass = 'upcoming'; }
+
+      const rowClass = statusClass === 'current' ? ' class="co-current"' : '';
+
+      const people = entries.map(r => {
+        const colour = this._rdoGroupColours[(r.rdo_group || 'A').toUpperCase()] || '#666';
+        const note = r.notes ? ' <span style="color:var(--text-secondary);font-size:0.8rem">(' + r.notes + ')</span>' : '';
+        return '<span class="rdo-list-person"><span class="co-emp-dot" style="background:' + colour + '"></span>' + r.employee_name + note + '</span>';
+      }).join('');
+
+      const groupLabels = [...new Set(entries.map(r => (r.rdo_group || 'A').toUpperCase()))].sort().map(g => {
+        const colour = this._rdoGroupColours[g] || '#666';
+        return '<span class="rdo-group-badge" style="background:' + colour + '">Group ' + g + '</span>';
+      }).join(' ');
+
+      return '<tr' + rowClass + '>' +
+        '<td>' + this._formatDateFull(date) +
+          '<span class="co-mobile-meta">' + groupLabels + '</span></td>' +
+        '<td class="hide-mobile">' + groupLabels + '</td>' +
+        '<td class="rdo-people-cell">' + people + '</td>' +
+        '<td><span class="co-status-badge ' + statusClass + '">' + status + '</span></td>' +
+        '</tr>';
+    }).join('');
+
+    container.innerHTML = `
+      <table class="co-list-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th class="hide-mobile">Groups</th>
+            <th>People</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  },
+
+  /* ── RDO XLSX Upload ── */
+  async _handleRdoXlsxUpload(file, sectionTarget) {
+    const feedback = sectionTarget.querySelector('#rdo-upload-feedback');
+    if (feedback) feedback.innerHTML = '<div class="co-upload-result" style="background:var(--card-hover);color:var(--text-primary)"><div class="co-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:-3px;margin-right:8px;display:inline-block"></div>Processing…</div>';
+
+    try {
+      const ab = await file.arrayBuffer();
+      const XLSX = await this._loadSheetJS();
+      const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+
+      /* Find header row */
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        const row = (raw[i] || []).map(c => String(c || '').trim().toLowerCase());
+        if (row.includes('employee name') && row.includes('rdo date')) {
+          headerIdx = i; break;
+        }
+      }
+      if (headerIdx === -1) throw new Error('Could not find header row with "Employee Name" and "RDO Date"');
+
+      const headers = raw[headerIdx].map(c => String(c || '').trim().toLowerCase());
+      const colMap = {
+        name: headers.indexOf('employee name'),
+        group: headers.indexOf('group'),
+        date: headers.indexOf('rdo date'),
+        notes: headers.indexOf('notes'),
+      };
+
+      const rows = [];
+      for (let i = headerIdx + 1; i < raw.length; i++) {
+        const r = raw[i];
+        if (!r || !r[colMap.name] || !r[colMap.date]) continue;
+
+        const name = String(r[colMap.name]).trim();
+        if (!name || name.toLowerCase().startsWith('instruction') || name.toLowerCase().startsWith('note')) break;
+
+        const group = colMap.group >= 0 ? String(r[colMap.group] || 'A').trim().toUpperCase() : 'A';
+        if (group !== 'A' && group !== 'B') continue;
+
+        const rdoDate = this._parseUploadDate(r[colMap.date]);
+        if (!rdoDate) continue;
+
+        rows.push({
+          employee_name: name,
+          rdo_group: group,
+          rdo_date: rdoDate,
+          notes: colMap.notes >= 0 ? (String(r[colMap.notes] || '').trim() || null) : null,
+        });
+      }
+
+      if (!rows.length) throw new Error('No valid RDO entries found in file');
+
+      const allDates = rows.map(r => r.rdo_date).sort();
+      const minDate = allDates[0];
+      const maxDate = allDates[allDates.length - 1];
+
+      /* Delete existing records in the uploaded date range */
+      const delRes = await fetch(
+        this._SB_URL + '/rest/v1/rdo_roster?rdo_date=gte.' + minDate + '&rdo_date=lte.' + maxDate,
+        { method: 'DELETE', headers: this._sbHeaders() }
+      );
+      if (!delRes.ok) throw new Error('Delete failed: ' + (await delRes.text()));
+
+      /* Insert in batches */
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+        const insRes = await fetch(
+          this._SB_URL + '/rest/v1/rdo_roster',
+          { method: 'POST', headers: this._sbHeaders(), body: JSON.stringify(batch) }
+        );
+        if (!insRes.ok) throw new Error('Insert failed: ' + (await insRes.text()));
+      }
+
+      await this._fetchRdoData();
+      this._renderRDO(sectionTarget);
+
+      const fb = sectionTarget.querySelector('#rdo-upload-feedback');
+      if (fb) fb.innerHTML = '<div class="co-upload-result success">Uploaded ' + rows.length + ' RDO entries (' + this._formatDateFull(minDate) + ' — ' + this._formatDateFull(maxDate) + '). Past records outside this range preserved.</div>';
+
+    } catch (err) {
+      console.error('RDO upload error:', err);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Upload failed: ' + err.message + '</div>';
+    }
   },
 
   /* ════════════════════════════════════════
