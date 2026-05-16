@@ -4,12 +4,13 @@
    Fixed shell: client details, quote details, totals.
    21 dynamic section types with per-section visibility/include
    toggles, reordering, duplication, and typed presets.
+   Token system for merge fields ({{Contact Name}}, etc.)
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V2.00',
+  version: 'V2.01',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -46,6 +47,20 @@ window.BromarPages.quotes = {
       custom:        { name: 'Custom Block',                priced: false, defaultShow: true,  defaultInclude: false, shape: 'text' }
     };
 
+    // Tokens available for merge replacement
+    const TOKENS = [
+      { key: 'Contact Name', desc: 'Client contact (falls back to client name)' },
+      { key: 'Site name',    desc: 'Job title' },
+      { key: 'Client',       desc: 'Client / company name' },
+      { key: 'Quote Number', desc: 'Quote number with revision suffix' },
+      { key: 'Total',        desc: 'Formatted grand total' },
+      { key: 'Expiry',       desc: 'Expiry date' },
+      { key: 'Today',        desc: 'Today\u2019s date' }
+    ];
+
+    // Text-bearing section shapes that should resolve tokens in preview/PDF/email
+    const TOKEN_SHAPES = ['text', 'bullets'];
+
     /* ── STATE ── */
     let quotes = loadQuotes();
     let presets = loadPresets();
@@ -54,6 +69,7 @@ window.BromarPages.quotes = {
     let activeSectionId = '__details__';
     let filterStatus = 'all';
     let searchTerm = '';
+    let lastFocusedTextInput = null; // for token picker insertion
 
     /* ── PERSISTENCE ── */
     function loadQuotes() {
@@ -70,9 +86,19 @@ window.BromarPages.quotes = {
         const data = JSON.parse(localStorage.getItem(PRESETS_KEY));
         if (data && typeof data === 'object') return data;
       } catch (_) {}
-      return {};
+      return seedPresets();
     }
     function savePresets() { localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); }
+
+    function seedPresets() {
+      return {
+        'p_welcome_default': {
+          name: 'Default Welcome',
+          type: 'summary',
+          data: { text: 'Dear {{Contact Name}}\n\nBromar Electrical Services (AUST) is pleased to provide the following quotation for the works at {{Site name}}.' }
+        }
+      };
+    }
 
     function seedQuotes() {
       const today = new Date();
@@ -80,13 +106,13 @@ window.BromarPages.quotes = {
       return [
         {
           id: 'q1', rootNumber: 'BQ000001', version: 1,
-          client: 'Acme Mining Co.', clientEmail: 'ops@acmemining.com', clientContact: '', clientAddress: '',
-          jobTitle: 'Site Survey — North Pit',
+          client: 'Acme Mining Co.', clientEmail: 'ops@acmemining.com', clientContact: 'Jenny Park', clientAddress: '',
+          jobTitle: 'North Pit Survey',
           status: 'accepted', createdAt: offset(-12), expiresAt: offset(18), publishedAt: offset(-10),
           globalMarkup: 15, internalNotes: '',
           sections: [
-            { id: sid(), type: 'summary', name: 'Summary', show: true, include: false, internal: false,
-              data: { text: 'Full topographic survey of North Pit extension area.' } },
+            { id: sid(), type: 'summary', name: 'Welcome', show: true, include: false, internal: false,
+              data: { text: 'Dear {{Contact Name}}\n\nBromar Electrical Services (AUST) is pleased to provide the following quotation for the works at {{Site name}}.' } },
             { id: sid(), type: 'groups', name: 'Survey Works', show: true, include: true, internal: false,
               data: { groups: [{ id: gid(), name: 'Survey Works', showBreakdown: true, packageMode: false, packagePrice: 0,
                 items: [
@@ -94,9 +120,7 @@ window.BromarPages.quotes = {
                   { desc: 'Field survey day', qty: 3, price: 1450, markup: 20 }
                 ] }] } },
             { id: sid(), type: 'labor', name: 'Labor', show: true, include: true, internal: false,
-              data: { amount: 2200, note: '' } },
-            { id: sid(), type: 'payment', name: 'Payment Terms', show: true, include: false, internal: false,
-              data: { text: 'Net 30. Valid for 30 days.' } }
+              data: { amount: 2200, note: '' } }
           ]
         },
         {
@@ -125,6 +149,26 @@ window.BromarPages.quotes = {
     function todayISO() { return new Date().toISOString().split('T')[0]; }
     function defaultExpiry() { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; }
 
+    /* ── TOKEN RESOLUTION ── */
+    function tokenValues(q) {
+      return {
+        'Contact Name': (q.clientContact || '').trim() || q.client || '',
+        'Site name':    q.jobTitle || '',
+        'Client':       q.client || '',
+        'Quote Number': displayNumber(q),
+        'Total':        fmt(quoteTotal(q)),
+        'Expiry':       q.expiresAt || '',
+        'Today':        todayISO()
+      };
+    }
+    function resolveTokens(text, q) {
+      if (!text) return '';
+      const values = tokenValues(q);
+      return text.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (match, key) => {
+        return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match;
+      });
+    }
+
     function effectiveStatus(q) {
       if (q.status === 'accepted' || q.status === 'converted') return 'accepted';
       if (q.status === 'rejected') return 'rejected';
@@ -142,14 +186,12 @@ window.BromarPages.quotes = {
     /* ── SECTION DEFAULTS ── */
     function newSection(type) {
       const meta = SECTION_TYPES[type];
-      const base = {
+      return {
         id: sid(), type, name: meta.name,
         show: meta.defaultShow, include: meta.defaultInclude, internal: false,
         data: defaultData(meta.shape)
       };
-      return base;
     }
-
     function defaultData(shape) {
       switch (shape) {
         case 'text':    return { text: '' };
@@ -405,7 +447,6 @@ window.BromarPages.quotes = {
       const isPublished = !!q.publishedAt;
       const revLabel = q.version > 1 ? `R${q.version - 1}` : 'Original';
 
-      // Validate active section
       if (activeSectionId !== '__details__' && activeSectionId !== '__totals__') {
         if (!(q.sections || []).find(s => s.id === activeSectionId)) activeSectionId = '__details__';
       }
@@ -548,6 +589,7 @@ window.BromarPages.quotes = {
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
           <div class="modal-body">
+            <p class="hint">Most quotes start with a Summary / Overview section.</p>
             <div class="section-grid">
               ${Object.entries(SECTION_TYPES).map(([type, meta]) => `
                 <button class="section-pick" data-type="${type}">
@@ -638,6 +680,7 @@ window.BromarPages.quotes = {
     function renderSectionPanel(q, sec) {
       const meta = SECTION_TYPES[sec.type];
       const sectionPresets = Object.entries(presets).filter(([_, p]) => p.type === sec.type);
+      const supportsTokens = TOKEN_SHAPES.includes(meta.shape);
       return `
         <div class="panel-head">
           <div class="panel-head-left">
@@ -665,7 +708,20 @@ window.BromarPages.quotes = {
           </select>
           <button class="btn-secondary preset-btn" id="preset-save">Save as preset</button>
           ${sectionPresets.length ? `<button class="btn-secondary preset-btn" id="preset-delete">Delete preset</button>` : ''}
+          ${supportsTokens ? `
+            <div class="token-picker-wrap">
+              <button class="btn-secondary preset-btn" id="token-picker-btn" title="Insert merge token">${ICON_TOKEN} Insert Token</button>
+              <div class="token-menu" id="token-menu" hidden>
+                ${TOKENS.map(t => `
+                  <button class="token-item" data-token="${escape(t.key)}">
+                    <span class="token-key">{{${escape(t.key)}}}</span>
+                    <span class="token-desc">${escape(t.desc)}</span>
+                  </button>`).join('')}
+              </div>
+            </div>` : ''}
         </div>
+
+        ${supportsTokens ? `<p class="hint">Tokens like <code>{{Contact Name}}</code> auto-fill from quote details. Delete or edit them anytime if not needed.</p>` : ''}
 
         <div class="section-body" id="section-body">
           ${renderSectionBody(sec, q.globalMarkup)}
@@ -678,7 +734,7 @@ window.BromarPages.quotes = {
       const d = sec.data || {};
       switch (meta.shape) {
         case 'text':
-          return `<textarea class="quote-input quote-textarea" id="f-text" rows="8" placeholder="Enter content…">${escape(d.text || '')}</textarea>`;
+          return `<textarea class="quote-input quote-textarea token-target" id="f-text" rows="8" placeholder="Enter content…">${escape(d.text || '')}</textarea>`;
 
         case 'bullets':
           return `
@@ -743,10 +799,10 @@ window.BromarPages.quotes = {
       }
     }
 
-    function bulletRow(text, i) {
+    function bulletRow(text) {
       return `<div class="bullet-row">
         <span class="bullet-dot">•</span>
-        <input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point">
+        <input class="quote-input bullet-input token-target" value="${escape(text)}" placeholder="Bullet point">
         <button class="icon-btn icon-danger bullet-remove">${ICON_TRASH}</button>
       </div>`;
     }
@@ -857,15 +913,14 @@ window.BromarPages.quotes = {
       const refreshFoot = () => {
         const body = document.getElementById('section-body');
         if (!body) return;
-        // Replace any section-foot total inline
         const foot = body.querySelector('.section-foot strong');
         if (foot) foot.textContent = fmt(sectionSellTotal(sec, q.globalMarkup));
         refreshRailAmounts(q);
       };
 
       // Name / toggles
-      get('s-name').addEventListener('input', e => { sec.name = e.target.value; saveQuotes(); refreshRailAmounts(q);
-        // Live-update the rail label
+      get('s-name').addEventListener('input', e => {
+        sec.name = e.target.value; saveQuotes(); refreshRailAmounts(q);
         const railName = document.querySelector(`.rail-item-section[data-sid="${sec.id}"] .rail-name`);
         if (railName) railName.textContent = sec.name;
       });
@@ -898,12 +953,17 @@ window.BromarPages.quotes = {
         delete presets[pid]; savePresets(); renderEditor();
       });
 
+      // Token picker (only shown for text/bullets sections)
+      bindTokenPicker(sec);
+
       // Shape-specific bindings
       const meta = SECTION_TYPES[sec.type];
       const d = sec.data;
 
       if (meta.shape === 'text') {
-        get('f-text').addEventListener('input', e => { d.text = e.target.value; saveQuotes(); });
+        const ta = get('f-text');
+        ta.addEventListener('input', e => { d.text = e.target.value; saveQuotes(); });
+        ta.addEventListener('focus', () => { lastFocusedTextInput = ta; });
       }
 
       if (meta.shape === 'lumpSum') {
@@ -912,14 +972,14 @@ window.BromarPages.quotes = {
       }
 
       if (meta.shape === 'bullets') {
-        const bindBullets = () => document.querySelectorAll('.bullet-row').forEach((row, idx) => {
+        document.querySelectorAll('.bullet-row').forEach((row, idx) => {
           const input = row.querySelector('.bullet-input');
           input.addEventListener('input', () => { d.bullets[idx] = input.value; saveQuotes(); });
+          input.addEventListener('focus', () => { lastFocusedTextInput = input; });
           row.querySelector('.bullet-remove').addEventListener('click', () => {
             d.bullets.splice(idx, 1); if (d.bullets.length === 0) d.bullets.push(''); saveQuotes(); renderEditor();
           });
         });
-        bindBullets();
         get('add-bullet').addEventListener('click', () => { d.bullets.push(''); saveQuotes(); renderEditor(); });
       }
 
@@ -996,6 +1056,65 @@ window.BromarPages.quotes = {
       }
     }
 
+    /* ── TOKEN PICKER ── */
+    function bindTokenPicker(sec) {
+      const btn = document.getElementById('token-picker-btn');
+      const menu = document.getElementById('token-menu');
+      if (!btn || !menu) return;
+
+      // Track focus on token-target inputs so we know where to insert
+      document.querySelectorAll('.token-target').forEach(el => {
+        el.addEventListener('focus', () => { lastFocusedTextInput = el; });
+      });
+      // Default focus = first token-target in panel
+      const firstTarget = document.querySelector('.token-target');
+      if (firstTarget && !lastFocusedTextInput) lastFocusedTextInput = firstTarget;
+
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        menu.hidden = !menu.hidden;
+      });
+      document.addEventListener('click', e => {
+        if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) menu.hidden = true;
+      }, { once: true });
+
+      menu.querySelectorAll('.token-item').forEach(item => {
+        item.addEventListener('click', e => {
+          e.preventDefault();
+          const token = `{{${item.dataset.token}}}`;
+          insertAtCursor(token, sec);
+          menu.hidden = true;
+        });
+      });
+    }
+
+    function insertAtCursor(text, sec) {
+      const meta = SECTION_TYPES[sec.type];
+      let target = lastFocusedTextInput;
+      // Re-resolve target if it has been replaced by a re-render
+      if (!target || !document.body.contains(target)) {
+        target = document.querySelector('.token-target');
+      }
+      if (!target) { toast('Click into a text field first.'); return; }
+      target.focus();
+      const start = target.selectionStart ?? target.value.length;
+      const end = target.selectionEnd ?? target.value.length;
+      const newVal = target.value.slice(0, start) + text + target.value.slice(end);
+      target.value = newVal;
+      const caret = start + text.length;
+      target.setSelectionRange(caret, caret);
+
+      // Persist back to data model
+      if (meta.shape === 'text') {
+        sec.data.text = newVal;
+      } else if (meta.shape === 'bullets') {
+        const rows = Array.from(document.querySelectorAll('.bullet-row .bullet-input'));
+        const idx = rows.indexOf(target);
+        if (idx >= 0) sec.data.bullets[idx] = newVal;
+      }
+      saveQuotes();
+    }
+
     /* ── PREVIEW ── */
     function renderPreview() {
       const q = quotes.find(x => x.id === activeQuoteId);
@@ -1031,7 +1150,7 @@ window.BromarPages.quotes = {
             </div>
           </div>
 
-          ${visibleSections.map(s => renderPreviewSection(s, q.globalMarkup)).join('')}
+          ${visibleSections.map(s => renderPreviewSection(s, q)).join('')}
 
           <div class="preview-section preview-total-section">
             <div class="preview-total" id="preview-total">
@@ -1050,7 +1169,6 @@ window.BromarPages.quotes = {
       document.getElementById('edit-from-preview').addEventListener('click', () => openEditor(q.id));
       document.getElementById('export-from-preview').addEventListener('click', () => exportPDF(q));
 
-      // Wire addon checkboxes (only addons sections are interactive in preview)
       document.querySelectorAll('.preview-addon input').forEach(cb => {
         cb.addEventListener('change', () => {
           const secId = cb.dataset.secId;
@@ -1072,15 +1190,17 @@ window.BromarPages.quotes = {
       });
     }
 
-    function renderPreviewSection(s, globalMarkup) {
+    function renderPreviewSection(s, q) {
       const meta = SECTION_TYPES[s.type], d = s.data || {};
+      const globalMarkup = q.globalMarkup;
       let body = '';
       switch (meta.shape) {
         case 'text':
-          if (!d.text) return ''; body = `<p>${escape(d.text).replace(/\n/g, '<br>')}</p>`; break;
+          if (!d.text) return '';
+          body = `<p>${escape(resolveTokens(d.text, q)).replace(/\n/g, '<br>')}</p>`; break;
         case 'bullets':
           if (!(d.bullets || []).some(b => b.trim())) return '';
-          body = `<ul class="preview-bullets">${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`; break;
+          body = `<ul class="preview-bullets">${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(resolveTokens(b, q))}</li>`).join('')}</ul>`; break;
         case 'lumpSum':
           body = `<div class="preview-line"><span>${escape(d.note || meta.name)}</span><strong>${fmt(d.amount || 0)}</strong></div>`; break;
         case 'items':
@@ -1145,20 +1265,19 @@ window.BromarPages.quotes = {
       const q = quotes.find(x => x.id === id); if (!q) return;
       if (!q.publishedAt) { toast('Publish the quote before emailing.'); return; }
       const defaultSubject = `Quote ${displayNumber(q)} — ${q.jobTitle || 'Bromar'}`;
-      const defaultBody =
-`Hi ${q.client},
+      const defaultBody = resolveTokens(
+`Dear {{Contact Name}},
 
-Please find your quote ${displayNumber(q)} attached.
+Please find your quote {{Quote Number}} attached for the works at {{Site name}}.
 
 Summary:
-- ${q.jobTitle || 'Quoted works'}
-- Total: ${fmt(quoteTotal(q))}
-- Valid until: ${q.expiresAt || 'see quote'}
+- Total: {{Total}}
+- Valid until: {{Expiry}}
 
 Let me know if you have any questions.
 
 Kind regards,
-Bromar`;
+Bromar Electrical Services (AUST)`, q);
 
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
@@ -1227,10 +1346,10 @@ Bromar`;
         const meta = SECTION_TYPES[s.type], d = s.data || {};
         let body = '';
         switch (meta.shape) {
-          case 'text': if (d.text) body = `<p>${escape(d.text).replace(/\n/g, '<br>')}</p>`; break;
+          case 'text': if (d.text) body = `<p>${escape(resolveTokens(d.text, q)).replace(/\n/g, '<br>')}</p>`; break;
           case 'bullets':
             if ((d.bullets || []).some(b => b.trim()))
-              body = `<ul>${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`;
+              body = `<ul>${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(resolveTokens(b, q))}</li>`).join('')}</ul>`;
             break;
           case 'lumpSum':
             body = `<div class="line"><span>${escape(d.note || meta.name)}</span><strong>${fmt(d.amount || 0)}</strong></div>`; break;
@@ -1332,6 +1451,7 @@ ${sectionsHtml}
     const ICON_DOWN  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
     const ICON_USER  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const ICON_TOTALS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4l-7 8v4l-4 2v-6L3 7V3z"/></svg>';
+    const ICON_TOKEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px;margin-right:3px"><path d="M8 3H6a2 2 0 00-2 2v4M16 3h2a2 2 0 012 2v4M4 15v4a2 2 0 002 2h2M20 15v4a2 2 0 01-2 2h-2"/></svg>';
 
     /* ── STYLES ── */
     injectStyles();
@@ -1394,7 +1514,6 @@ ${sectionsHtml}
         .icon-btn.icon-danger:hover { color: var(--error); }
         .icon-btn svg { width: 16px; height: 16px; }
 
-        /* Editor */
         .editor-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
         .editor-titlebar { flex: 1; }
         .editor-titlebar h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
@@ -1403,7 +1522,6 @@ ${sectionsHtml}
         [data-theme="dark"] .pub-tag { background: rgba(22,163,74,0.15); color: #4ade80; }
         .editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
-        /* Builder layout */
         .builder-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
         .builder-rail { padding: 1rem; position: sticky; top: calc(var(--header-height) + 1rem); align-self: start; max-height: calc(100vh - var(--header-height) - 2rem); overflow-y: auto; }
         .builder-main { padding: 1.5rem; min-height: 400px; }
@@ -1413,14 +1531,7 @@ ${sectionsHtml}
         .rail-empty { font-size: 0.8rem; color: var(--text-secondary); padding: 0.5rem; font-style: italic; }
         .rail-row { position: relative; display: flex; align-items: center; gap: 2px; }
         .rail-row:hover .rail-controls { opacity: 1; }
-        .rail-item {
-          flex: 1; display: flex; align-items: center; gap: 0.5rem;
-          padding: 0.55rem 0.7rem; border-radius: var(--radius-sm);
-          border: 1px solid transparent; background: transparent;
-          color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif;
-          font-size: 0.88rem; text-align: left; min-width: 0;
-          transition: all 0.2s ease;
-        }
+        .rail-item { flex: 1; display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.88rem; text-align: left; min-width: 0; transition: all 0.2s ease; }
         .rail-item:hover { background: var(--card-hover); }
         .rail-item.active { background: var(--card-hover); border-color: var(--accent); color: var(--accent); font-weight: 600; }
         .rail-icon { display: flex; flex-shrink: 0; color: var(--text-secondary); }
@@ -1435,7 +1546,6 @@ ${sectionsHtml}
         .rail-mini svg { width: 12px; height: 12px; }
         .add-section-btn { width: 100%; margin-top: 0.5rem; }
 
-        /* Panel */
         .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; flex-wrap: wrap; }
         .panel-head h2 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
         .panel-head-left { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
@@ -1445,27 +1555,42 @@ ${sectionsHtml}
         .toggle-lbl { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; white-space: nowrap; }
         .toggle-lbl input { accent-color: var(--accent); }
 
-        /* Preset bar */
-        .preset-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; padding: 0.5rem 0.75rem; background: var(--card-hover); border-radius: var(--radius-sm); }
+        .preset-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; align-items: center; padding: 0.5rem 0.75rem; background: var(--card-hover); border-radius: var(--radius-sm); position: relative; }
         .preset-select { max-width: 240px; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
         .preset-btn { padding: 0.5rem 0.9rem; font-size: 0.8rem; }
 
-        /* Section body */
+        .token-picker-wrap { position: relative; margin-left: auto; }
+        .token-menu {
+          position: absolute; top: calc(100% + 6px); right: 0;
+          background: var(--bg-secondary); border: 1px solid var(--border);
+          border-radius: var(--radius-sm); box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+          min-width: 280px; z-index: 100; padding: 0.3rem;
+          display: flex; flex-direction: column; gap: 1px;
+        }
+        .token-item {
+          display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+          padding: 0.55rem 0.7rem; border: 1px solid transparent; background: transparent;
+          border-radius: 6px; cursor: pointer; font-family: 'Outfit', sans-serif;
+          color: var(--text-primary); text-align: left; transition: all 0.15s ease;
+        }
+        .token-item:hover { background: var(--card-hover); border-color: var(--border); }
+        .token-key { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+        .token-desc { font-size: 0.75rem; color: var(--text-secondary); }
+
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; }
         .form-row { display: flex; flex-direction: column; gap: 0.35rem; }
         .form-row label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
         .hint { font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin-bottom: 0.5rem; }
+        .hint code { font-family: 'JetBrains Mono', monospace; background: var(--card-hover); padding: 1px 5px; border-radius: 4px; color: var(--accent); font-style: normal; }
         .hint-inline { font-style: italic; color: var(--text-secondary); }
         .section-foot { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); text-align: right; color: var(--text-secondary); font-size: 0.9rem; }
         .section-foot strong { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; margin-left: 0.5rem; }
         .add-btn-sm { font-size: 0.8rem; padding: 0.45rem 0.9rem; margin-top: 0.5rem; }
 
-        /* Bullets */
         .bullets-list { display: flex; flex-direction: column; gap: 0.4rem; }
         .bullet-row { display: grid; grid-template-columns: 16px 1fr 34px; gap: 0.5rem; align-items: center; }
         .bullet-dot { color: var(--accent); font-weight: 700; text-align: center; }
 
-        /* Items table-style */
         .items-head { display: grid; grid-template-columns: 1fr 70px 90px 70px 90px 34px; gap: 0.4rem; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0.4rem 0.4rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
         .items-head.hire-head { grid-template-columns: 1fr 70px 90px 80px 70px 90px 34px; }
         .items-list { display: flex; flex-direction: column; gap: 0.4rem; }
@@ -1478,7 +1603,6 @@ ${sectionsHtml}
         .ad-selected { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
         .photo-row { display: grid; grid-template-columns: 1fr 1fr 34px; gap: 0.5rem; align-items: center; }
 
-        /* Groups */
         .groups-list { display: flex; flex-direction: column; gap: 0.75rem; }
         .group-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-main); padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
         .group-head { display: grid; grid-template-columns: 1fr auto 34px; gap: 0.5rem; align-items: center; }
@@ -1491,7 +1615,6 @@ ${sectionsHtml}
         .group-footer { font-size: 0.8rem; color: var(--text-secondary); padding-top: 0.4rem; border-top: 1px solid var(--border); }
         .group-footer strong { color: var(--accent); font-family: 'JetBrains Mono', monospace; }
 
-        /* Totals panel */
         .total-row { display: flex; justify-content: space-between; padding: 0.55rem 0; font-size: 0.95rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
         .total-row strong { font-family: 'JetBrains Mono', monospace; color: var(--text-primary); }
         .total-grand { border-top: 2px solid var(--accent); border-bottom: none; margin-top: 0.5rem; padding-top: 1rem; font-size: 1.15rem; color: var(--text-primary); font-weight: 700; }
@@ -1501,7 +1624,6 @@ ${sectionsHtml}
         .info-row { display: flex; justify-content: space-between; font-size: 0.9rem; }
         .info-row span { color: var(--text-secondary); }
 
-        /* Modal */
         .quote-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 1rem; animation: fadeIn 0.2s ease; }
         .quote-modal { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px; max-width: 640px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: fadeIn 0.25s ease; max-height: 90vh; overflow-y: auto; }
         .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
@@ -1509,7 +1631,6 @@ ${sectionsHtml}
         .modal-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 0.85rem; }
         .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.5rem; }
 
-        /* Section picker grid */
         .section-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
         .section-pick { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.85rem 1rem; border: 1px solid var(--border); background: var(--bg-main); border-radius: var(--radius-sm); cursor: pointer; transition: all 0.2s ease; font-family: 'Outfit', sans-serif; color: var(--text-primary); text-align: left; }
         .section-pick:hover { border-color: var(--accent); background: var(--card-hover); }
@@ -1517,7 +1638,6 @@ ${sectionsHtml}
         .pick-tag { font-size: 0.65rem; font-weight: 700; padding: 0.15rem 0.45rem; background: var(--card-hover); color: var(--accent); border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; }
         .pick-tag-info { background: rgba(99,99,105,0.15); color: var(--text-secondary); }
 
-        /* Preview */
         .preview-card { padding: 2.5rem; max-width: 900px; margin: 0 auto; }
         .preview-head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 1.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--accent); flex-wrap: wrap; gap: 1rem; }
         .preview-number { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 700; color: var(--accent); }
@@ -1553,7 +1673,6 @@ ${sectionsHtml}
         .preview-total strong { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; color: var(--accent); }
         .preview-approval { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.75rem; }
 
-        /* Toast */
         .quote-toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text-primary); color: var(--bg-main); padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 500; opacity: 0; pointer-events: none; transition: all 0.3s ease; z-index: 300; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
         .quote-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -1571,6 +1690,7 @@ ${sectionsHtml}
           .preview-head { flex-direction: column; }
           .preview-meta-right { text-align: left; }
           .rail-controls { opacity: 1; }
+          .token-menu { left: 0; right: auto; min-width: 240px; }
         }
       `;
       document.head.appendChild(s);
