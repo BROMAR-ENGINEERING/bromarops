@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.09',
+  version: 'V1.10',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -100,6 +100,10 @@ window.BromarPages.admin = {
         <button class="admin-nav-tile" data-section="rdo">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
           <span>RDO Roster</span>
+        </button>
+        <button class="admin-nav-tile" data-section="suppliers">
+          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6v-2zm0 4h2v2H6v-2zm4-4h8v2h-8v-2zm0 4h8v2h-8v-2z"/></svg>
+          <span>Suppliers</span>
         </button>
         <button class="admin-nav-tile" data-section="bugs">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M20 8h-2.81a5.99 5.99 0 00-1.82-2.43l1.63-1.63-1.41-1.41-2.02 2.02a5.97 5.97 0 00-3.14 0L8.41 2.53 7 3.94l1.63 1.63A5.99 5.99 0 006.81 8H4v2h2.09a6.01 6.01 0 000 4H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09a6.01 6.01 0 000-4H20V8zm-8 9a4 4 0 110-8 4 4 0 010 8z"/></svg>
@@ -377,6 +381,133 @@ window.BromarPages.admin = {
         }
         .rdo-people-cell { line-height: 1.8; }
 
+        /* ── Supplier cards ── */
+        .sup-card {
+          background: var(--bg-main); border: 1px solid var(--border);
+          border-radius: var(--radius-sm); padding: 1rem 1.25rem;
+          margin-bottom: 0.6rem; transition: all 0.2s ease;
+        }
+        .sup-card:hover { border-color: var(--accent); box-shadow: 0 2px 8px var(--shadow); }
+        .sup-card-header {
+          display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;
+        }
+        .sup-card-title h3 {
+          font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem;
+        }
+        .sup-card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+        .sup-cat-badge {
+          display: inline-block; padding: 2px 8px; border-radius: 20px;
+          font-size: 0.65rem; font-weight: 700; color: #fff; text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .sup-method-badge {
+          display: inline-block; padding: 2px 8px; border-radius: 20px;
+          font-size: 0.65rem; font-weight: 600; color: var(--text-secondary);
+          background: var(--border);
+        }
+        .sup-po-badge {
+          display: inline-block; padding: 2px 8px; border-radius: 20px;
+          font-size: 0.65rem; font-weight: 600; color: var(--accent);
+          background: rgba(234,88,12,0.1);
+        }
+        .sup-branch-count {
+          font-size: 0.75rem; color: var(--text-secondary); font-weight: 500;
+        }
+        .sup-home-badge {
+          display: inline-block; padding: 1px 6px; border-radius: 10px;
+          font-size: 0.6rem; font-weight: 700; color: var(--accent);
+          background: rgba(234,88,12,0.1); margin-left: 0.4rem;
+          text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .sup-contact-line {
+          font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.4rem;
+        }
+        .sup-rep-line {
+          font-size: 0.82rem; color: var(--text-primary); margin-top: 0.3rem;
+        }
+        .sup-detail-line {
+          font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.25rem;
+        }
+        .sup-notes { font-style: italic; }
+        .sup-card-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
+        .sup-action-btn {
+          width: 32px; height: 32px; border: 1px solid var(--border);
+          background: var(--bg-secondary); border-radius: 8px; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          color: var(--text-secondary); transition: all 0.2s ease;
+        }
+        .sup-action-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--card-hover); }
+        .sup-action-delete:hover { border-color: var(--error); color: var(--error); }
+        .sup-branches {
+          margin-top: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.5rem;
+        }
+        .sup-branch-item {
+          padding: 0.4rem 0; border-bottom: 1px solid var(--border);
+        }
+        .sup-branch-item:last-child { border-bottom: none; }
+        .sup-branch-name {
+          font-size: 0.88rem; font-weight: 600; color: var(--text-primary);
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .sup-branch-actions { display: flex; gap: 0.25rem; }
+        .sup-branch-detail {
+          font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.15rem;
+        }
+        .sup-branch-rep {
+          font-size: 0.78rem; color: var(--text-primary); margin-top: 0.15rem;
+        }
+
+        /* ── Supplier form ── */
+        .sup-form-grid {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+          margin-bottom: 1rem;
+        }
+        .sup-form-section h4 {
+          font-size: 0.85rem; font-weight: 700; color: var(--accent);
+          text-transform: uppercase; letter-spacing: 0.05em;
+          margin-bottom: 0.75rem;
+        }
+        .sup-form-row { margin-bottom: 0.65rem; }
+        .sup-form-row label {
+          display: block; font-size: 0.8rem; font-weight: 600;
+          color: var(--text-secondary); margin-bottom: 0.25rem;
+        }
+        .sup-req { color: var(--error); }
+        .sup-form-row input[type="text"],
+        .sup-form-row input[type="tel"],
+        .sup-form-row input[type="email"],
+        .sup-form-row input[type="url"],
+        .sup-form-row select,
+        .sup-form-row textarea {
+          width: 100%; padding: 0.55rem 0.75rem;
+          border: 1px solid var(--border); border-radius: var(--radius-sm);
+          background: var(--bg-main); color: var(--text-primary);
+          font-family: 'Outfit', sans-serif; font-size: 0.88rem;
+          outline: none; transition: border 0.2s;
+        }
+        .sup-form-row input:focus,
+        .sup-form-row select:focus,
+        .sup-form-row textarea:focus { border-color: var(--accent); }
+        .sup-form-row textarea { resize: vertical; }
+        .sup-form-inline { margin-bottom: 0.5rem; }
+        .sup-checkbox {
+          display: flex; align-items: center; gap: 0.5rem;
+          font-size: 0.88rem; font-weight: 500; color: var(--text-primary); cursor: pointer;
+        }
+        .sup-checkbox input[type="checkbox"] {
+          width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
+        }
+        .sup-form-actions {
+          display: flex; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem;
+          border-top: 1px solid var(--border);
+        }
+
+        @media (max-width: 600px) {
+          .sup-form-grid { grid-template-columns: 1fr; gap: 0.75rem; }
+          .sup-card-header { flex-direction: column; }
+          .sup-card-actions { align-self: flex-end; }
+        }
+
         /* ── Download & Instructions links ── */
         .co-download-link {
           text-decoration: none; display: inline-flex; align-items: center;
@@ -529,6 +660,49 @@ window.BromarPages.admin = {
         if (modal) modal.classList.remove('show');
         return;
       }
+
+      /* Supplier actions */
+      if (e.target.closest('[data-sup-add]')) {
+        this._showSupplierForm(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-sup-edit]')) {
+        const id = e.target.closest('[data-sup-edit]').dataset.supEdit;
+        this._showSupplierForm(container.querySelector('#admin-section-content'), id);
+        return;
+      }
+      if (e.target.closest('[data-sup-delete]')) {
+        const id = e.target.closest('[data-sup-delete]').dataset.supDelete;
+        const name = e.target.closest('[data-sup-delete]').dataset.supName || 'this supplier';
+        if (confirm('Delete ' + name + '? This cannot be undone.')) {
+          this._deleteSupplier(id, container.querySelector('#admin-section-content'));
+        }
+        return;
+      }
+      if (e.target.closest('[data-sup-save]')) {
+        this._saveSupplierForm(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-sup-cancel]')) {
+        this._renderSuppliers(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-sup-back]')) {
+        this._renderSuppliers(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-sup-bulk]')) {
+        this._supShowBulk = !this._supShowBulk;
+        const bulkArea = container.querySelector('#sup-bulk-area');
+        if (bulkArea) bulkArea.style.display = this._supShowBulk ? 'block' : 'none';
+        return;
+      }
+      /* Supplier card expand on mobile */
+      const supCard = e.target.closest('.sup-card');
+      if (supCard && !e.target.closest('button') && !e.target.closest('a')) {
+        supCard.classList.toggle('expanded');
+        return;
+      }
     });
 
     container.addEventListener('change', (e) => {
@@ -540,6 +714,20 @@ window.BromarPages.admin = {
         const file = e.target.files[0];
         if (file) this._handleRdoXlsxUpload(file, container.querySelector('#admin-section-content'));
       }
+      if (e.target.matches('.sup-file-input')) {
+        const file = e.target.files[0];
+        if (file) this._handleSupplierXlsxUpload(file, container.querySelector('#admin-section-content'));
+      }
+      /* Supplier filter/search */
+      if (e.target.matches('#sup-category-filter') || e.target.matches('#sup-search')) {
+        this._renderSupplierList(container.querySelector('#sup-list-area'));
+      }
+    });
+
+    container.addEventListener('input', (e) => {
+      if (e.target.matches('#sup-search')) {
+        this._renderSupplierList(container.querySelector('#sup-list-area'));
+      }
     });
   },
 
@@ -549,6 +737,7 @@ window.BromarPages.admin = {
       callout: this._renderCallout,
       compliance: this._renderCompliance,
       rdo: this._renderRDO,
+      suppliers: this._renderSuppliers,
       bugs: this._renderBugs,
     };
     const renderer = sections[id];
@@ -1255,6 +1444,416 @@ window.BromarPages.admin = {
 
     } catch (err) {
       console.error('RDO upload error:', err);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Upload failed: ' + err.message + '</div>';
+    }
+  },
+
+  /* ════════════════════════════════════════
+     SECTION: Suppliers
+     ════════════════════════════════════════ */
+  _supData: [],
+  _supShowBulk: false,
+  _supCategories: ['Electrical','Hire','Pneumatic','General','Tools','Hardware'],
+  _supOrderMethods: ['Walk-in','Call','Online','Walk-in / Call','Online / Call','Walk-in / Online','Walk-in / Call / Online'],
+
+  async _renderSuppliers(target) {
+    target.innerHTML = `
+      <div class="card admin-section-panel">
+        <div class="admin-section-header">
+          <h2>Suppliers</h2>
+          <div class="co-toolbar">
+            <button class="btn-primary" data-sup-add style="padding:0.6rem 1.2rem;font-size:0.85rem">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Add Supplier
+            </button>
+            <button class="btn-secondary" data-sup-bulk>
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Bulk Import
+            </button>
+          </div>
+        </div>
+        <div id="sup-bulk-area" style="display:none;margin-bottom:1.25rem">
+          <div style="padding:1rem;background:var(--bg-main);border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem">Upload an XLSX to bulk-import suppliers. Existing suppliers (matched by name + branch) will be updated.</p>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <label class="btn-secondary co-upload-btn">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Select File
+                <input type="file" accept=".xlsx,.xls" class="sup-file-input">
+              </label>
+              <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/suppliers/bromar-supplier-directory-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download Template
+              </a>
+            </div>
+            <div id="sup-upload-feedback"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap">
+          <input type="text" id="sup-search" placeholder="Search suppliers…" style="flex:1;min-width:180px;padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;outline:none;transition:border 0.2s">
+          <select id="sup-category-filter" style="padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;cursor:pointer">
+            <option value="">All Categories</option>
+            ${this._supCategories.map(c => '<option value="' + c + '">' + c + '</option>').join('')}
+          </select>
+        </div>
+        <div id="sup-list-area">
+          <div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading suppliers…</p></div>
+        </div>
+      </div>
+    `;
+
+    await this._fetchSuppliers();
+    this._renderSupplierList(target.querySelector('#sup-list-area'));
+  },
+
+  async _fetchSuppliers() {
+    try {
+      const res = await fetch(
+        this._SB_URL + '/rest/v1/suppliers?select=*&order=name.asc,branch.asc',
+        { headers: this._sbHeaders() }
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      this._supData = Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error('Supplier fetch error:', err);
+      this._supData = [];
+    }
+  },
+
+  _renderSupplierList(container) {
+    if (!container) return;
+    const searchEl = document.getElementById('sup-search');
+    const filterEl = document.getElementById('sup-category-filter');
+    const search = (searchEl ? searchEl.value : '').toLowerCase().trim();
+    const catFilter = filterEl ? filterEl.value : '';
+
+    let filtered = this._supData.filter(s => {
+      if (s.is_active === false) return false;
+      if (catFilter && s.category !== catFilter) return false;
+      if (search) {
+        const haystack = [s.name, s.branch, s.category, s.sales_rep_name, s.contact_name, s.notes].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(search);
+      }
+      return true;
+    });
+
+    if (!filtered.length) {
+      container.innerHTML = '<div class="admin-placeholder"><p>' + (this._supData.length ? 'No suppliers match your search.' : 'No suppliers yet. Add one or bulk import from a spreadsheet.') + '</p></div>';
+      return;
+    }
+
+    /* Group by company name */
+    const grouped = {};
+    filtered.forEach(s => {
+      if (!grouped[s.name]) grouped[s.name] = [];
+      grouped[s.name].push(s);
+    });
+
+    const cards = Object.keys(grouped).map(name => {
+      const branches = grouped[name];
+      const first = branches[0];
+      const catColours = { Electrical: '#2563eb', Hire: '#ca8a04', Pneumatic: '#9333ea', General: '#15803d', Tools: '#dc2626', Hardware: '#0891b2' };
+      const catCol = catColours[first.category] || 'var(--text-secondary)';
+
+      const branchCount = branches.length;
+      const hasBranches = branchCount > 1 || (branchCount === 1 && first.branch);
+
+      let branchHtml = '';
+      if (hasBranches) {
+        branchHtml = '<div class="sup-branches">' + branches.map(b => {
+          const home = b.home_branch ? '<span class="sup-home-badge">HOME</span>' : '';
+          const rep = b.sales_rep_name ? '<div class="sup-branch-rep"><strong>Rep:</strong> ' + b.sales_rep_name + (b.sales_rep_phone ? ' — ' + b.sales_rep_phone : '') + '</div>' : '';
+          return '<div class="sup-branch-item">' +
+            '<div class="sup-branch-name">' + (b.branch || 'Main') + home +
+              '<div class="sup-branch-actions">' +
+                '<button class="sup-action-btn" data-sup-edit="' + b.id + '" title="Edit"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                '<button class="sup-action-btn sup-action-delete" data-sup-delete="' + b.id + '" data-sup-name="' + b.name + (b.branch ? ' (' + b.branch + ')' : '') + '" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+              '</div>' +
+            '</div>' +
+            (b.contact_phone ? '<div class="sup-branch-detail">' + b.contact_phone + '</div>' : '') +
+            rep +
+          '</div>';
+        }).join('') + '</div>';
+      }
+
+      const mainActions = !hasBranches ? '<div class="sup-card-actions">' +
+        '<button class="sup-action-btn" data-sup-edit="' + first.id + '" title="Edit"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+        '<button class="sup-action-btn sup-action-delete" data-sup-delete="' + first.id + '" data-sup-name="' + first.name + '" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+      '</div>' : '';
+
+      const repInfo = !hasBranches && first.sales_rep_name ?
+        '<div class="sup-rep-line"><strong>Rep:</strong> ' + first.sales_rep_name + (first.sales_rep_phone ? ' — ' + first.sales_rep_phone : '') + (first.sales_rep_email ? ' — ' + first.sales_rep_email : '') + '</div>' : '';
+
+      const contactLine = !hasBranches ? [first.contact_phone, first.contact_email].filter(Boolean).join(' · ') : '';
+
+      const poLabel = first.requires_po ? '<span class="sup-po-badge">PO Required</span>' : '';
+      const orderLabel = first.order_method ? '<span class="sup-method-badge">' + first.order_method + '</span>' : '';
+
+      return '<div class="sup-card">' +
+        '<div class="sup-card-header">' +
+          '<div class="sup-card-title">' +
+            '<h3>' + name + '</h3>' +
+            '<div class="sup-card-meta">' +
+              '<span class="sup-cat-badge" style="background:' + catCol + '">' + (first.category || 'General') + '</span>' +
+              orderLabel + poLabel +
+              (hasBranches ? '<span class="sup-branch-count">' + branchCount + ' branches</span>' : '') +
+            '</div>' +
+          '</div>' +
+          mainActions +
+        '</div>' +
+        (contactLine ? '<div class="sup-contact-line">' + contactLine + '</div>' : '') +
+        repInfo +
+        (first.account_number && !hasBranches ? '<div class="sup-detail-line"><strong>Account:</strong> ' + first.account_number + '</div>' : '') +
+        (first.notes && !hasBranches ? '<div class="sup-detail-line sup-notes">' + first.notes + '</div>' : '') +
+        branchHtml +
+      '</div>';
+    }).join('');
+
+    container.innerHTML = '<div class="sup-count" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">' + filtered.length + ' supplier' + (filtered.length !== 1 ? 's' : '') + (catFilter ? ' in ' + catFilter : '') + '</div>' + cards;
+  },
+
+  /* ── Supplier Form (Add/Edit) ── */
+  _showSupplierForm(target, editId) {
+    const sup = editId ? this._supData.find(s => s.id === editId) : null;
+    const title = sup ? 'Edit Supplier' : 'Add Supplier';
+
+    const catOptions = this._supCategories.map(c => '<option value="' + c + '"' + (sup && sup.category === c ? ' selected' : '') + '>' + c + '</option>').join('');
+    const methodOptions = this._supOrderMethods.map(m => '<option value="' + m + '"' + (sup && sup.order_method === m ? ' selected' : '') + '>' + m + '</option>').join('');
+
+    const v = (field) => sup ? (sup[field] || '') : '';
+    const checked = (field) => sup && sup[field] ? ' checked' : '';
+
+    target.innerHTML = `
+      <div class="card admin-section-panel">
+        <div class="admin-section-header">
+          <h2>${title}</h2>
+          <button class="btn-secondary" data-sup-back>
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back
+          </button>
+        </div>
+        <div class="sup-form" id="sup-form">
+          <input type="hidden" id="sup-id" value="${editId || ''}">
+          <div class="sup-form-grid">
+            <div class="sup-form-section">
+              <h4>Company Details</h4>
+              <div class="sup-form-row">
+                <label>Company Name <span class="sup-req">*</span></label>
+                <input type="text" id="sup-name" value="${v('name')}" placeholder="e.g. Reece Plumbing">
+              </div>
+              <div class="sup-form-row">
+                <label>Branch</label>
+                <input type="text" id="sup-branch" value="${v('branch')}" placeholder="e.g. Dandenong (leave blank if none)">
+              </div>
+              <div class="sup-form-row sup-form-inline">
+                <label class="sup-checkbox"><input type="checkbox" id="sup-home-branch"${checked('home_branch')}> Home Branch</label>
+              </div>
+              <div class="sup-form-row">
+                <label>Category <span class="sup-req">*</span></label>
+                <select id="sup-category"><option value="">Select…</option>${catOptions}</select>
+              </div>
+              <div class="sup-form-row">
+                <label>Order Method</label>
+                <select id="sup-order-method"><option value="">Select…</option>${methodOptions}</select>
+              </div>
+              <div class="sup-form-row sup-form-inline">
+                <label class="sup-checkbox"><input type="checkbox" id="sup-requires-po"${checked('requires_po')}> Requires Purchase Order</label>
+              </div>
+              <div class="sup-form-row">
+                <label>ABN</label>
+                <input type="text" id="sup-abn" value="${v('abn')}" placeholder="e.g. 18 004 313 133">
+              </div>
+              <div class="sup-form-row">
+                <label>Account Number</label>
+                <input type="text" id="sup-account" value="${v('account_number')}" placeholder="Your account with them">
+              </div>
+            </div>
+            <div class="sup-form-section">
+              <h4>Contact Details</h4>
+              <div class="sup-form-row">
+                <label>Contact Name</label>
+                <input type="text" id="sup-contact-name" value="${v('contact_name')}" placeholder="General contact person">
+              </div>
+              <div class="sup-form-row">
+                <label>Phone</label>
+                <input type="tel" id="sup-phone" value="${v('contact_phone')}" placeholder="e.g. 03 9700 1234">
+              </div>
+              <div class="sup-form-row">
+                <label>Email</label>
+                <input type="email" id="sup-email" value="${v('contact_email')}" placeholder="e.g. info@supplier.com.au">
+              </div>
+              <div class="sup-form-row">
+                <label>Website</label>
+                <input type="url" id="sup-website" value="${v('website')}" placeholder="e.g. www.supplier.com.au">
+              </div>
+              <div class="sup-form-row">
+                <label>Address</label>
+                <input type="text" id="sup-address" value="${v('address')}" placeholder="Street address">
+              </div>
+              <h4 style="margin-top:1.25rem">Sales Rep</h4>
+              <div class="sup-form-row">
+                <label>Rep Name</label>
+                <input type="text" id="sup-rep-name" value="${v('sales_rep_name')}" placeholder="Your dedicated rep">
+              </div>
+              <div class="sup-form-row">
+                <label>Rep Phone</label>
+                <input type="tel" id="sup-rep-phone" value="${v('sales_rep_phone')}" placeholder="e.g. 0412 345 678">
+              </div>
+              <div class="sup-form-row">
+                <label>Rep Email</label>
+                <input type="email" id="sup-rep-email" value="${v('sales_rep_email')}" placeholder="e.g. john@supplier.com.au">
+              </div>
+            </div>
+          </div>
+          <div class="sup-form-row">
+            <label>Notes</label>
+            <textarea id="sup-notes" rows="3" placeholder="Delivery info, special rates, etc.">${v('notes')}</textarea>
+          </div>
+          <div class="sup-form-actions">
+            <button class="btn-primary" data-sup-save style="padding:0.7rem 1.5rem">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>${sup ? 'Update Supplier' : 'Save Supplier'}
+            </button>
+            <button class="btn-secondary" data-sup-cancel>Cancel</button>
+          </div>
+          <div id="sup-form-feedback"></div>
+        </div>
+      </div>
+    `;
+  },
+
+  async _saveSupplierForm(sectionTarget) {
+    const id = document.getElementById('sup-id').value;
+    const name = (document.getElementById('sup-name').value || '').trim();
+    const category = document.getElementById('sup-category').value;
+    const feedback = document.getElementById('sup-form-feedback');
+
+    if (!name) { if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Company name is required.</div>'; return; }
+    if (!category) { if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Category is required.</div>'; return; }
+
+    const payload = {
+      name: name,
+      branch: (document.getElementById('sup-branch').value || '').trim() || null,
+      home_branch: document.getElementById('sup-home-branch').checked,
+      category: category,
+      order_method: document.getElementById('sup-order-method').value || null,
+      requires_po: document.getElementById('sup-requires-po').checked,
+      abn: (document.getElementById('sup-abn').value || '').trim() || null,
+      account_number: (document.getElementById('sup-account').value || '').trim() || null,
+      contact_name: (document.getElementById('sup-contact-name').value || '').trim() || null,
+      contact_phone: (document.getElementById('sup-phone').value || '').trim() || null,
+      contact_email: (document.getElementById('sup-email').value || '').trim() || null,
+      website: (document.getElementById('sup-website').value || '').trim() || null,
+      address: (document.getElementById('sup-address').value || '').trim() || null,
+      sales_rep_name: (document.getElementById('sup-rep-name').value || '').trim() || null,
+      sales_rep_phone: (document.getElementById('sup-rep-phone').value || '').trim() || null,
+      sales_rep_email: (document.getElementById('sup-rep-email').value || '').trim() || null,
+      notes: (document.getElementById('sup-notes').value || '').trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      let res;
+      if (id) {
+        res = await fetch(this._SB_URL + '/rest/v1/suppliers?id=eq.' + id, {
+          method: 'PATCH', headers: this._sbHeaders(), body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch(this._SB_URL + '/rest/v1/suppliers', {
+          method: 'POST', headers: this._sbHeaders(), body: JSON.stringify(payload)
+        });
+      }
+      if (!res.ok) throw new Error(await res.text());
+
+      await this._fetchSuppliers();
+      this._renderSuppliers(sectionTarget);
+    } catch (err) {
+      console.error('Supplier save error:', err);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Save failed: ' + err.message + '</div>';
+    }
+  },
+
+  async _deleteSupplier(id, sectionTarget) {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/suppliers?id=eq.' + id, {
+        method: 'DELETE', headers: this._sbHeaders()
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await this._fetchSuppliers();
+      this._renderSuppliers(sectionTarget);
+    } catch (err) {
+      console.error('Supplier delete error:', err);
+      alert('Delete failed: ' + err.message);
+    }
+  },
+
+  /* ── Supplier XLSX Upload (bulk import) ── */
+  async _handleSupplierXlsxUpload(file, sectionTarget) {
+    const feedback = sectionTarget.querySelector('#sup-upload-feedback');
+    if (feedback) feedback.innerHTML = '<div class="co-upload-result" style="background:var(--card-hover);color:var(--text-primary)"><div class="co-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:-3px;margin-right:8px;display:inline-block"></div>Processing…</div>';
+
+    try {
+      const ab = await file.arrayBuffer();
+      const XLSX = await this._loadSheetJS();
+      const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        const row = (raw[i] || []).map(c => String(c || '').trim().toLowerCase());
+        if (row.includes('name')) { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) throw new Error('Could not find header row with "Name"');
+
+      const headers = raw[headerIdx].map(c => String(c || '').trim().toLowerCase());
+      const col = (name) => headers.indexOf(name);
+
+      const rows = [];
+      for (let i = headerIdx + 1; i < raw.length; i++) {
+        const r = raw[i];
+        if (!r || !r[col('name')]) continue;
+        const name = String(r[col('name')]).trim();
+        if (!name || name.toLowerCase().startsWith('instruction')) break;
+
+        const yesNo = (v) => { const s = String(v || '').trim().toLowerCase(); return s === 'yes' || s === 'true'; };
+
+        rows.push({
+          name: name,
+          branch: col('branch') >= 0 ? (String(r[col('branch')] || '').trim() || null) : null,
+          home_branch: col('home branch') >= 0 ? yesNo(r[col('home branch')]) : false,
+          category: col('category') >= 0 ? (String(r[col('category')] || '').trim() || null) : null,
+          order_method: col('order method') >= 0 ? (String(r[col('order method')] || '').trim() || null) : null,
+          requires_po: col('requires po') >= 0 ? yesNo(r[col('requires po')]) : false,
+          abn: col('abn') >= 0 ? (String(r[col('abn')] || '').trim() || null) : null,
+          contact_name: col('contact name') >= 0 ? (String(r[col('contact name')] || '').trim() || null) : null,
+          contact_email: col('contact email') >= 0 ? (String(r[col('contact email')] || '').trim() || null) : null,
+          contact_phone: col('contact phone') >= 0 ? (String(r[col('contact phone')] || '').trim() || null) : null,
+          website: col('website') >= 0 ? (String(r[col('website')] || '').trim() || null) : null,
+          address: col('address') >= 0 ? (String(r[col('address')] || '').trim() || null) : null,
+          account_number: col('account number') >= 0 ? (String(r[col('account number')] || '').trim() || null) : null,
+          sales_rep_name: col('sales rep name') >= 0 ? (String(r[col('sales rep name')] || '').trim() || null) : null,
+          sales_rep_phone: col('sales rep phone') >= 0 ? (String(r[col('sales rep phone')] || '').trim() || null) : null,
+          sales_rep_email: col('sales rep email') >= 0 ? (String(r[col('sales rep email')] || '').trim() || null) : null,
+          notes: col('notes') >= 0 ? (String(r[col('notes')] || '').trim() || null) : null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      if (!rows.length) throw new Error('No valid supplier entries found');
+
+      /* Upsert: use POST with on_conflict */
+      const upsertHeaders = { ...this._sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' };
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        const res = await fetch(this._SB_URL + '/rest/v1/suppliers', {
+          method: 'POST', headers: upsertHeaders, body: JSON.stringify(batch)
+        });
+        if (!res.ok) throw new Error(await res.text());
+      }
+
+      await this._fetchSuppliers();
+      this._renderSuppliers(sectionTarget);
+      const fb = sectionTarget.querySelector('#sup-upload-feedback');
+      if (fb) fb.innerHTML = '<div class="co-upload-result success">Imported ' + rows.length + ' suppliers.</div>';
+
+    } catch (err) {
+      console.error('Supplier upload error:', err);
       if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Upload failed: ' + err.message + '</div>';
     }
   },
