@@ -1,14 +1,14 @@
 /* ============================================================
-   BROMAR OPS — QUOTES PAGE
-   Quote builder with fixed document header (Bromar branding +
-   site details) and dynamic section list tailored for electrical
-   quoting workflows. Auto-saves, In Progress status, favourites.
+   BROMAR OPS — QUOTES PAGE V4.00
+   Modern document layout, Quote/Estimate toggle, Prepared by,
+   PDF-friendly print styles with footer, version control via
+   New Revision spawning incremental Rx versions.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V3.00',
+  version: 'V4.00',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -20,7 +20,6 @@ window.BromarPages.quotes = {
     const QUOTE_PREFIX = 'BQ';
     const QUOTE_PAD = 6;
 
-    // Bromar company details — hardcoded in document header
     const COMPANY = {
       name: 'Bromar Electrical Services Pty Ltd',
       addressLine1: '2/98-108 Western Ave',
@@ -35,11 +34,9 @@ window.BromarPages.quotes = {
       logoDark:  'assets/Bromar-Primary-Logo-Reverse-White.png'
     };
 
-    /* ── SECTION REGISTRY ──
-       priced:  contributes to grand total
-       client:  shown to client by default
-       shape:   data structure type
-    */
+    // TODO: replace with Employees page integration when ops_access column lands
+    const PREPARED_BY_OPTIONS = ['John Henshall', 'Tim Purdy', 'Tom Elpis', 'Ashley Shirreff'];
+
     const SECTION_TYPES = {
       introduction:   { name: 'Introduction',                priced: false, shape: 'text' },
       references:     { name: 'Quote References',            priced: false, shape: 'bullets' },
@@ -67,14 +64,21 @@ window.BromarPages.quotes = {
     let activeQuoteId = null;
     let activeSectionId = '__details__';
     let filterStatus = 'all';
+    let filterDocType = 'all';
     let searchTerm = '';
     let saveTimer = null;
 
     /* ── PERSISTENCE ── */
     function loadQuotes() {
-      try { const d = JSON.parse(localStorage.getItem(STORAGE_KEY)); if (Array.isArray(d)) return d; }
+      try { const d = JSON.parse(localStorage.getItem(STORAGE_KEY)); if (Array.isArray(d)) return d.map(migrate); }
       catch (_) {}
       return seedQuotes();
+    }
+    function migrate(q) {
+      if (!q.docType) q.docType = 'quote';
+      if (!q.preparedBy) q.preparedBy = '';
+      if (q.expiresAt !== undefined) delete q.expiresAt;
+      return q;
     }
     function saveQuotes() { localStorage.setItem(STORAGE_KEY, JSON.stringify(quotes)); flashSaved(); }
     function flashSaved() {
@@ -92,22 +96,18 @@ window.BromarPages.quotes = {
       return seedFavourites();
     }
     function saveFavourites() { localStorage.setItem(FAVS_KEY, JSON.stringify(favourites)); }
-
     function seedFavourites() {
       return {
         'fav_intro_default': {
-          name: 'Default Welcome',
-          type: 'introduction',
-          data: { text: `Dear Contact,\n\n${COMPANY.name.replace(' Pty Ltd', ' (AUST)')} is pleased to provide the following quotation for the works at the above site.\n\nWe trust this quotation meets your requirements and look forward to the opportunity to work with you on this project.` }
+          name: 'Default Welcome', type: 'introduction',
+          data: { text: 'Dear Contact,\n\nBromar Electrical Services (AUST) is pleased to provide the following for your project.\n\nWe trust this meets your requirements and look forward to working with you.' }
         },
         'fav_refs_standard': {
-          name: 'Standard Documents',
-          type: 'references',
+          name: 'Standard Documents', type: 'references',
           data: { bullets: ['Site walk-through and observations', 'Drawings provided by client', 'Email correspondence', 'AS/NZS 3000:2018 Wiring Rules'] }
         },
         'fav_excl_standard': {
-          name: 'Standard Exclusions',
-          type: 'exclusions',
+          name: 'Standard Exclusions', type: 'exclusions',
           data: { bullets: [
             'Any works not specifically listed in the scope',
             'After-hours work unless agreed in writing',
@@ -118,20 +118,19 @@ window.BromarPages.quotes = {
         }
       };
     }
-
     function seedQuotes() {
       const today = new Date();
       const offset = (d) => { const x = new Date(today); x.setDate(x.getDate() + d); return x.toISOString().split('T')[0]; };
       return [
         {
-          id: 'q1', rootNumber: 'BQ000001', version: 1,
+          id: 'q1', docType: 'quote', rootNumber: 'BQ000001', version: 1,
           siteName: 'North Building Switchboard Upgrade',
           client: 'Acme Mining Co.', clientEmail: 'ops@acmemining.com',
           siteContactName: 'Jenny Park', siteContactPhone: '0412 345 678', siteContactEmail: 'jenny@acmemining.com',
           siteAddress: '14 Industrial Pde, Dandenong VIC 3175',
-          status: 'accepted', createdAt: offset(-12), expiresAt: offset(18), publishedAt: offset(-10),
-          globalMarkup: 25, internalNotes: '',
-          sections: [
+          preparedBy: 'Tom Elpis',
+          status: 'accepted', createdAt: offset(-12), publishedAt: offset(-10),
+          globalMarkup: 25, sections: [
             { id: sid(), type: 'introduction', name: 'Introduction', show: true, internal: false,
               data: { text: 'Dear Jenny,\n\nBromar Electrical Services (AUST) is pleased to provide the following quotation for the switchboard upgrade works at your site.' } },
             { id: sid(), type: 'scopeOfWorks', name: 'Scope of Works', show: true, internal: false,
@@ -154,11 +153,13 @@ window.BromarPages.quotes = {
           ]
         },
         {
-          id: 'q2', rootNumber: 'BQ000002', version: 1,
-          siteName: '', client: 'Riverside Developments', clientEmail: '',
+          id: 'q2', docType: 'estimate', rootNumber: 'BQ000002', version: 1,
+          siteName: 'Reception Lighting Refresh',
+          client: 'Riverside Developments', clientEmail: '',
           siteContactName: '', siteContactPhone: '', siteContactEmail: '', siteAddress: '',
-          status: 'draft', createdAt: offset(-2), expiresAt: offset(28), publishedAt: null,
-          globalMarkup: 25, internalNotes: '', sections: []
+          preparedBy: 'Ashley Shirreff',
+          status: 'draft', createdAt: offset(-2), publishedAt: null,
+          globalMarkup: 25, sections: []
         }
       ];
     }
@@ -174,92 +175,82 @@ window.BromarPages.quotes = {
       return QUOTE_PREFIX + String(next).padStart(QUOTE_PAD, '0');
     }
     function displayNumber(q) { return q.version > 1 ? `${q.rootNumber}-R${q.version - 1}` : q.rootNumber; }
+    function docLabel(q) { return q.docType === 'estimate' ? 'Estimate' : 'Quote'; }
     function fmt(n) { return '$' + (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function escape(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
     function todayISO() { return new Date().toISOString().split('T')[0]; }
-    function defaultExpiry() { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; }
+    function formatDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso); if (isNaN(d)) return iso;
+      return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
 
     function isInProgress(q) { return q.status === 'draft' && (q.sections || []).length > 0; }
     function effectiveStatus(q) {
       if (q.status === 'accepted' || q.status === 'converted') return 'accepted';
       if (q.status === 'rejected') return 'rejected';
       if (q.status === 'draft' || q.status === 'allocated') return 'inProgress';
-      if (q.expiresAt && q.expiresAt < todayISO() && q.status === 'sent') return 'overdue';
       return 'pending';
     }
     function statusLabel(qOrStatus) {
       if (typeof qOrStatus === 'string') {
-        return ({ draft: 'Draft', allocated: 'Allocated', sent: 'Sent for Approval',
-                  accepted: 'Accepted', rejected: 'Rejected', converted: 'Converted to Job' })[qOrStatus] || qOrStatus;
+        return ({ draft: 'Draft', allocated: 'Allocated', sent: 'Sent', accepted: 'Accepted', rejected: 'Rejected', converted: 'Converted to Job' })[qOrStatus] || qOrStatus;
       }
       if (isInProgress(qOrStatus)) return 'In Progress';
       return statusLabel(qOrStatus.status);
     }
     function statusColor(eff) {
-      return ({ accepted: 'green', pending: 'amber', overdue: 'red', inProgress: 'red', rejected: 'red' })[eff] || 'amber';
+      return ({ accepted: 'green', pending: 'amber', inProgress: 'red', rejected: 'red' })[eff] || 'amber';
     }
 
     /* ── SECTION DEFAULTS ── */
     function newSection(type) {
       const meta = SECTION_TYPES[type];
-      let name = meta.name;
       return {
-        id: sid(), type, name,
+        id: sid(), type, name: meta.name,
         show: !meta.internalOnly,
         internal: !!meta.internalOnly,
-        data: defaultData(type, meta.shape)
+        data: defaultData(meta.shape)
       };
     }
-    function defaultData(type, shape) {
+    function defaultData(shape) {
       switch (shape) {
         case 'text':      return { text: '' };
         case 'bullets':   return { bullets: [''] };
-        case 'scopes':    return { intro: 'Bromar have allowed for the following:',
-                                  scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
+        case 'scopes':    return { intro: 'Bromar have allowed for the following:', scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
         case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true };
         case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }] };
         default:          return {};
       }
     }
-
-    // Auto-number options on rename or addition
     function renumberOptions(q) {
       let m = 0, l = 0;
       (q.sections || []).forEach(s => {
         if (s.type === 'optionMaterials') {
           m++;
-          // Update name only if user hasn't customised away from auto pattern
-          if (/^Option \d+ — Materials$/.test(s.name) || s.name === 'Option — Materials') {
-            s.name = `Option ${m} — Materials`;
-          }
+          if (/^Option \d+ — Materials$/.test(s.name) || s.name === 'Option — Materials') s.name = `Option ${m} — Materials`;
         } else if (s.type === 'optionLabour') {
           l++;
-          if (/^Option \d+ — Labour$/.test(s.name) || s.name === 'Option — Labour') {
-            s.name = `Option ${l} — Labour`;
-          }
+          if (/^Option \d+ — Labour$/.test(s.name) || s.name === 'Option — Labour') s.name = `Option ${l} — Labour`;
         }
       });
     }
     function renumberScopes(sec) {
       if (sec.type !== 'scopeOfWorks') return;
       (sec.data.scopes || []).forEach((sc, i) => {
-        if (/^Scope \d+(\s—\s.*)?$/.test(sc.heading) || !sc.heading.trim()) {
-          // Only auto-rename if heading was untouched or empty
-          const match = sc.heading.match(/^Scope \d+(\s—\s.+)$/);
-          sc.heading = match ? `Scope ${i + 1}${match[1]}` : `Scope ${i + 1}`;
-        }
+        const match = sc.heading.match(/^Scope \d+(\s—\s.+)?$/);
+        if (match || !sc.heading.trim()) sc.heading = match && match[1] ? `Scope ${i + 1}${match[1]}` : `Scope ${i + 1}`;
       });
     }
 
     /* ── PRICING ── */
-    function materialItemTotal(it, globalMarkup) {
+    function materialItemTotal(it, gm) {
       const cost = (it.qty || 0) * (it.price || 0);
-      const m = (it.markup === null || it.markup === undefined || it.markup === '') ? Number(globalMarkup || 0) : Number(it.markup);
+      const m = (it.markup === null || it.markup === undefined || it.markup === '') ? Number(gm || 0) : Number(it.markup);
       return cost * (1 + m / 100);
     }
     function labourItemTotal(it) { return (it.qty || 0) * (it.rate || 0); }
-
     function sectionSellTotal(sec, q) {
       const d = sec.data || {};
       switch (SECTION_TYPES[sec.type].shape) {
@@ -278,34 +269,28 @@ window.BromarPages.quotes = {
         default: return 0;
       }
     }
-
     function quoteBaseTotal(q) {
-      // Base = priced sections that aren't options or internal
       return (q.sections || []).reduce((s, sec) => {
-        const meta = SECTION_TYPES[sec.type];
-        if (!meta.priced || meta.isOption || sec.internal) return s;
+        const m = SECTION_TYPES[sec.type];
+        if (!m.priced || m.isOption || sec.internal) return s;
         return s + sectionSellTotal(sec, q);
       }, 0);
     }
     function quoteOptionsTotal(q, includeAll = false) {
-      // For internal totals view: all options included.
-      // For client preview: only options where sec.optionSelected = true
       return (q.sections || []).reduce((s, sec) => {
-        const meta = SECTION_TYPES[sec.type];
-        if (!meta.priced || !meta.isOption || sec.internal) return s;
+        const m = SECTION_TYPES[sec.type];
+        if (!m.priced || !m.isOption || sec.internal) return s;
         if (!includeAll && !sec.optionSelected) return s;
         return s + sectionSellTotal(sec, q);
       }, 0);
     }
     function quoteTotal(q, opts = {}) {
-      // opts.clientView: only selected options count
-      const optsTotal = quoteOptionsTotal(q, !opts.clientView);
-      return quoteBaseTotal(q) + optsTotal;
+      return quoteBaseTotal(q) + quoteOptionsTotal(q, !opts.clientView);
     }
     function quoteCost(q) {
       return (q.sections || []).reduce((s, sec) => {
-        const meta = SECTION_TYPES[sec.type];
-        if (!meta.priced || sec.internal) return s;
+        const m = SECTION_TYPES[sec.type];
+        if (!m.priced || sec.internal) return s;
         return s + sectionCostTotal(sec);
       }, 0);
     }
@@ -319,20 +304,20 @@ window.BromarPages.quotes = {
 
     /* ── DASHBOARD ── */
     function renderDashboard() {
-      const counts = { accepted: 0, pending: 0, overdue: 0, inProgress: 0, rejected: 0 };
+      const counts = { accepted: 0, pending: 0, inProgress: 0, rejected: 0 };
       quotes.forEach(q => { counts[effectiveStatus(q)]++; });
       const filtered = filterQuotes();
 
       container.innerHTML = `
         <div class="page-title-wrapper">
-          <h1>Quotes</h1>
+          <h1>Quotes &amp; Estimates</h1>
           <p class="subtitle">Quote tracking dashboard and traffic-light overview</p>
         </div>
         <div class="quote-stats">
           ${statCard('accepted', 'Accepted', counts.accepted, 'green')}
           ${statCard('pending', 'Pending', counts.pending, 'amber')}
           ${statCard('inProgress', 'In Progress', counts.inProgress, 'red')}
-          ${statCard('overdue', 'Overdue', counts.overdue, 'red')}
+          ${statCard('all', 'All Documents', quotes.length, 'neutral')}
         </div>
         <div class="card">
           <div class="quote-toolbar">
@@ -340,31 +325,41 @@ window.BromarPages.quotes = {
               <input type="text" id="quote-search" class="quote-input" placeholder="Search by number, client, or site…" value="${escape(searchTerm)}">
             </div>
             <div class="filter-pills">
-              ${pill('all','All')} ${pill('accepted','Accepted','green')} ${pill('pending','Pending','amber')} ${pill('inProgress','In Progress','red')} ${pill('overdue','Overdue','red')}
+              ${pill('all','All Statuses')} ${pill('accepted','Accepted','green')} ${pill('pending','Pending','amber')} ${pill('inProgress','In Progress','red')}
             </div>
-            <button class="btn-primary" id="new-quote-btn">+ New Quote</button>
+            <div class="filter-pills doc-filter">
+              ${docPill('all','All')} ${docPill('quote','Quotes')} ${docPill('estimate','Estimates')}
+            </div>
+            <div class="new-buttons">
+              <button class="btn-secondary" id="new-estimate-btn">+ Estimate</button>
+              <button class="btn-primary" id="new-quote-btn">+ Quote</button>
+            </div>
           </div>
           <div class="quote-list">
-            ${filtered.length === 0 ? '<div class="empty-state">No quotes match your filters.</div>' : filtered.map(quoteRow).join('')}
+            ${filtered.length === 0 ? '<div class="empty-state">No documents match your filters.</div>' : filtered.map(quoteRow).join('')}
           </div>
         </div>
       `;
-      document.getElementById('new-quote-btn').addEventListener('click', openNewQuoteDialog);
+
+      document.getElementById('new-quote-btn').addEventListener('click', () => openNewQuoteDialog('quote'));
+      document.getElementById('new-estimate-btn').addEventListener('click', () => openNewQuoteDialog('estimate'));
       document.getElementById('quote-search').addEventListener('input', e => { searchTerm = e.target.value; rerenderListOnly(); });
       document.querySelectorAll('.stat-card').forEach(el => el.addEventListener('click', () => { filterStatus = el.dataset.status; rerender(); }));
-      document.querySelectorAll('.filter-pill').forEach(el => el.addEventListener('click', () => { filterStatus = el.dataset.status; rerender(); }));
+      document.querySelectorAll('[data-pill-status]').forEach(el => el.addEventListener('click', () => { filterStatus = el.dataset.pillStatus; rerender(); }));
+      document.querySelectorAll('[data-pill-doc]').forEach(el => el.addEventListener('click', () => { filterDocType = el.dataset.pillDoc; rerender(); }));
       bindRowActions();
     }
     function filterQuotes() {
       return quotes.filter(q => {
         const eff = effectiveStatus(q);
         const matchesStatus = filterStatus === 'all' || eff === filterStatus;
+        const matchesDoc = filterDocType === 'all' || q.docType === filterDocType;
         const term = searchTerm.toLowerCase();
         const matchesSearch = !term ||
           displayNumber(q).toLowerCase().includes(term) ||
           q.client.toLowerCase().includes(term) ||
           (q.siteName || '').toLowerCase().includes(term);
-        return matchesStatus && matchesSearch;
+        return matchesStatus && matchesDoc && matchesSearch;
       }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     }
     function bindRowActions() {
@@ -375,6 +370,7 @@ window.BromarPages.quotes = {
           if (action === 'edit') openEditor(id);
           else if (action === 'preview') openPreview(id);
           else if (action === 'newVersion') newVersion(id);
+          else if (action === 'convertEstimate') convertEstimateToQuote(id);
           else if (action === 'convert') convertToJob(id);
           else if (action === 'delete') deleteQuote(id);
           else if (action === 'email') openEmailDialog(id);
@@ -382,33 +378,40 @@ window.BromarPages.quotes = {
       });
       document.querySelectorAll('.quote-row').forEach(el => el.addEventListener('click', () => openEditor(el.dataset.id)));
     }
-    function statCard(status, label, count, color) {
-      return `<div class="stat-card ${filterStatus === status ? 'active' : ''}" data-status="${status}">
+    function statCard(s, label, count, color) {
+      return `<div class="stat-card ${filterStatus === s ? 'active' : ''}" data-status="${s}">
         <div class="stat-dot stat-${color}"></div>
         <div class="stat-meta"><div class="stat-count">${count}</div><div class="stat-label">${label}</div></div>
       </div>`;
     }
-    function pill(status, label, color = 'neutral') {
-      return `<button class="filter-pill ${filterStatus === status ? 'active' : ''}" data-status="${status}">
+    function pill(s, label, color = 'neutral') {
+      return `<button class="filter-pill ${filterStatus === s ? 'active' : ''}" data-pill-status="${s}">
         <span class="pill-dot pill-${color}"></span>${label}</button>`;
+    }
+    function docPill(s, label) {
+      return `<button class="filter-pill ${filterDocType === s ? 'active' : ''}" data-pill-doc="${s}">${label}</button>`;
     }
     function quoteRow(q) {
       const eff = effectiveStatus(q), color = statusColor(eff);
       const isPublished = !!q.publishedAt;
-      const expiresLabel = q.expiresAt ? (eff === 'overdue' ? `Expired ${q.expiresAt}` : `Expires ${q.expiresAt}`) : '—';
+      const isEstimate = q.docType === 'estimate';
+      const convertedBadge = q.convertedToQuoteId ? `<span class="row-badge badge-convert">→ ${escape(q.convertedToQuoteNumber)}</span>` : '';
       return `
         <div class="quote-row" data-id="${q.id}">
           <div class="row-status stat-${color}"></div>
           <div class="row-main">
             <div class="row-top">
               <span class="row-number">${escape(displayNumber(q))}</span>
+              ${isEstimate ? '<span class="row-badge badge-est">Estimate</span>' : ''}
               <span class="row-badge badge-${color}">${statusLabel(q)}</span>
+              ${convertedBadge}
             </div>
             <div class="row-title">${escape(q.siteName || q.client || 'Untitled')}</div>
             <div class="row-meta">
               <span>${escape(q.client)}</span><span>•</span>
               <span>${(q.sections || []).length} section${(q.sections || []).length === 1 ? '' : 's'}</span><span>•</span>
-              <span class="${eff === 'overdue' ? 'meta-red' : ''}">${expiresLabel}</span>
+              <span>${escape(q.preparedBy || 'Unassigned')}</span><span>•</span>
+              <span>${formatDate(q.publishedAt || q.createdAt)}</span>
             </div>
           </div>
           <div class="row-total">${fmt(quoteTotal(q))}</div>
@@ -416,8 +419,8 @@ window.BromarPages.quotes = {
             <button class="icon-btn" data-action="preview" data-id="${q.id}" title="Preview">${ICON_EYE}</button>
             <button class="icon-btn" data-action="edit" data-id="${q.id}" title="Edit">${ICON_EDIT}</button>
             ${isPublished ? `<button class="icon-btn" data-action="email" data-id="${q.id}" title="Email">${ICON_MAIL}</button>` : ''}
-            <button class="icon-btn" data-action="newVersion" data-id="${q.id}" title="New revision">${ICON_COPY}</button>
-            ${q.status === 'accepted' && isPublished ? `<button class="icon-btn" data-action="convert" data-id="${q.id}" title="Convert to job">${ICON_CHECK}</button>` : ''}
+            ${isEstimate ? `<button class="icon-btn" data-action="convertEstimate" data-id="${q.id}" title="Convert to Quote">${ICON_CONVERT}</button>` : `<button class="icon-btn" data-action="newVersion" data-id="${q.id}" title="New revision">${ICON_COPY}</button>`}
+            ${q.status === 'accepted' && isPublished && q.docType === 'quote' ? `<button class="icon-btn" data-action="convert" data-id="${q.id}" title="Convert to job">${ICON_CHECK}</button>` : ''}
             <button class="icon-btn icon-danger" data-action="delete" data-id="${q.id}" title="Delete">${ICON_TRASH}</button>
           </div>
         </div>`;
@@ -425,27 +428,33 @@ window.BromarPages.quotes = {
     function rerenderListOnly() {
       const list = document.querySelector('.quote-list'); if (!list) return;
       const filtered = filterQuotes();
-      list.innerHTML = filtered.length === 0 ? '<div class="empty-state">No quotes match your filters.</div>' : filtered.map(quoteRow).join('');
+      list.innerHTML = filtered.length === 0 ? '<div class="empty-state">No documents match your filters.</div>' : filtered.map(quoteRow).join('');
       bindRowActions();
     }
 
-    /* ── NEW QUOTE DIALOG ── */
-    function openNewQuoteDialog() {
+    /* ── NEW DIALOG ── */
+    function openNewQuoteDialog(docType) {
       const number = nextRootNumber();
+      const label = docType === 'estimate' ? 'Estimate' : 'Quote';
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
       dialog.innerHTML = `
         <div class="quote-modal">
-          <div class="modal-header"><h2>New Quote</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-header"><h2>New ${label}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
           <div class="modal-body">
-            <div class="form-row"><label>Quote Number</label><input type="text" id="nq-number" class="quote-input" value="${number}" readonly></div>
+            <div class="form-row"><label>${label} Number</label><input type="text" id="nq-number" class="quote-input" value="${number}" readonly></div>
             <div class="form-row"><label>Client / Account</label><input type="text" id="nq-client" class="quote-input" placeholder="Client name"></div>
             <div class="form-row"><label>Site Name / Nickname</label><input type="text" id="nq-sitename" class="quote-input" placeholder="e.g. Building A Switchboard Upgrade"></div>
-            <div class="form-row"><label>Expires</label><input type="date" id="nq-expires" class="quote-input" value="${defaultExpiry()}"></div>
+            <div class="form-row"><label>Prepared By</label>
+              <select id="nq-prepby" class="quote-input">
+                <option value="">— Select —</option>
+                ${PREPARED_BY_OPTIONS.map(n => `<option value="${escape(n)}">${escape(n)}</option>`).join('')}
+              </select>
+            </div>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" id="nq-allocate">Allocate Number Only</button>
-            <button class="btn-primary" id="nq-build">Build Quote Now</button>
+            <button class="btn-primary" id="nq-build">Build ${label} Now</button>
           </div>
         </div>`;
       document.body.appendChild(dialog);
@@ -454,21 +463,20 @@ window.BromarPages.quotes = {
       document.getElementById('modal-close').addEventListener('click', close);
 
       const collect = () => ({
-        id: uid(), rootNumber: number, version: 1,
+        id: uid(), docType, rootNumber: number, version: 1,
         client: document.getElementById('nq-client').value.trim() || 'Unassigned',
         clientEmail: '',
         siteName: document.getElementById('nq-sitename').value.trim(),
         siteContactName: '', siteContactPhone: '', siteContactEmail: '', siteAddress: '',
-        expiresAt: document.getElementById('nq-expires').value,
+        preparedBy: document.getElementById('nq-prepby').value,
         createdAt: todayISO(), publishedAt: null,
-        globalMarkup: 25, internalNotes: '', sections: []
+        globalMarkup: 25, sections: []
       });
       document.getElementById('nq-allocate').addEventListener('click', () => {
         const q = collect(); q.status = 'allocated'; quotes.push(q); saveQuotes(); close(); rerender();
       });
       document.getElementById('nq-build').addEventListener('click', () => {
         const q = collect(); q.status = 'draft';
-        // Auto-add Introduction section
         const intro = newSection('introduction');
         q.sections.push(intro);
         quotes.push(q); saveQuotes(); close();
@@ -480,7 +488,6 @@ window.BromarPages.quotes = {
     function openEditor(id) {
       activeQuoteId = id; view = 'editor';
       const q = quotes.find(x => x.id === id);
-      // Default to first section if none selected and sections exist; otherwise details
       activeSectionId = (q && q.sections && q.sections[0]) ? q.sections[0].id : '__details__';
       rerender();
     }
@@ -492,21 +499,19 @@ window.BromarPages.quotes = {
       if (!q) { backToDashboard(); return; }
       const isPublished = !!q.publishedAt;
       const revLabel = q.version > 1 ? `R${q.version - 1}` : 'Original';
-
       if (activeSectionId !== '__details__' && activeSectionId !== '__totals__') {
         if (!(q.sections || []).find(s => s.id === activeSectionId)) activeSectionId = '__details__';
       }
-
-      const statusTag = isPublished
-        ? '<span class="pub-tag">Published</span>'
+      const statusTag = isPublished ? '<span class="pub-tag">Published</span>'
         : (isInProgress(q) ? '<span class="pub-tag pub-progress">In Progress</span>' : '<span class="pub-tag pub-draft">Draft</span>');
+      const docTag = q.docType === 'estimate' ? '<span class="pub-tag pub-est">Estimate</span>' : '';
 
       container.innerHTML = `
         <div class="page-title-wrapper editor-header">
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar">
-            <h1>${escape(displayNumber(q))} ${statusTag}</h1>
-            <p class="subtitle">${escape(q.siteName || q.client)} · ${revLabel}</p>
+            <h1>${escape(displayNumber(q))} ${docTag} ${statusTag}</h1>
+            <p class="subtitle">${escape(q.siteName || q.client)} · ${revLabel} · ${escape(q.preparedBy || 'No preparer')}</p>
           </div>
           <div class="editor-actions">
             <span class="save-indicator" id="save-indicator">Saved</span>
@@ -522,12 +527,10 @@ window.BromarPages.quotes = {
             <div class="rail-section">
               <div class="rail-label">Fixed</div>
               <button class="rail-item ${activeSectionId === '__details__' ? 'active' : ''}" data-sid="__details__">
-                <span class="rail-icon">${ICON_USER}</span>
-                <span class="rail-name">Client &amp; Site</span>
+                <span class="rail-icon">${ICON_USER}</span><span class="rail-name">Client &amp; Site</span>
               </button>
               <button class="rail-item ${activeSectionId === '__totals__' ? 'active' : ''}" data-sid="__totals__">
-                <span class="rail-icon">${ICON_TOTALS}</span>
-                <span class="rail-name">Totals</span>
+                <span class="rail-icon">${ICON_TOTALS}</span><span class="rail-name">Totals</span>
                 <span class="rail-amt">${fmt(quoteTotal(q))}</span>
               </button>
             </div>
@@ -540,7 +543,6 @@ window.BromarPages.quotes = {
               <button class="btn-secondary add-section-btn" id="add-section-btn">+ Add Section</button>
             </div>
           </aside>
-
           <div class="card builder-main" id="builder-main">
             ${renderActiveSection(q)}
           </div>
@@ -558,7 +560,7 @@ window.BromarPages.quotes = {
       const amount = meta.priced ? sectionSellTotal(s, q) : null;
       const flags = [];
       if (s.internal || !s.show) flags.push('<span class="rail-flag" title="Internal-only">int</span>');
-      if (meta.isOption) flags.push('<span class="rail-flag rail-flag-opt" title="Client-selectable option">opt</span>');
+      if (meta.isOption) flags.push('<span class="rail-flag rail-flag-opt" title="Option">opt</span>');
       return `
         <div class="rail-row ${isActive ? 'active' : ''}" data-sid="${s.id}">
           <button class="rail-item rail-item-section" data-sid="${s.id}">
@@ -587,14 +589,13 @@ window.BromarPages.quotes = {
       });
       const unpubBtn = get('unpublish-btn');
       if (unpubBtn) unpubBtn.addEventListener('click', () => {
-        if (!confirm('Unpublish this quote? It will revert to draft.')) return;
+        if (!confirm('Unpublish this document? It will revert to draft.')) return;
         q.publishedAt = null; q.status = 'draft';
         saveQuotes(); toast('Reverted to draft.'); renderEditor();
       });
       const emailBtn = get('email-btn');
       if (emailBtn) emailBtn.addEventListener('click', () => openEmailDialog(q.id));
     }
-
     function bindRail(q) {
       document.querySelectorAll('.rail-item').forEach(el => {
         el.addEventListener('click', () => { activeSectionId = el.dataset.sid; renderEditor(); });
@@ -625,14 +626,10 @@ window.BromarPages.quotes = {
       const addBtn = document.getElementById('add-section-btn');
       if (addBtn) addBtn.addEventListener('click', () => openAddSectionDialog(q));
     }
-
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      // Order matters here — present in suggested workflow order
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour',
-                     'optionMaterials','optionLabour','exclusions','inclusions','conclusion',
-                     'assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','optionMaterials','optionLabour','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -658,8 +655,7 @@ window.BromarPages.quotes = {
       dialog.querySelectorAll('.section-pick').forEach(el => {
         el.addEventListener('click', () => {
           const sec = newSection(el.dataset.type);
-          q.sections = q.sections || [];
-          q.sections.push(sec);
+          q.sections = q.sections || []; q.sections.push(sec);
           renumberOptions(q);
           activeSectionId = sec.id;
           saveQuotes(); close(); renderEditor();
@@ -675,77 +671,80 @@ window.BromarPages.quotes = {
       if (!sec) return renderDetailsPanel(q);
       return renderSectionPanel(q, sec);
     }
-
     function renderDetailsPanel(q) {
       return `
         <div class="panel-head"><h2>Client &amp; Site Details</h2></div>
+        <div class="section-label">Document</div>
+        <div class="form-grid">
+          <div class="form-row"><label>Document Type</label>
+            <select id="d-doctype" class="quote-input">
+              <option value="quote" ${q.docType === 'quote' ? 'selected' : ''}>Quote</option>
+              <option value="estimate" ${q.docType === 'estimate' ? 'selected' : ''}>Estimate (indicative pricing)</option>
+            </select>
+          </div>
+          <div class="form-row"><label>Prepared By</label>
+            <select id="d-prepby" class="quote-input">
+              <option value="">— Select —</option>
+              ${PREPARED_BY_OPTIONS.map(n => `<option value="${escape(n)}" ${q.preparedBy === n ? 'selected' : ''}>${escape(n)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-row"><label>Status</label>
+            <select id="d-status" class="quote-input">
+              ${['draft','allocated','sent','accepted','rejected'].map(s => `<option value="${s}" ${q.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-row"><label>Global Markup (internal) %</label><input id="d-markup" type="number" min="0" step="0.1" class="quote-input" value="${q.globalMarkup || 0}"></div>
+        </div>
+
         <div class="section-label">Client / Account</div>
         <div class="form-grid">
           <div class="form-row"><label>Client Name</label><input id="d-client" class="quote-input" value="${escape(q.client)}"></div>
           <div class="form-row"><label>Client Email</label><input id="d-email" type="email" class="quote-input" value="${escape(q.clientEmail || '')}"></div>
         </div>
 
-        <div class="section-label">Site / Quote</div>
+        <div class="section-label">Site</div>
         <div class="form-grid">
-          <div class="form-row"><label>Site Name / Quote Nickname</label><input id="d-sitename" class="quote-input" value="${escape(q.siteName || '')}" placeholder="e.g. Building A Switchboard Upgrade"></div>
+          <div class="form-row"><label>Site Name / Nickname</label><input id="d-sitename" class="quote-input" value="${escape(q.siteName || '')}"></div>
           <div class="form-row"><label>Site Address</label><input id="d-siteaddr" class="quote-input" value="${escape(q.siteAddress || '')}"></div>
           <div class="form-row"><label>Site Contact Name</label><input id="d-sitecname" class="quote-input" value="${escape(q.siteContactName || '')}"></div>
           <div class="form-row"><label>Site Contact Phone</label><input id="d-sitecphone" class="quote-input" value="${escape(q.siteContactPhone || '')}"></div>
           <div class="form-row"><label>Site Contact Email</label><input id="d-sitecemail" type="email" class="quote-input" value="${escape(q.siteContactEmail || '')}"></div>
-          <div class="form-row"><label>Status</label>
-            <select id="d-status" class="quote-input">
-              ${['draft','allocated','sent','accepted','rejected'].map(s => `<option value="${s}" ${q.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-row"><label>Expires</label><input id="d-expires" type="date" class="quote-input" value="${q.expiresAt || ''}"></div>
-          <div class="form-row"><label>Global Markup (internal) %</label><input id="d-markup" type="number" min="0" step="0.1" class="quote-input" value="${q.globalMarkup || 0}"></div>
         </div>
+
+        ${q.convertedToQuoteNumber ? `<p class="hint"><strong>Converted to ${escape(q.convertedToQuoteNumber)}</strong> on ${formatDate(q.convertedAt)}. This estimate remains editable as a record.</p>` : ''}
       `;
     }
-
     function renderTotalsPanel(q) {
-      const baseRows = (q.sections || []).filter(s => {
-        const m = SECTION_TYPES[s.type]; return m.priced && !m.isOption && !s.internal;
-      }).map(s => `<div class="total-row"><span>${escape(s.name)}</span><strong>${fmt(sectionSellTotal(s, q))}</strong></div>`).join('');
-
-      const optionRows = (q.sections || []).filter(s => {
-        const m = SECTION_TYPES[s.type]; return m.isOption && !s.internal;
-      }).map(s => {
-        const sel = s.optionSelected ? '<span class="opt-state opt-on">selected</span>' : '<span class="opt-state opt-off">not selected</span>';
-        return `<div class="total-row"><span>${escape(s.name)} ${sel}</span><strong>${fmt(sectionSellTotal(s, q))}</strong></div>`;
-      }).join('');
-
-      const base = quoteBaseTotal(q);
-      const optsAll = quoteOptionsTotal(q, true);
-      const total = base + optsAll;
-      const cost = quoteCost(q);
-
+      const baseRows = (q.sections || []).filter(s => { const m = SECTION_TYPES[s.type]; return m.priced && !m.isOption && !s.internal; })
+        .map(s => `<div class="total-row"><span>${escape(s.name)}</span><strong>${fmt(sectionSellTotal(s, q))}</strong></div>`).join('');
+      const optionRows = (q.sections || []).filter(s => { const m = SECTION_TYPES[s.type]; return m.isOption && !s.internal; })
+        .map(s => {
+          const sel = s.optionSelected ? '<span class="opt-state opt-on">selected</span>' : '<span class="opt-state opt-off">not selected</span>';
+          return `<div class="total-row"><span>${escape(s.name)} ${sel}</span><strong>${fmt(sectionSellTotal(s, q))}</strong></div>`;
+        }).join('');
+      const base = quoteBaseTotal(q), optsAll = quoteOptionsTotal(q, true);
+      const total = base + optsAll, cost = quoteCost(q);
       return `
         <div class="panel-head"><h2>Totals</h2></div>
         <div class="section-label">Base</div>
         ${baseRows || '<p class="hint">No priced base sections yet.</p>'}
         <div class="total-row total-grand"><span>Base Subtotal</span><strong>${fmt(base)}</strong></div>
-
         ${optionRows ? `
           <div class="section-label" style="margin-top:1.5rem">Options</div>
           ${optionRows}
           <div class="total-row total-grand"><span>Options Subtotal (if all selected)</span><strong>${fmt(optsAll)}</strong></div>
         ` : ''}
-
         <div class="margin-block" style="margin-top:1.5rem">
-          <div class="info-row"><span>Grand Total (base + all options)</span><strong>${fmt(total)}</strong></div>
+          <div class="info-row"><span>Grand Total</span><strong>${fmt(total)}</strong></div>
           <div class="info-row"><span>Internal cost</span><strong>${fmt(cost)}</strong></div>
           <div class="info-row"><span>Margin</span><strong>${fmt(total - cost)}</strong></div>
           <div class="info-row"><span>Margin %</span><strong>${cost > 0 ? ((total - cost) / cost * 100).toFixed(1) + '%' : '—'}</strong></div>
         </div>
       `;
     }
-
     function renderSectionPanel(q, sec) {
       const meta = SECTION_TYPES[sec.type];
       const sectionFavs = Object.entries(favourites).filter(([_, p]) => p.type === sec.type);
-      const isInternal = meta.internalOnly || sec.internal;
-
       return `
         <div class="panel-head">
           <div class="panel-head-left">
@@ -754,36 +753,23 @@ window.BromarPages.quotes = {
           </div>
           <div class="panel-head-right">
             ${meta.internalOnly ? '<span class="hint-inline">Always internal-only</span>' : `
-              <label class="toggle-lbl" title="Show this section to the client">
-                <input type="checkbox" id="s-show" ${sec.show ? 'checked' : ''}><span>Show to client</span>
-              </label>
-              <label class="toggle-lbl" title="Internal-only (never sent to client)">
-                <input type="checkbox" id="s-internal" ${sec.internal ? 'checked' : ''}><span>Internal only</span>
-              </label>
+              <label class="toggle-lbl"><input type="checkbox" id="s-show" ${sec.show ? 'checked' : ''}><span>Show to client</span></label>
+              <label class="toggle-lbl"><input type="checkbox" id="s-internal" ${sec.internal ? 'checked' : ''}><span>Internal only</span></label>
             `}
           </div>
         </div>
-
         ${sectionFavs.length || canSaveFavourite(meta.shape) ? `
           <div class="preset-bar">
-            ${sectionFavs.length ? `
-              <select id="fav-load" class="quote-input preset-select">
-                <option value="">Load favourite…</option>
-                ${sectionFavs.map(([id, p]) => `<option value="${id}">${escape(p.name)}</option>`).join('')}
-              </select>` : ''}
+            ${sectionFavs.length ? `<select id="fav-load" class="quote-input preset-select"><option value="">Load favourite…</option>${sectionFavs.map(([id, p]) => `<option value="${id}">${escape(p.name)}</option>`).join('')}</select>` : ''}
             ${canSaveFavourite(meta.shape) ? `<button class="btn-secondary preset-btn" id="fav-save">★ Save as favourite</button>` : ''}
             ${sectionFavs.length ? `<button class="btn-secondary preset-btn" id="fav-delete">Delete favourite</button>` : ''}
           </div>` : ''}
-
         <div class="section-body" id="section-body">
           ${renderSectionBody(sec, q)}
         </div>
       `;
     }
-
-    function canSaveFavourite(shape) {
-      return ['text', 'bullets', 'scopes', 'materials', 'labour', 'pcSums'].includes(shape);
-    }
+    function canSaveFavourite(shape) { return ['text', 'bullets', 'scopes', 'materials', 'labour', 'pcSums'].includes(shape); }
 
     function renderSectionBody(sec, q) {
       const meta = SECTION_TYPES[sec.type];
@@ -791,113 +777,75 @@ window.BromarPages.quotes = {
       switch (meta.shape) {
         case 'text':
           return `<textarea class="quote-input quote-textarea" id="f-text" rows="8" placeholder="Enter content…">${escape(d.text || '')}</textarea>`;
-
         case 'bullets':
-          return `
-            <div class="bullets-list" id="bullets-list">
-              ${(d.bullets || ['']).map(b => bulletRow(b)).join('')}
-            </div>
+          return `<div class="bullets-list" id="bullets-list">${(d.bullets || ['']).map(b => bulletRow(b)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Bullet</button>`;
-
         case 'scopes':
           return `
-            <div class="form-row" style="margin-bottom:1rem">
-              <label>Introduction</label>
+            <div class="form-row" style="margin-bottom:1rem"><label>Introduction</label>
               <input id="f-intro" class="quote-input" value="${escape(d.intro || '')}" placeholder="e.g. Bromar have allowed for the following:">
             </div>
-            <div class="scopes-list" id="scopes-list">
-              ${(d.scopes || []).map((sc, i) => scopeCard(sc, i, d.scopes.length)).join('')}
-            </div>
+            <div class="scopes-list" id="scopes-list">${(d.scopes || []).map((sc, i) => scopeCard(sc, i, d.scopes.length)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-scope">+ Add Scope</button>`;
-
         case 'materials':
           return `
-            <label class="toggle-lbl" style="margin-bottom:0.75rem">
-              <input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}>
-              <span>Show table to client (otherwise total only)</span>
-            </label>
-            <div class="items-head mat-head">
-              <span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span>
-            </div>
-            <div class="items-list" id="items-list">
-              ${(d.items || []).map(it => materialRow(it, q.globalMarkup)).join('')}
-            </div>
+            <label class="toggle-lbl" style="margin-bottom:0.75rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            <div class="items-head mat-head"><span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span></div>
+            <div class="items-list" id="items-list">${(d.items || []).map(it => materialRow(it, q.globalMarkup)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Material</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
-
         case 'labour':
           return `
-            <label class="toggle-lbl" style="margin-bottom:0.75rem">
-              <input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}>
-              <span>Show table to client (otherwise total only)</span>
-            </label>
-            <div class="items-head lab-head">
-              <span>Description</span><span>Hourly Rate</span><span>Qty (hrs)</span><span>Total</span><span></span>
-            </div>
-            <div class="items-list" id="items-list">
-              ${(d.items || []).map(it => labourRow(it)).join('')}
-            </div>
+            <label class="toggle-lbl" style="margin-bottom:0.75rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            <div class="items-head lab-head"><span>Description</span><span>Hourly Rate</span><span>Qty (hrs)</span><span>Total</span><span></span></div>
+            <div class="items-list" id="items-list">${(d.items || []).map(it => labourRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Labour Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
-
         case 'pcSums':
           return `
-            <div class="items-head pc-head">
-              <span>Description</span><span>Amount</span><span></span>
-            </div>
-            <div class="items-list" id="items-list">
-              ${(d.items || []).map(it => pcRow(it)).join('')}
-            </div>
+            <div class="items-head pc-head"><span>Description</span><span>Amount</span><span></span></div>
+            <div class="items-list" id="items-list">${(d.items || []).map(it => pcRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         default: return '';
       }
     }
-
     function bulletRow(text) {
-      return `<div class="bullet-row">
-        <span class="bullet-dot">•</span>
+      return `<div class="bullet-row"><span class="bullet-dot">•</span>
         <input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point">
-        <button class="icon-btn icon-danger bullet-remove">${ICON_TRASH}</button>
-      </div>`;
+        <button class="icon-btn icon-danger bullet-remove">${ICON_TRASH}</button></div>`;
     }
     function scopeCard(sc, i, total) {
-      return `
-        <div class="scope-card" data-gid="${sc.id}">
-          <div class="scope-head">
-            <input class="quote-input scope-heading" value="${escape(sc.heading || '')}" placeholder="Scope heading">
-            <div class="rail-controls scope-controls">
-              <button class="icon-btn rail-mini" data-scope="up" ${i === 0 ? 'disabled' : ''} title="Move up">${ICON_UP}</button>
-              <button class="icon-btn rail-mini" data-scope="down" ${i === total - 1 ? 'disabled' : ''} title="Move down">${ICON_DOWN}</button>
-            </div>
-            <button class="icon-btn icon-danger" data-scope="del" title="Remove scope">${ICON_TRASH}</button>
+      return `<div class="scope-card" data-gid="${sc.id}">
+        <div class="scope-head">
+          <input class="quote-input scope-heading" value="${escape(sc.heading || '')}" placeholder="Scope heading">
+          <div class="rail-controls scope-controls">
+            <button class="icon-btn rail-mini" data-scope="up" ${i === 0 ? 'disabled' : ''} title="Move up">${ICON_UP}</button>
+            <button class="icon-btn rail-mini" data-scope="down" ${i === total - 1 ? 'disabled' : ''} title="Move down">${ICON_DOWN}</button>
           </div>
-          <div class="scope-bullets">
-            ${(sc.bullets || []).map((b, bi) => scopeBulletRow(b, bi)).join('')}
-          </div>
-          <button class="btn-secondary add-btn-sm scope-add">+ Add Bullet</button>
-        </div>`;
+          <button class="icon-btn icon-danger" data-scope="del" title="Remove scope">${ICON_TRASH}</button>
+        </div>
+        <div class="scope-bullets">${(sc.bullets || []).map((b, bi) => scopeBulletRow(b, bi)).join('')}</div>
+        <button class="btn-secondary add-btn-sm scope-add">+ Add Bullet</button>
+      </div>`;
     }
     function scopeBulletRow(b, bi) {
       return `<div class="bullet-row scope-bullet" data-bi="${bi}">
         <span class="bullet-dot">•</span>
         <input class="quote-input bullet-input" value="${escape(b.text || '')}" placeholder="Item">
-        <label class="toggle-lbl toggle-mini" title="Hide this bullet from the client">
-          <input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span>
-        </label>
+        <label class="toggle-lbl toggle-mini"><input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span></label>
         <button class="icon-btn icon-danger b-remove">${ICON_TRASH}</button>
       </div>`;
     }
-    function materialRow(it, gMarkup) {
+    function materialRow(it, gm) {
       return `<div class="line-row mat-row">
         <input class="quote-input m-desc" value="${escape(it.desc || '')}" placeholder="Description">
         <input class="quote-input m-part" value="${escape(it.part || '')}" placeholder="Part #">
         <input class="quote-input m-price" type="number" min="0" step="0.01" value="${it.price || 0}">
         <input class="quote-input m-markup" type="number" min="0" step="0.1" value="${it.markup ?? ''}" placeholder="—">
         <input class="quote-input m-qty" type="number" min="0" step="0.01" value="${it.qty || 0}">
-        <div class="li-total">${fmt(materialItemTotal(it, gMarkup))}</div>
-        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button>
-      </div>`;
+        <div class="li-total">${fmt(materialItemTotal(it, gm))}</div>
+        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
     }
     function labourRow(it) {
       return `<div class="line-row lab-row">
@@ -905,15 +853,13 @@ window.BromarPages.quotes = {
         <input class="quote-input l-rate" type="number" min="0" step="0.01" value="${it.rate || 0}">
         <input class="quote-input l-qty" type="number" min="0" step="0.01" value="${it.qty || 0}">
         <div class="li-total">${fmt(labourItemTotal(it))}</div>
-        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button>
-      </div>`;
+        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
     }
     function pcRow(it) {
       return `<div class="line-row pc-row">
         <input class="quote-input pc-desc" value="${escape(it.desc || '')}" placeholder="Description">
         <input class="quote-input pc-amount" type="number" min="0" step="0.01" value="${it.amount || 0}">
-        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button>
-      </div>`;
+        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
     }
 
     /* ── BIND ACTIVE SECTION ── */
@@ -924,26 +870,26 @@ window.BromarPages.quotes = {
       if (!sec) return;
       bindSection(q, sec);
     }
-
     function bindDetails(q) {
       const map = {
+        'd-doctype': v => q.docType = v,
+        'd-prepby': v => q.preparedBy = v,
+        'd-status': v => q.status = v,
+        'd-markup': v => q.globalMarkup = Number(v) || 0,
         'd-client': v => q.client = v.trim() || 'Unassigned',
         'd-email': v => q.clientEmail = v.trim(),
         'd-sitename': v => q.siteName = v,
         'd-siteaddr': v => q.siteAddress = v,
         'd-sitecname': v => q.siteContactName = v,
         'd-sitecphone': v => q.siteContactPhone = v,
-        'd-sitecemail': v => q.siteContactEmail = v.trim(),
-        'd-status': v => q.status = v,
-        'd-expires': v => q.expiresAt = v,
-        'd-markup': v => q.globalMarkup = Number(v) || 0
+        'd-sitecemail': v => q.siteContactEmail = v.trim()
       };
       Object.entries(map).forEach(([id, fn]) => {
         const el = document.getElementById(id); if (!el) return;
-        el.addEventListener('input', () => { fn(el.value); saveQuotes(); refreshRailAmounts(q); });
+        const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(ev, () => { fn(el.value); saveQuotes(); refreshRailAmounts(q); });
       });
     }
-
     function refreshRailAmounts(q) {
       const totalsBtn = document.querySelector('[data-sid="__totals__"] .rail-amt');
       if (totalsBtn) totalsBtn.textContent = fmt(quoteTotal(q));
@@ -953,19 +899,15 @@ window.BromarPages.quotes = {
         const amt = el.querySelector('.rail-amt'); if (amt) amt.textContent = fmt(sectionSellTotal(s, q));
       });
     }
-
     function bindSection(q, sec) {
       const get = id => document.getElementById(id);
-      const meta = SECTION_TYPES[sec.type];
-      const d = sec.data;
-
+      const meta = SECTION_TYPES[sec.type], d = sec.data;
       const refreshFoot = () => {
         const body = document.getElementById('section-body'); if (!body) return;
         const foot = body.querySelector('.section-foot strong');
         if (foot) foot.textContent = fmt(sectionSellTotal(sec, q));
         refreshRailAmounts(q);
       };
-
       get('s-name').addEventListener('input', e => {
         sec.name = e.target.value; saveQuotes(); refreshRailAmounts(q);
         const railName = document.querySelector(`.rail-item-section[data-sid="${sec.id}"] .rail-name`);
@@ -976,7 +918,6 @@ window.BromarPages.quotes = {
       const intEl = get('s-internal');
       if (intEl) intEl.addEventListener('change', e => { sec.internal = e.target.checked; saveQuotes(); renderEditor(); });
 
-      // Favourites
       const loadSel = get('fav-load');
       if (loadSel) loadSel.addEventListener('change', () => {
         const pid = loadSel.value; if (!pid) return;
@@ -987,8 +928,7 @@ window.BromarPages.quotes = {
       });
       const saveFavBtn = get('fav-save');
       if (saveFavBtn) saveFavBtn.addEventListener('click', () => {
-        const name = prompt(`Save current "${meta.name}" as favourite. Name:`);
-        if (!name) return;
+        const name = prompt(`Save current "${meta.name}" as favourite. Name:`); if (!name) return;
         const pid = 'fav_' + Date.now();
         favourites[pid] = { name: name.trim(), type: sec.type, data: JSON.parse(JSON.stringify(sec.data)) };
         saveFavourites(); toast(`Favourite "${name}" saved.`); renderEditor();
@@ -1001,11 +941,9 @@ window.BromarPages.quotes = {
         delete favourites[pid]; saveFavourites(); renderEditor();
       });
 
-      // Shape-specific
       if (meta.shape === 'text') {
         get('f-text').addEventListener('input', e => { d.text = e.target.value; saveQuotes(); });
       }
-
       if (meta.shape === 'bullets') {
         document.querySelectorAll('.bullet-row').forEach((row, idx) => {
           const input = row.querySelector('.bullet-input');
@@ -1016,7 +954,6 @@ window.BromarPages.quotes = {
         });
         get('add-bullet').addEventListener('click', () => { d.bullets.push(''); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'scopes') {
         get('f-intro').addEventListener('input', e => { d.intro = e.target.value; saveQuotes(); });
         document.querySelectorAll('.scope-card').forEach((card, idx) => {
@@ -1033,10 +970,7 @@ window.BromarPages.quotes = {
               const op = btn.dataset.scope;
               if (op === 'up' && idx > 0) [d.scopes[idx - 1], d.scopes[idx]] = [d.scopes[idx], d.scopes[idx - 1]];
               else if (op === 'down' && idx < d.scopes.length - 1) [d.scopes[idx + 1], d.scopes[idx]] = [d.scopes[idx], d.scopes[idx + 1]];
-              else if (op === 'del') {
-                if (!confirm(`Remove "${sc.heading || 'this scope'}"?`)) return;
-                d.scopes.splice(idx, 1);
-              }
+              else if (op === 'del') { if (!confirm(`Remove "${sc.heading || 'this scope'}"?`)) return; d.scopes.splice(idx, 1); }
               renumberScopes(sec); saveQuotes(); renderEditor();
             });
           });
@@ -1046,7 +980,6 @@ window.BromarPages.quotes = {
           saveQuotes(); renderEditor();
         });
       }
-
       if (meta.shape === 'materials') {
         get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; saveQuotes(); });
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(materialItemTotal(d.items[idx], q.globalMarkup)); refreshFoot(); };
@@ -1060,7 +993,6 @@ window.BromarPages.quotes = {
         });
         get('add-item').addEventListener('click', () => { d.items.push({ desc: '', part: '', price: 0, markup: null, qty: 1 }); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'labour') {
         get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; saveQuotes(); });
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(labourItemTotal(d.items[idx])); refreshFoot(); };
@@ -1072,7 +1004,6 @@ window.BromarPages.quotes = {
         });
         get('add-item').addEventListener('click', () => { d.items.push({ desc: '', rate: 0, qty: 1 }); saveQuotes(); renderEditor(); });
       }
-
       if (meta.shape === 'pcSums') {
         document.querySelectorAll('.pc-row').forEach((row, idx) => {
           row.querySelector('.pc-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; saveQuotes(); });
@@ -1087,12 +1018,11 @@ window.BromarPages.quotes = {
     function renderPreview() {
       const q = quotes.find(x => x.id === activeQuoteId);
       if (!q) { backToDashboard(); return; }
-
-      // Visible sections (client-facing only)
       const visible = (q.sections || []).filter(s => s.show && !s.internal);
+      const canAccept = q.docType === 'quote';
 
       container.innerHTML = `
-        <div class="page-title-wrapper editor-header">
+        <div class="page-title-wrapper editor-header preview-chrome">
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar">
             <h1>Preview</h1>
@@ -1104,21 +1034,26 @@ window.BromarPages.quotes = {
           </div>
         </div>
 
-        <div class="card preview-card">
+        <div class="doc-page">
           ${renderDocumentHeader(q)}
+          <div class="doc-content">
+            ${visible.map(s => renderPreviewSection(s, q)).join('')}
 
-          ${visible.map(s => renderPreviewSection(s, q)).join('')}
-
-          <div class="preview-section preview-total-section">
-            <div class="preview-total" id="preview-total">
-              <span>Total</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>
+            <div class="doc-total-block">
+              <div class="doc-total-row" id="preview-total">
+                <span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span>
+                <strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>
+              </div>
+              ${q.docType === 'estimate'
+                ? '<p class="doc-disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>'
+                : '<p class="doc-fineprint">Total updates as you select or deselect options above. Prices exclude GST unless otherwise stated.</p>'}
             </div>
-            <p class="hint" style="margin-top:0.5rem">Total updates as you select or deselect options above.</p>
-          </div>
 
-          <div class="preview-approval">
-            <button class="btn-secondary" id="reject-btn">Decline</button>
-            <button class="btn-primary" id="approve-btn">Accept Quote</button>
+            ${canAccept ? `
+              <div class="doc-approval">
+                <button class="btn-secondary" id="reject-btn">Decline</button>
+                <button class="btn-primary" id="approve-btn">Accept Quote</button>
+              </div>` : ''}
           </div>
         </div>
       `;
@@ -1127,182 +1062,162 @@ window.BromarPages.quotes = {
       document.getElementById('edit-from-preview').addEventListener('click', () => openEditor(q.id));
       document.getElementById('export-from-preview').addEventListener('click', () => exportPDF(q));
 
-      // Bind option toggles
       document.querySelectorAll('.option-toggle').forEach(cb => {
         cb.addEventListener('change', () => {
           const secId = cb.dataset.secId;
-          const sec = q.sections.find(s => s.id === secId);
-          if (!sec) return;
-          sec.optionSelected = cb.checked;
-          saveQuotes();
-          document.getElementById('preview-total').innerHTML = `<span>Total</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>`;
+          const sec = q.sections.find(s => s.id === secId); if (!sec) return;
+          sec.optionSelected = cb.checked; saveQuotes();
+          document.getElementById('preview-total').innerHTML = `<span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>`;
+          // also recolour the option card
+          const card = cb.closest('.doc-option');
+          if (card) card.classList.toggle('opt-selected', cb.checked);
         });
       });
 
-      document.getElementById('approve-btn').addEventListener('click', () => {
-        q.status = 'accepted'; saveQuotes(); toast('Quote accepted.'); rerender();
-      });
-      document.getElementById('reject-btn').addEventListener('click', () => {
-        q.status = 'rejected'; saveQuotes(); toast('Quote declined.'); rerender();
-      });
+      if (canAccept) {
+        document.getElementById('approve-btn').addEventListener('click', () => { q.status = 'accepted'; saveQuotes(); toast('Quote accepted.'); rerender(); });
+        document.getElementById('reject-btn').addEventListener('click', () => { q.status = 'rejected'; saveQuotes(); toast('Quote declined.'); rerender(); });
+      }
     }
 
     function renderDocumentHeader(q) {
+      const isEst = q.docType === 'estimate';
       return `
-        <div class="doc-header">
-          <div class="doc-logo">
-            <img class="light-logo" src="${COMPANY.logoLight}" alt="${escape(COMPANY.name)}">
-            <img class="dark-logo" src="${COMPANY.logoDark}" alt="${escape(COMPANY.name)}">
+        <header class="doc-header">
+          <div class="doc-header-top">
+            <div class="doc-logo">
+              <img class="light-logo" src="${COMPANY.logoLight}" alt="${escape(COMPANY.name)}">
+              <img class="dark-logo" src="${COMPANY.logoDark}" alt="${escape(COMPANY.name)}">
+            </div>
+            <div class="doc-company">
+              <div class="doc-company-name">${escape(COMPANY.name)}</div>
+              <div>${escape(COMPANY.addressLine1)}, ${escape(COMPANY.addressLine2)}</div>
+              <div>Ph: ${escape(COMPANY.phone)} · Fax: ${escape(COMPANY.fax)}</div>
+              <div>${escape(COMPANY.email)}</div>
+              <div class="doc-company-ids">ABN ${escape(COMPANY.abn)} · ACN ${escape(COMPANY.acn)} · REC ${escape(COMPANY.rec)}</div>
+            </div>
           </div>
-          <div class="doc-company">
-            <div class="doc-company-name">${escape(COMPANY.name)}</div>
-            <div>${escape(COMPANY.addressLine1)}</div>
-            <div>${escape(COMPANY.addressLine2)}</div>
-            <div>Ph: ${escape(COMPANY.phone)} &nbsp; Fax: ${escape(COMPANY.fax)}</div>
-            <div>Email: ${escape(COMPANY.email)}</div>
-            <div>ABN: ${escape(COMPANY.abn)} &nbsp; ACN: ${escape(COMPANY.acn)} &nbsp; REC: ${escape(COMPANY.rec)}</div>
-          </div>
-        </div>
 
-        <div class="doc-meta-row">
-          <div><span class="doc-meta-label">Quote No.</span> <strong>${escape(displayNumber(q))}</strong></div>
-          <div><span class="doc-meta-label">Date</span> <strong>${escape(q.publishedAt || q.createdAt || todayISO())}</strong></div>
-          <div><span class="doc-meta-label">Expires</span> <strong>${escape(q.expiresAt || '—')}</strong></div>
-        </div>
-
-        <div class="doc-site">
-          <h2 class="doc-site-name">${escape(q.siteName || q.client || 'Untitled')}</h2>
-          <div class="doc-site-details">
-            ${q.client ? `<div><strong>${escape(q.client)}</strong></div>` : ''}
-            ${q.siteContactName ? `<div>Attn: ${escape(q.siteContactName)}</div>` : ''}
-            ${q.siteAddress ? `<div>${escape(q.siteAddress)}</div>` : ''}
-            ${q.siteContactPhone ? `<div>Ph: ${escape(q.siteContactPhone)}</div>` : ''}
-            ${q.siteContactEmail ? `<div>Email: ${escape(q.siteContactEmail)}</div>` : ''}
+          <div class="doc-number-block">
+            <div class="doc-type-tag ${isEst ? 'type-est' : 'type-quote'}">${isEst ? 'ESTIMATE' : 'QUOTATION'}</div>
+            <div class="doc-number">${escape(displayNumber(q))}</div>
+            <div class="doc-number-meta">
+              <div><span class="lbl">Prepared by</span> <strong>${escape(q.preparedBy || '—')}</strong></div>
+              <div><span class="lbl">Date</span> <strong>${formatDate(q.publishedAt || q.createdAt)}</strong></div>
+            </div>
           </div>
-        </div>
+
+          <div class="doc-site-block">
+            <h2 class="doc-site-name">${escape(q.siteName || q.client || 'Untitled')}</h2>
+            <div class="doc-site-details">
+              ${q.client ? `<div><strong>${escape(q.client)}</strong></div>` : ''}
+              ${q.siteContactName ? `<div>Attn: ${escape(q.siteContactName)}</div>` : ''}
+              ${q.siteAddress ? `<div>${escape(q.siteAddress)}</div>` : ''}
+              ${q.siteContactPhone ? `<div>Ph: ${escape(q.siteContactPhone)}</div>` : ''}
+              ${q.siteContactEmail ? `<div>${escape(q.siteContactEmail)}</div>` : ''}
+            </div>
+          </div>
+        </header>
       `;
     }
 
     function renderPreviewSection(s, q) {
       const meta = SECTION_TYPES[s.type], d = s.data || {};
       let body = '';
-
       switch (meta.shape) {
         case 'text':
           if (!d.text) return '';
           body = `<p>${escape(d.text).replace(/\n/g, '<br>')}</p>`; break;
-
         case 'bullets':
           if (!(d.bullets || []).some(b => b.trim())) return '';
-          body = `<ul class="preview-bullets">${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`; break;
-
+          body = `<ul class="doc-bullets">${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`; break;
         case 'scopes':
           if (!(d.scopes || []).length) return '';
-          body = '';
-          if (d.intro) body += `<p>${escape(d.intro)}</p>`;
-          body += d.scopes.map(sc => {
+          body = (d.intro ? `<p>${escape(d.intro)}</p>` : '') + d.scopes.map(sc => {
             const visBullets = (sc.bullets || []).filter(b => !b.hidden && b.text.trim());
             if (!visBullets.length && !sc.heading) return '';
-            return `<div class="preview-scope">
-              <h4>${escape(sc.heading || 'Scope')}</h4>
-              ${visBullets.length ? `<ul class="preview-bullets">${visBullets.map(b => `<li>${escape(b.text)}</li>`).join('')}</ul>` : ''}
-            </div>`;
+            return `<div class="doc-scope"><h4>${escape(sc.heading || 'Scope')}</h4>
+              ${visBullets.length ? `<ul class="doc-bullets">${visBullets.map(b => `<li>${escape(b.text)}</li>`).join('')}</ul>` : ''}</div>`;
           }).join(''); break;
-
         case 'materials':
           if (!(d.items || []).length) return '';
           const matTotal = sectionSellTotal(s, q);
           if (d.showTable === false) {
-            body = `<div class="preview-line"><span>Materials total</span><strong>${fmt(matTotal)}</strong></div>`;
+            body = `<div class="doc-line"><span>Materials total</span><strong>${fmt(matTotal)}</strong></div>`;
           } else {
-            body = `<table class="preview-table">
-              <thead><tr><th>Description</th><th>Part #</th><th>Unit</th><th>Qty</th><th>Total</th></tr></thead>
-              <tbody>
-                ${d.items.map(it => `<tr>
-                  <td>${escape(it.desc)}</td>
-                  <td>${escape(it.part || '—')}</td>
-                  <td>${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td>
-                  <td>${it.qty}</td>
-                  <td>${fmt(materialItemTotal(it, q.globalMarkup))}</td>
-                </tr>`).join('')}
-                <tr class="preview-table-total"><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td><strong>${fmt(matTotal)}</strong></td></tr>
+            body = `<table class="doc-table">
+              <thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead>
+              <tbody>${d.items.map(it => `<tr>
+                <td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td>
+                <td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td>
+                <td class="num">${it.qty}</td>
+                <td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td>
+              </tr>`).join('')}
+              <tr class="doc-table-total"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr>
               </tbody></table>`;
           }
           break;
-
         case 'labour':
           if (!(d.items || []).length) return '';
           const labTotal = sectionSellTotal(s, q);
           if (d.showTable === false) {
-            body = `<div class="preview-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
+            body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
           } else {
-            body = `<table class="preview-table">
-              <thead><tr><th>Description</th><th>Rate</th><th>Hours</th><th>Total</th></tr></thead>
-              <tbody>
-                ${d.items.map(it => `<tr>
-                  <td>${escape(it.desc)}</td>
-                  <td>${fmt(it.rate)}</td>
-                  <td>${it.qty}</td>
-                  <td>${fmt(labourItemTotal(it))}</td>
-                </tr>`).join('')}
-                <tr class="preview-table-total"><td colspan="3" style="text-align:right;font-weight:600">Subtotal</td><td><strong>${fmt(labTotal)}</strong></td></tr>
+            body = `<table class="doc-table">
+              <thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead>
+              <tbody>${d.items.map(it => `<tr>
+                <td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td>
+              </tr>`).join('')}
+              <tr class="doc-table-total"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr>
               </tbody></table>`;
           }
           break;
-
         case 'pcSums':
           if (!(d.items || []).length) return '';
-          body = `<table class="preview-table">
-            <thead><tr><th>Description</th><th>Amount</th></tr></thead>
-            <tbody>
-              ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${fmt(it.amount)}</td></tr>`).join('')}
-              <tr class="preview-table-total"><td style="text-align:right;font-weight:600">Subtotal</td><td><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr>
+          body = `<table class="doc-table">
+            <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
+            <tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}
+            <tr class="doc-table-total"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr>
             </tbody></table>`; break;
       }
-
       if (!body) return '';
-
-      // Options are wrapped with a toggle in client preview
       if (meta.isOption) {
-        return `
-          <div class="preview-section preview-option ${s.optionSelected ? 'opt-selected' : ''}">
-            <label class="option-header">
-              <input type="checkbox" class="option-toggle" data-sec-id="${s.id}" ${s.optionSelected ? 'checked' : ''}>
-              <div class="option-header-text">
-                <h3>${escape(s.name)}</h3>
-                <span class="opt-amount">${fmt(sectionSellTotal(s, q))}</span>
-              </div>
-            </label>
-            <div class="option-body">${body}</div>
-          </div>`;
+        return `<section class="doc-section doc-option ${s.optionSelected ? 'opt-selected' : ''}">
+          <label class="doc-option-head">
+            <input type="checkbox" class="option-toggle" data-sec-id="${s.id}" ${s.optionSelected ? 'checked' : ''}>
+            <div class="doc-option-head-text">
+              <h3>${escape(s.name)}</h3>
+              <span class="doc-option-amt">${fmt(sectionSellTotal(s, q))}</span>
+            </div>
+          </label>
+          <div class="doc-option-body">${body}</div>
+        </section>`;
       }
-
-      return `<div class="preview-section"><h3>${escape(s.name)}</h3>${body}</div>`;
+      return `<section class="doc-section"><h3>${escape(s.name)}</h3>${body}</section>`;
     }
 
     /* ── EMAIL ── */
     function openEmailDialog(id) {
       const q = quotes.find(x => x.id === id); if (!q) return;
-      if (!q.publishedAt) { toast('Publish the quote before emailing.'); return; }
-      const subject = `Quote ${displayNumber(q)} — ${q.siteName || q.client}`;
+      if (!q.publishedAt) { toast('Publish the document before emailing.'); return; }
+      const label = docLabel(q);
+      const subject = `${label} ${displayNumber(q)} — ${q.siteName || q.client}`;
       const body =
 `Dear ${q.siteContactName || q.client},
 
-Please find your quote ${displayNumber(q)} attached for the works at ${q.siteName || 'the site'}.
+Please find your ${label.toLowerCase()} ${displayNumber(q)} attached for the works at ${q.siteName || 'the site'}.
 
 Total: ${fmt(quoteTotal(q))}
-Valid until: ${q.expiresAt || 'see quote'}
 
 Let me know if you have any questions.
 
 Kind regards,
-Bromar Electrical Services`;
-
+${q.preparedBy || 'Bromar Electrical Services'}`;
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
       dialog.innerHTML = `
         <div class="quote-modal">
-          <div class="modal-header"><h2>Email Quote</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-header"><h2>Email ${label}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
           <div class="modal-body">
             <div class="form-row"><label>To</label><input type="email" id="em-to" class="quote-input" value="${escape(q.siteContactEmail || q.clientEmail || '')}" placeholder="client@company.com"></div>
             <div class="form-row"><label>Subject</label><input id="em-subject" class="quote-input" value="${escape(subject)}"></div>
@@ -1338,14 +1253,33 @@ Bromar Electrical Services`;
       const maxV = Math.max(...sameRoot.map(q => q.version));
       const copy = JSON.parse(JSON.stringify(src));
       copy.id = uid(); copy.version = maxV + 1; copy.status = 'draft'; copy.publishedAt = null; copy.createdAt = todayISO();
-      (copy.sections || []).forEach(s => {
-        s.id = sid();
-        if (s.data && s.data.scopes) s.data.scopes.forEach(sc => sc.id = gid());
-      });
+      delete copy.convertedToQuoteId; delete copy.convertedToQuoteNumber; delete copy.convertedAt;
+      (copy.sections || []).forEach(s => { s.id = sid(); if (s.data && s.data.scopes) s.data.scopes.forEach(sc => sc.id = gid()); });
       quotes.push(copy); saveQuotes(); openEditor(copy.id);
+    }
+    function convertEstimateToQuote(id) {
+      const src = quotes.find(q => q.id === id); if (!src) return;
+      if (src.docType !== 'estimate') { toast('Only estimates can be converted.'); return; }
+      if (src.convertedToQuoteId) {
+        const existing = quotes.find(q => q.id === src.convertedToQuoteId);
+        if (existing && !confirm(`Already converted to ${src.convertedToQuoteNumber}. Convert again to a new quote?`)) return;
+      }
+      const newNum = nextRootNumber();
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = uid(); copy.docType = 'quote'; copy.rootNumber = newNum; copy.version = 1;
+      copy.status = 'draft'; copy.publishedAt = null; copy.createdAt = todayISO();
+      copy.convertedFromEstimateId = src.id; copy.convertedFromEstimateNumber = src.rootNumber;
+      delete copy.convertedToQuoteId; delete copy.convertedToQuoteNumber; delete copy.convertedAt;
+      (copy.sections || []).forEach(s => { s.id = sid(); if (s.data && s.data.scopes) s.data.scopes.forEach(sc => sc.id = gid()); });
+      quotes.push(copy);
+      src.convertedToQuoteId = copy.id; src.convertedToQuoteNumber = newNum; src.convertedAt = todayISO();
+      saveQuotes();
+      toast(`Estimate converted to ${newNum}.`);
+      openEditor(copy.id);
     }
     function convertToJob(id) {
       const q = quotes.find(x => x.id === id); if (!q) return;
+      if (q.docType !== 'quote') { toast('Only quotes convert to jobs.'); return; }
       if (!q.publishedAt) { toast('Quote must be published before converting.'); return; }
       if (q.status !== 'accepted') { toast('Only accepted quotes can be converted.'); return; }
       q.status = 'converted'; saveQuotes(); toast(`${displayNumber(q)} converted to a job.`); rerender();
@@ -1360,6 +1294,8 @@ Bromar Electrical Services`;
     /* ── PDF EXPORT ── */
     function exportPDF(q) {
       const visible = (q.sections || []).filter(s => s.show && !s.internal);
+      const isEst = q.docType === 'estimate';
+
       const sectionsHtml = visible.map(s => {
         const meta = SECTION_TYPES[s.type], d = s.data || {};
         let body = '';
@@ -1370,22 +1306,20 @@ Bromar Electrical Services`;
               body = `<ul>${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`;
             break;
           case 'scopes':
-            if ((d.scopes || []).length) {
+            if ((d.scopes || []).length)
               body = (d.intro ? `<p>${escape(d.intro)}</p>` : '') + d.scopes.map(sc => {
                 const visB = (sc.bullets || []).filter(b => !b.hidden && b.text.trim());
                 return `<h4>${escape(sc.heading || 'Scope')}</h4>${visB.length ? `<ul>${visB.map(b => `<li>${escape(b.text)}</li>`).join('')}</ul>` : ''}`;
               }).join('');
-            }
             break;
           case 'materials':
             if ((d.items || []).length) {
               const tot = sectionSellTotal(s, q);
               body = d.showTable === false
                 ? `<div class="line"><span>Materials total</span><strong>${fmt(tot)}</strong></div>`
-                : `<table><thead><tr><th>Description</th><th>Part #</th><th>Unit</th><th>Qty</th><th>Total</th></tr></thead><tbody>
-                    ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td>${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td>${it.qty}</td><td>${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}
-                    <tr><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td><strong>${fmt(tot)}</strong></td></tr>
-                  </tbody></table>`;
+                : `<table><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>
+                    ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}
+                    <tr class="ttl"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
             }
             break;
           case 'labour':
@@ -1393,82 +1327,133 @@ Bromar Electrical Services`;
               const tot = sectionSellTotal(s, q);
               body = d.showTable === false
                 ? `<div class="line"><span>Labour total</span><strong>${fmt(tot)}</strong></div>`
-                : `<table><thead><tr><th>Description</th><th>Rate</th><th>Hours</th><th>Total</th></tr></thead><tbody>
-                    ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${fmt(it.rate)}</td><td>${it.qty}</td><td>${fmt(labourItemTotal(it))}</td></tr>`).join('')}
-                    <tr><td colspan="3" style="text-align:right;font-weight:600">Subtotal</td><td><strong>${fmt(tot)}</strong></td></tr>
-                  </tbody></table>`;
+                : `<table><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>
+                    ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}
+                    <tr class="ttl"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
             }
             break;
           case 'pcSums':
-            if ((d.items || []).length) {
-              body = `<table><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>
-                ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${fmt(it.amount)}</td></tr>`).join('')}
-                <tr><td style="text-align:right;font-weight:600">Subtotal</td><td><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr>
-              </tbody></table>`;
-            }
+            if ((d.items || []).length)
+              body = `<table><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+                ${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}
+                <tr class="ttl"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table>`;
             break;
         }
         if (!body) return '';
-        const optTag = meta.isOption ? `<span class="opt-tag">OPTION ${s.optionSelected ? '(SELECTED)' : '(NOT SELECTED)'}</span>` : '';
-        return `<h3>${escape(s.name)} ${optTag}</h3>${body}`;
+        if (meta.isOption) {
+          return `<section class="opt-section ${s.optionSelected ? 'opt-on' : ''}">
+            <div class="opt-head">
+              <h3>${escape(s.name)} ${s.optionSelected ? '<span class="opt-tag">SELECTED</span>' : '<span class="opt-tag opt-tag-off">NOT SELECTED</span>'}</h3>
+              <span class="opt-amt">${fmt(sectionSellTotal(s, q))}</span>
+            </div>
+            ${body}</section>`;
+        }
+        return `<section><h3>${escape(s.name)}</h3>${body}</section>`;
       }).join('');
 
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${displayNumber(q)}</title>
+      const footerText = `${escape(COMPANY.name)} — ${docLabel(q)} ${escape(displayNumber(q))}`;
+
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${docLabel(q)} ${displayNumber(q)}</title>
 <style>
-  body { font-family: -apple-system, sans-serif; padding: 40px; color: #1a1a1e; max-width: 800px; margin: auto; }
-  .doc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 18px; }
-  .doc-logo img { max-height: 64px; max-width: 220px; }
-  .doc-company { text-align: right; font-size: 12px; color: #1a1a1e; line-height: 1.5; }
-  .doc-company-name { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
-  .doc-meta-row { display: flex; gap: 18px; padding: 10px 0; border-top: 2px solid #ea580c; border-bottom: 1px solid #ddd; font-size: 13px; color: #1a1a1e; margin-bottom: 14px; }
-  .doc-meta-row .lbl { color: #636369; }
-  .doc-site { margin-bottom: 24px; }
-  .doc-site h2 { font-size: 1.4rem; color: #1a1a1e; margin: 0 0 6px; }
-  .doc-site-details { font-size: 13px; color: #636369; line-height: 1.5; }
-  h3 { border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 28px; color: #ea580c; font-size: 14px; }
-  h4 { color: #1a1a1e; margin: 14px 0 6px; }
-  .opt-tag { font-size: 11px; color: #fff; background: #ea580c; padding: 2px 8px; border-radius: 999px; font-weight: 700; margin-left: 8px; vertical-align: middle; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; font-size: 13px; }
-  th { background: #f7f7f7; }
-  .total { font-size: 1.4rem; font-weight: bold; text-align: right; margin-top: 24px; color: #ea580c; border-top: 2px solid #ea580c; padding-top: 12px; }
-  .line { display:flex; justify-content:space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
-  ul { padding-left: 20px; }
+  @page {
+    size: A4;
+    margin: 20mm 16mm 22mm;
+    @bottom-left { content: "${footerText}"; font-family: -apple-system, sans-serif; font-size: 9pt; color: #888; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: -apple-system, sans-serif; font-size: 9pt; color: #888; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; color: #1a1a1e; font-size: 10.5pt; line-height: 1.55; margin: 0; }
+  .doc-header { margin-bottom: 18px; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 14px; border-bottom: 3px solid #ea580c; }
+  .logo img { max-height: 64px; max-width: 220px; }
+  .company { text-align: right; font-size: 9pt; color: #444; line-height: 1.5; }
+  .company-name { font-weight: 700; font-size: 10pt; color: #1a1a1e; margin-bottom: 2px; }
+  .company-ids { color: #888; font-size: 8.5pt; margin-top: 2px; }
+  .number-block { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 18px 0; border-bottom: 1px solid #eee; }
+  .type-tag { display: inline-block; font-size: 8.5pt; font-weight: 800; letter-spacing: 0.14em; padding: 4px 10px; border-radius: 4px; color: white; background: #ea580c; margin-bottom: 6px; }
+  .type-tag.type-est { background: #1a1a1e; }
+  .doc-number { font-size: 28pt; font-weight: 800; color: #ea580c; letter-spacing: -0.02em; font-family: "JetBrains Mono", "Menlo", monospace; line-height: 1; }
+  .number-meta { display: flex; gap: 24px; font-size: 9.5pt; padding-top: 18px; }
+  .number-meta .lbl { display: block; color: #888; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.08em; margin-bottom: 2px; }
+  .number-meta strong { font-weight: 600; }
+  .site-block { padding: 14px 0 8px; }
+  .site-name { font-size: 18pt; font-weight: 700; color: #1a1a1e; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .site-details { font-size: 9.5pt; color: #555; line-height: 1.55; }
+  .site-details strong { color: #1a1a1e; }
+  h3 { font-size: 9.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #ea580c; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #ea580c; page-break-after: avoid; }
+  h4 { font-size: 11pt; font-weight: 700; color: #1a1a1e; margin: 12px 0 4px; }
+  p { margin: 6px 0; }
+  ul { padding-left: 18px; margin: 4px 0; }
+  ul li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9.5pt; page-break-inside: avoid; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }
+  th { background: #faf7f5; font-weight: 700; color: #555; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ttl td { background: #faf7f5; font-weight: 600; }
+  .ttl strong { color: #ea580c; }
+  .line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+  .line strong { color: #ea580c; font-weight: 700; }
+  section { margin: 14px 0; page-break-inside: avoid; }
+  .opt-section { border: 1.5px solid #ea580c; border-radius: 6px; padding: 12px 14px; margin: 14px 0; background: #fff8f3; }
+  .opt-section.opt-on { background: #fff1e6; }
+  .opt-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #f0d9c5; margin-bottom: 8px; }
+  .opt-head h3 { border: none; padding: 0; margin: 0; }
+  .opt-tag { font-size: 8pt; padding: 2px 8px; background: #16a34a; color: white; border-radius: 999px; margin-left: 8px; vertical-align: middle; letter-spacing: 0.06em; }
+  .opt-tag-off { background: #888; }
+  .opt-amt { font-family: "JetBrains Mono", monospace; font-weight: 800; color: #ea580c; font-size: 12pt; }
+  .total-block { margin-top: 28px; padding-top: 16px; border-top: 3px solid #ea580c; }
+  .grand-total { display: flex; justify-content: space-between; align-items: baseline; }
+  .grand-total span { font-size: 11pt; color: #555; font-weight: 600; }
+  .grand-total strong { font-family: "JetBrains Mono", monospace; font-size: 24pt; color: #ea580c; font-weight: 800; }
+  .disclaimer { margin-top: 16px; padding: 12px; background: #faf7f5; border-left: 3px solid #ea580c; font-size: 9.5pt; color: #555; font-style: italic; }
+  .fineprint { margin-top: 8px; font-size: 9pt; color: #888; }
 </style></head><body>
-<div class="doc-header">
-  <div class="doc-logo"><img src="${COMPANY.logoLight}" alt="${escape(COMPANY.name)}"></div>
-  <div class="doc-company">
-    <div class="doc-company-name">${escape(COMPANY.name)}</div>
-    <div>${escape(COMPANY.addressLine1)}</div>
-    <div>${escape(COMPANY.addressLine2)}</div>
-    <div>Ph: ${escape(COMPANY.phone)} &nbsp; Fax: ${escape(COMPANY.fax)}</div>
-    <div>Email: ${escape(COMPANY.email)}</div>
-    <div>ABN: ${escape(COMPANY.abn)} &nbsp; ACN: ${escape(COMPANY.acn)} &nbsp; REC: ${escape(COMPANY.rec)}</div>
+<header class="doc-header">
+  <div class="header-top">
+    <div class="logo"><img src="${COMPANY.logoLight}" alt=""></div>
+    <div class="company">
+      <div class="company-name">${escape(COMPANY.name)}</div>
+      <div>${escape(COMPANY.addressLine1)}, ${escape(COMPANY.addressLine2)}</div>
+      <div>Ph: ${escape(COMPANY.phone)} · Fax: ${escape(COMPANY.fax)}</div>
+      <div>${escape(COMPANY.email)}</div>
+      <div class="company-ids">ABN ${escape(COMPANY.abn)} · ACN ${escape(COMPANY.acn)} · REC ${escape(COMPANY.rec)}</div>
+    </div>
   </div>
-</div>
-<div class="doc-meta-row">
-  <div><span class="lbl">Quote No.</span> <strong>${escape(displayNumber(q))}</strong></div>
-  <div><span class="lbl">Date</span> <strong>${escape(q.publishedAt || q.createdAt || todayISO())}</strong></div>
-  <div><span class="lbl">Expires</span> <strong>${escape(q.expiresAt || '—')}</strong></div>
-</div>
-<div class="doc-site">
-  <h2>${escape(q.siteName || q.client || 'Untitled')}</h2>
-  <div class="doc-site-details">
-    ${q.client ? `<div><strong>${escape(q.client)}</strong></div>` : ''}
-    ${q.siteContactName ? `<div>Attn: ${escape(q.siteContactName)}</div>` : ''}
-    ${q.siteAddress ? `<div>${escape(q.siteAddress)}</div>` : ''}
-    ${q.siteContactPhone ? `<div>Ph: ${escape(q.siteContactPhone)}</div>` : ''}
-    ${q.siteContactEmail ? `<div>Email: ${escape(q.siteContactEmail)}</div>` : ''}
+  <div class="number-block">
+    <div>
+      <div class="type-tag ${isEst ? 'type-est' : ''}">${isEst ? 'ESTIMATE' : 'QUOTATION'}</div>
+      <div class="doc-number">${escape(displayNumber(q))}</div>
+    </div>
+    <div class="number-meta">
+      <div><span class="lbl">Prepared by</span><strong>${escape(q.preparedBy || '—')}</strong></div>
+      <div><span class="lbl">Date</span><strong>${formatDate(q.publishedAt || q.createdAt)}</strong></div>
+    </div>
   </div>
-</div>
+  <div class="site-block">
+    <h2 class="site-name">${escape(q.siteName || q.client || 'Untitled')}</h2>
+    <div class="site-details">
+      ${q.client ? `<div><strong>${escape(q.client)}</strong></div>` : ''}
+      ${q.siteContactName ? `<div>Attn: ${escape(q.siteContactName)}</div>` : ''}
+      ${q.siteAddress ? `<div>${escape(q.siteAddress)}</div>` : ''}
+      ${q.siteContactPhone ? `<div>Ph: ${escape(q.siteContactPhone)}</div>` : ''}
+      ${q.siteContactEmail ? `<div>${escape(q.siteContactEmail)}</div>` : ''}
+    </div>
+  </div>
+</header>
 ${sectionsHtml}
-<div class="total">Total (incl. selected options): ${fmt(quoteTotal(q, { clientView: true }))}</div>
+<div class="total-block">
+  <div class="grand-total">
+    <span>Total ${isEst ? '(Indicative, ex GST)' : '(ex GST)'}</span>
+    <strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>
+  </div>
+  ${isEst ? '<p class="disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>' : '<p class="fineprint">Prices exclude GST unless otherwise stated.</p>'}
+</div>
 </body></html>`;
       const w = window.open('', '_blank');
       if (!w) { toast('Pop-up blocked. Allow pop-ups to export.'); return; }
       w.document.write(html); w.document.close();
       setTimeout(() => w.print(), 400);
-      toast('PDF export opened.');
+      toast('PDF export opened. Save from the print dialog.');
     }
 
     /* ── TOAST ── */
@@ -1491,6 +1476,7 @@ ${sectionsHtml}
     const ICON_DOWN  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
     const ICON_USER  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const ICON_TOTALS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4l-7 8v4l-4 2v-6L3 7V3z"/></svg>';
+    const ICON_CONVERT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>';
 
     /* ── STYLES ── */
     injectStyles();
@@ -1515,11 +1501,13 @@ ${sectionsHtml}
 
         .quote-toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem; }
         .search-wrap { flex: 1; min-width: 200px; }
+        .new-buttons { display: flex; gap: 0.5rem; }
         .quote-input { font-family: 'Outfit', sans-serif; font-size: 0.95rem; width: 100%; padding: 0.65rem 0.9rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-main); color: var(--text-primary); transition: border-color 0.2s ease; }
         .quote-input:focus { outline: none; border-color: var(--accent); }
         .quote-textarea { resize: vertical; min-height: 80px; font-family: 'Outfit', sans-serif; }
 
         .filter-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+        .doc-filter { padding-left: 0.5rem; border-left: 1px solid var(--border); }
         .filter-pill { font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 500; padding: 0.5rem 0.9rem; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; transition: all 0.2s ease; }
         .filter-pill:hover { color: var(--text-primary); }
         .filter-pill.active { background: var(--card-hover); color: var(--accent); border-color: var(--accent); }
@@ -1537,12 +1525,14 @@ ${sectionsHtml}
         .badge-green { background: var(--success-bg); color: var(--success); }
         .badge-amber { background: #fef3c7; color: #92400e; }
         .badge-red   { background: var(--error-bg); color: var(--error); }
+        .badge-est   { background: #1a1a1e; color: #fff; }
+        .badge-convert { background: rgba(234,88,12,0.15); color: var(--accent); font-family: 'JetBrains Mono', monospace; text-transform: none; }
         [data-theme="dark"] .badge-amber { background: rgba(245,158,11,0.15); color: #fbbf24; }
         [data-theme="dark"] .badge-green { background: rgba(22,163,74,0.15); color: #4ade80; }
         [data-theme="dark"] .badge-red   { background: rgba(220,38,38,0.15); color: #f87171; }
+        [data-theme="dark"] .badge-est   { background: #fff; color: #1a1a1e; }
         .row-title { font-weight: 600; font-size: 0.98rem; margin-bottom: 0.2rem; }
         .row-meta { font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 0.5rem; flex-wrap: wrap; }
-        .meta-red { color: var(--error); font-weight: 600; }
         .row-total { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 1.05rem; color: var(--text-primary); white-space: nowrap; }
         .row-actions { display: flex; gap: 0.25rem; flex-wrap: wrap; }
 
@@ -1554,12 +1544,14 @@ ${sectionsHtml}
 
         .editor-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
         .editor-titlebar { flex: 1; }
-        .editor-titlebar h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+        .editor-titlebar h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
         .pub-tag { display: inline-block; font-size: 0.7rem; padding: 0.2rem 0.6rem; background: var(--success-bg); color: var(--success); border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
         .pub-tag.pub-draft { background: rgba(99,99,105,0.15); color: var(--text-secondary); }
         .pub-tag.pub-progress { background: var(--error-bg); color: var(--error); }
+        .pub-tag.pub-est { background: #1a1a1e; color: #fff; }
         [data-theme="dark"] .pub-tag { background: rgba(22,163,74,0.15); color: #4ade80; }
         [data-theme="dark"] .pub-tag.pub-progress { background: rgba(220,38,38,0.15); color: #f87171; }
+        [data-theme="dark"] .pub-tag.pub-est { background: #fff; color: #1a1a1e; }
         .editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
         .save-indicator { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); padding: 0.4rem 0.7rem; background: var(--card-hover); border-radius: 999px; transition: all 0.3s ease; opacity: 0.7; }
         .save-indicator.saving { color: var(--accent); opacity: 1; }
@@ -1668,50 +1660,112 @@ ${sectionsHtml}
         .pick-tag-info { background: rgba(99,99,105,0.15); color: var(--text-secondary); }
         .pick-tag-opt { background: var(--accent); color: white; }
 
-        /* Preview / document */
-        .preview-card { padding: 2.5rem; max-width: 900px; margin: 0 auto; }
-        .doc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; padding-bottom: 1rem; }
-        .doc-logo img { max-height: 64px; max-width: 240px; }
+        /* ============================================================
+           DOCUMENT PAGE (preview)
+           Modern, print-friendly, A4 proportions
+           ============================================================ */
+        .preview-chrome { margin-bottom: 1rem; }
+        .doc-page {
+          background: white;
+          color: #1a1a1e;
+          max-width: 880px;
+          margin: 0 auto;
+          padding: 56px 60px;
+          border-radius: 8px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+          font-family: -apple-system, "Segoe UI", "Outfit", sans-serif;
+          font-size: 14px;
+          line-height: 1.6;
+        }
+        [data-theme="dark"] .doc-page { box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+
+        .doc-header { margin-bottom: 24px; }
+        .doc-header-top {
+          display: flex; justify-content: space-between; align-items: flex-start;
+          gap: 32px; padding-bottom: 18px; border-bottom: 3px solid #ea580c;
+        }
+        .doc-logo img { max-height: 72px; max-width: 240px; display: block; }
         .doc-logo .light-logo { display: block; }
         .doc-logo .dark-logo { display: none; }
-        [data-theme="dark"] .doc-logo .light-logo { display: none; }
-        [data-theme="dark"] .doc-logo .dark-logo { display: block; }
-        .doc-company { text-align: right; font-size: 0.8rem; color: var(--text-primary); line-height: 1.55; }
-        .doc-company-name { font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.15rem; }
-        .doc-meta-row { display: flex; gap: 1.5rem; padding: 0.75rem 0; border-top: 2px solid var(--accent); border-bottom: 1px solid var(--border); font-size: 0.85rem; color: var(--text-primary); margin-bottom: 1rem; flex-wrap: wrap; }
-        .doc-meta-label { color: var(--text-secondary); margin-right: 0.3rem; }
-        .doc-site { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
-        .doc-site-name { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-        .doc-site-details { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.55; }
-        .doc-site-details strong { color: var(--text-primary); }
+        /* Always show light logo on white doc page even in dark mode */
+        .doc-company {
+          text-align: right; font-size: 12px; color: #555; line-height: 1.55;
+        }
+        .doc-company-name { font-weight: 700; font-size: 14px; color: #1a1a1e; margin-bottom: 2px; }
+        .doc-company-ids { color: #888; font-size: 11px; margin-top: 4px; }
 
-        .preview-section { margin: 1.5rem 0; }
-        .preview-section h3 { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 0.75rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
-        .preview-section h4 { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 1rem 0 0.5rem; }
-        .preview-scope { margin-bottom: 0.75rem; }
-        .preview-bullets { padding-left: 1.5rem; }
-        .preview-bullets li { margin: 0.3rem 0; }
-        .preview-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-        .preview-table th, .preview-table td { text-align: left; padding: 0.7rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-        .preview-table th { font-weight: 600; color: var(--text-secondary); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .preview-table-total td { font-weight: 600; }
-        .preview-table-total strong { color: var(--accent); font-family: 'JetBrains Mono', monospace; }
-        .preview-line { display: flex; justify-content: space-between; padding: 0.6rem 0; }
-        .preview-line strong { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+        .doc-number-block {
+          display: flex; align-items: flex-start; justify-content: space-between;
+          gap: 24px; padding: 24px 0; border-bottom: 1px solid #eee;
+        }
+        .doc-type-tag {
+          display: inline-block; font-size: 11px; font-weight: 800;
+          letter-spacing: 0.14em; padding: 4px 12px; border-radius: 4px;
+          color: white; background: #ea580c; margin-bottom: 10px;
+        }
+        .doc-type-tag.type-est { background: #1a1a1e; }
+        .doc-number {
+          font-size: 44px; font-weight: 800; color: #ea580c;
+          letter-spacing: -0.02em; font-family: 'JetBrains Mono', 'Menlo', monospace;
+          line-height: 1;
+        }
+        .doc-number-meta { display: flex; gap: 32px; padding-top: 24px; font-size: 13px; }
+        .doc-number-meta .lbl { display: block; color: #888; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; margin-bottom: 3px; font-weight: 600; }
+        .doc-number-meta strong { color: #1a1a1e; font-weight: 600; }
 
-        .preview-option { background: var(--bg-main); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-top: 1rem; transition: all 0.25s ease; }
-        .preview-option.opt-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-        .option-header { display: flex; align-items: center; gap: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); cursor: pointer; }
-        .option-header input { width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
-        .option-header-text { display: flex; justify-content: space-between; align-items: center; flex: 1; gap: 1rem; }
-        .option-header h3 { margin: 0; padding: 0; border: none; }
-        .opt-amount { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--accent); font-size: 1.05rem; }
-        .option-body { padding-top: 0.75rem; }
+        .doc-site-block { padding: 20px 0 12px; }
+        .doc-site-name {
+          font-size: 26px; font-weight: 700; color: #1a1a1e;
+          letter-spacing: -0.02em; margin: 0 0 10px;
+        }
+        .doc-site-details { font-size: 13px; color: #555; line-height: 1.6; }
+        .doc-site-details strong { color: #1a1a1e; }
 
-        .preview-total-section { border-top: 2px solid var(--accent); padding-top: 1rem; margin-top: 1.5rem; }
-        .preview-total { display: flex; justify-content: space-between; align-items: center; font-size: 1.2rem; font-weight: 700; }
-        .preview-total strong { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; color: var(--accent); }
-        .preview-approval { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .doc-content { padding-top: 8px; }
+        .doc-section { margin: 24px 0; }
+        .doc-section h3 {
+          font-size: 12px; font-weight: 800; text-transform: uppercase;
+          letter-spacing: 0.08em; color: #ea580c; margin: 0 0 12px;
+          padding-bottom: 6px; border-bottom: 1px solid #ea580c;
+        }
+        .doc-section h4 {
+          font-size: 15px; font-weight: 700; color: #1a1a1e;
+          margin: 16px 0 6px; letter-spacing: -0.01em;
+        }
+        .doc-section p { margin: 8px 0; color: #1a1a1e; }
+        .doc-scope { margin-bottom: 12px; }
+        .doc-bullets { padding-left: 22px; margin: 6px 0; }
+        .doc-bullets li { margin: 4px 0; color: #1a1a1e; }
+
+        .doc-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+        .doc-table th, .doc-table td { padding: 9px 10px; border-bottom: 1px solid #eee; text-align: left; }
+        .doc-table th { background: #faf7f5; font-weight: 700; color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .doc-table td.num, .doc-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .doc-table-total td { background: #faf7f5; font-weight: 600; }
+        .doc-table-total strong { color: #ea580c; font-family: 'JetBrains Mono', monospace; }
+        .doc-line { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .doc-line strong { color: #ea580c; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+        .doc-option {
+          border: 2px solid #ea580c; border-radius: 8px;
+          padding: 16px 18px; background: #fff8f3; margin: 18px 0;
+          transition: background 0.2s ease;
+        }
+        .doc-option.opt-selected { background: #fff1e6; }
+        .doc-option-head { display: flex; align-items: center; gap: 12px; cursor: pointer; padding-bottom: 10px; border-bottom: 1px solid #f0d9c5; margin-bottom: 12px; }
+        .doc-option-head input { width: 20px; height: 20px; accent-color: #ea580c; flex-shrink: 0; cursor: pointer; }
+        .doc-option-head-text { display: flex; justify-content: space-between; align-items: center; flex: 1; gap: 16px; }
+        .doc-option-head h3 { margin: 0; padding: 0; border: none; font-size: 13px; }
+        .doc-option-amt { font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #ea580c; font-size: 16px; }
+
+        .doc-total-block { margin-top: 36px; padding-top: 20px; border-top: 3px solid #ea580c; }
+        .doc-total-row { display: flex; justify-content: space-between; align-items: baseline; }
+        .doc-total-row span { font-size: 14px; color: #555; font-weight: 600; }
+        .doc-total-row strong { font-family: 'JetBrains Mono', monospace; font-size: 32px; color: #ea580c; font-weight: 800; }
+        .doc-disclaimer { margin-top: 18px; padding: 14px 16px; background: #faf7f5; border-left: 3px solid #ea580c; font-size: 12.5px; color: #555; font-style: italic; line-height: 1.55; }
+        .doc-fineprint { margin-top: 10px; font-size: 12px; color: #888; }
+
+        .doc-approval { margin-top: 28px; padding-top: 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
 
         .quote-toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text-primary); color: var(--bg-main); padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 500; opacity: 0; pointer-events: none; transition: all 0.3s ease; z-index: 300; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
         .quote-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -1726,9 +1780,12 @@ ${sectionsHtml}
           .items-head.mat-head, .line-row.mat-row { grid-template-columns: 1fr 1fr 80px 60px 60px 80px 34px; font-size: 0.8rem; }
           .items-head.lab-head, .line-row.lab-row { grid-template-columns: 1fr 80px 70px 80px 34px; font-size: 0.85rem; }
           .section-grid { grid-template-columns: 1fr; }
-          .preview-card { padding: 1.5rem; }
-          .doc-header { flex-direction: column; }
+          .doc-page { padding: 32px 28px; }
+          .doc-header-top { flex-direction: column; gap: 16px; }
           .doc-company { text-align: left; }
+          .doc-number-block { flex-direction: column; gap: 16px; }
+          .doc-number { font-size: 32px; }
+          .doc-number-meta { padding-top: 0; gap: 20px; }
           .rail-controls { opacity: 1; }
         }
       `;
