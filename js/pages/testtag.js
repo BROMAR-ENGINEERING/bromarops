@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.05',
+  version: 'V1.06',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -85,6 +85,7 @@ window.BromarAdmin.testtag = {
 
   /* ── Applicable standards (shown at the start of the report) ── */
   _ttStandardsIntro: 'The testing presented in this report was conducted in accordance with relevant Australian standards, Energy Safe Victoria publications, and Work Health and Safety regulations.',
+  _ttImportant: 'This report must be retained for a minimum of 7 years in accordance with AS/NZS 3760:2022. The results recorded reflect the condition of the equipment at the time of testing only. All equipment must be re-inspected and re-tested on or before the due dates listed in this report. Any item marked Out of Service (OOS) has been withdrawn from service and must not be used until it has been inspected, repaired and successfully re-tested by a competent person. This report covers only the equipment listed herein; any equipment not presented for testing is excluded. Retain this document as evidence of compliance and make it available on request to Energy Safe Victoria, WorkSafe, or other authorised parties.',
   _ttStandards: [
     ['AS/NZS 3000:2018 (Amdt 3)', 'Electrical Installations — Wiring Rules'],
     ['AS/NZS 3012:2019', 'Electrical Installations — Construction & demolition sites'],
@@ -161,6 +162,9 @@ window.BromarAdmin.testtag = {
       .replace(/[Δ∆]/g, 'delta')
       .replace(/[\u2018\u2019\u201A]/g, "'")
       .replace(/[\u201C\u201D\u201E]/g, '"');
+  },
+  _ttEsc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   },
 
   _ttStandardsHTML() {
@@ -248,7 +252,7 @@ window.BromarAdmin.testtag = {
 
             <div class="section-label" style="margin-top:1.25rem">Options</div>
             <div class="tt-form-row">
-              <label>Compliance / Footer Note</label>
+              <label>Compliance Notes</label>
               <textarea id="tt-note" rows="3">Testing carried out in accordance with AS/NZS 3760. RCD trip times measured at 30 mA; pass limit 300 ms.</textarea>
             </div>
             <div class="tt-form-row">
@@ -292,7 +296,7 @@ window.BromarAdmin.testtag = {
       const loaded = document.getElementById('tt-loaded');
       if (loaded) {
         loaded.classList.add('show');
-        loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' switchboards loaded';
+        loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' locations loaded';
       }
       this._ttRenderReport(target);
     }
@@ -566,7 +570,7 @@ window.BromarAdmin.testtag = {
     const loaded = document.getElementById('tt-loaded');
     if (loaded) {
       loaded.classList.add('show');
-      loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' switchboards loaded';
+      loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' locations loaded';
     }
     this._ttRenderReport(sectionTarget);
   },
@@ -704,7 +708,7 @@ window.BromarAdmin.testtag = {
         let items = g.items;
         if (f.oosOnly) items = items.filter(a => a.state === 'oos' || a.state === 'fail');
         if (!items.length) continue;
-        detailHTML += '<div class="tt-loc-h">' + g.location + '<small>' + (g.subsText || '') + ' \u00b7 ' + g.items.length + ' circuit' + (g.items.length > 1 ? 's' : '') + '</small></div>' +
+        detailHTML += '<div class="tt-loc-h">' + g.location + '<small>' + (g.subsText ? 'Sub Location: ' + g.subsText + ' \u00b7 ' : '') + g.items.length + ' item' + (g.items.length > 1 ? 's' : '') + '</small></div>' +
           '<table class="tt-tbl"><thead><tr>' +
           '<th style="width:16%">Barcode</th><th style="width:24%">Description</th>' +
           '<th style="width:24%">Test</th><th style="width:12%" class="tt-tc">Trip</th>' +
@@ -755,13 +759,13 @@ window.BromarAdmin.testtag = {
           <div class="tt-card ok"><div class="n">${pass}</div><div class="l">Pass</div></div>
           <div class="tt-card bad"><div class="n">${fail}</div><div class="l">Fail</div></div>
           <div class="tt-card warn"><div class="n">${oos}</div><div class="l">Out of Svc (OOS)</div></div>
-          <div class="tt-card"><div class="n">${locs}</div><div class="l">Boards</div></div>
+          <div class="tt-card"><div class="n">${locs}</div><div class="l">Locations</div></div>
           <div class="tt-card"><div class="n">${overdue}</div><div class="l">Overdue</div></div>
         </div>
-        <h2 class="tt-sec">Switchboard Summary</h2>
+        <h2 class="tt-sec">Location Summary</h2>
         <table class="tt-tbl"><thead><tr>
-          <th>Switchboard</th><th>Sublocation</th>
-          <th class="tt-tc">Circuits</th><th class="tt-tc">Pass</th><th class="tt-tc">Fail</th>
+          <th>Location</th><th>Sub Location</th>
+          <th class="tt-tc">Items</th><th class="tt-tc">Pass</th><th class="tt-tc">Fail</th>
           <th class="tt-tc">OOS</th><th>Next Due</th>
         </tr></thead><tbody>${
           boards.map(g => '<tr><td>' + g.location + '</td><td>' + (g.subsText || '\u2014') + '</td>' +
@@ -771,9 +775,10 @@ window.BromarAdmin.testtag = {
             '<td class="tt-tc"' + (g.oos ? ' style="color:#b06a17"' : '') + '>' + g.oos + '</td>' +
             '<td>' + g.earliest + '</td></tr>').join('')
         }</tbody></table>
-        ${f.detail ? '<h2 class="tt-sec">Circuit Detail by Switchboard</h2>' + detailHTML : ''}
-        ${f.techNotes ? '<h2 class="tt-sec">Technician Notes</h2><div class="tt-tech-box">' + f.techNotes.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>') + '</div>' : ''}
-        ${f.note ? '<div class="tt-note-line">' + f.note + '</div>' : ''}
+        ${f.detail ? '<h2 class="tt-sec">Equipment Detail by Location</h2>' + detailHTML : ''}
+        ${f.note ? '<h2 class="tt-sec">Compliance Notes</h2><div class="tt-note-body">' + this._ttEsc(f.note) + '</div>' : ''}
+        ${f.techNotes ? '<h2 class="tt-sec">Technician Notes</h2><div class="tt-note-body">' + this._ttEsc(f.techNotes) + '</div>' : ''}
+        <h2 class="tt-sec">Important</h2><div class="tt-note-body">${this._ttImportant}</div>
       </div>
     `;
   },
@@ -938,7 +943,7 @@ window.BromarAdmin.testtag = {
     doc.text('Results Summary', M, y); y += 5;
 
     const cards = [['Equipment', total, navy], ['Pass', pass, [29, 122, 92]], ['Fail', fail, [192, 57, 43]],
-      ['Out of Svc (OOS)', oos, [176, 106, 23]], ['Boards', boards.length, navy], ['Overdue', overdue, navy]];
+      ['Out of Svc (OOS)', oos, [176, 106, 23]], ['Locations', boards.length, navy], ['Overdue', overdue, navy]];
     const cw = (W - 2 * M - 5 * 4) / 6;
     cards.forEach((c, i) => {
       const x = M + i * (cw + 4);
@@ -950,10 +955,10 @@ window.BromarAdmin.testtag = {
 
     if (y > 250) { doc.addPage(); stamp(); y = 26; }
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
-    doc.text('Switchboard Summary', M, y); y += 5;
+    doc.text('Location Summary', M, y); y += 5;
     doc.autoTable({
       startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
-      head: [['Switchboard', 'Sublocation', 'Circuits', 'Pass', 'Fail', 'OOS', 'Next due']],
+      head: [['Location', 'Sub Location', 'Items', 'Pass', 'Fail', 'OOS', 'Next due']],
       body: boards.map(g => [g.location, g.subsText || '\u2014', g.items.length, g.pass, g.fail, g.oos, g.earliest]),
       styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: orange, fontSize: 8 },
       alternateRowStyles: { fillColor: [250, 251, 253] },
@@ -971,15 +976,18 @@ window.BromarAdmin.testtag = {
     if (f.detail) {
       doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...navy);
       if (y > 250) { doc.addPage(); stamp(); y = 28; }
-      doc.text('Circuit detail by switchboard', M, y); y += 4;
+      doc.text('Equipment Detail by Location', M, y); y += 4;
       for (const g of boards) {
         let items = g.items;
         if (f.oosOnly) items = items.filter(a => a.state === 'oos' || a.state === 'fail');
         if (!items.length) continue;
+        const hStyle = { fillColor: [68, 71, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 };
         doc.autoTable({
           startY: y + 3, margin: { left: M, right: M, top: 22, bottom: 14 },
-          head: [[{ content: g.location + '  \u2014  ' + (g.subsText || '') + ' (' + g.items.length + ')', colSpan: 6,
-            styles: { fillColor: [68, 71, 77], halign: 'left', fontStyle: 'bold', fontSize: 8.5 } }],
+          head: [[
+            { content: g.location + '  (' + g.items.length + ')', colSpan: 4, styles: { ...hStyle, halign: 'left' } },
+            { content: g.subsText ? 'Sub Location: ' + g.subsText : '', colSpan: 2, styles: { ...hStyle, halign: 'right' } }
+            ],
             ['Barcode', 'Description', 'Test performed', 'Trip / result', 'Status', 'Due']],
           body: items.map(a => [a.barcode, a.description, a.testPerformed, a.measure, a.status, a.due || '\u2014']),
           styles: { fontSize: 7.5, cellPadding: 1.6 }, headStyles: { fillColor: orange, fontSize: 7.5 },
@@ -999,27 +1007,17 @@ window.BromarAdmin.testtag = {
       }
     }
 
-    if (f.techNotes) {
-      doc.setFont('helvetica', 'normal').setFontSize(8.5);
-      const tnLines = doc.splitTextToSize(this._ttAscii(f.techNotes), W - 2 * M - 8);
-      const boxH = tnLines.length * 8.5 * 0.45 + 7;
-      if (y + boxH + 10 > 286) { doc.addPage(); stamp(); y = 26; }
+    /* ── Compliance / Technician / Important — consistent final page ── */
+    doc.addPage(); stamp(); y = 26;
+    const noteSection = (heading, bodyTxt) => {
+      ensure(16);
       doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
-      doc.text('Technician Notes', M, y); y += 5;
-      doc.setFillColor(248, 250, 252).setDrawColor(227, 231, 238);
-      doc.roundedRect(M, y, W - 2 * M, boxH, 2, 2, 'FD');
-      doc.setFillColor(...orange).rect(M, y, 1.4, boxH, 'F');
-      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(40, 49, 60);
-      doc.text(tnLines, M + 5, y + 5.5);
-      y += boxH + 8;
-    }
-
-    if (f.note) {
-      if (y > 270) { doc.addPage(); stamp(); y = 28; }
-      doc.setDrawColor(227, 231, 238).line(M, y, W - M, y);
-      doc.setFont('helvetica', 'italic').setFontSize(7.5).setTextColor(...muted);
-      doc.text(doc.splitTextToSize(f.note, W - 2 * M), M, y + 5);
-    }
+      doc.text(heading, M, y); y += 5.5;
+      para(bodyTxt, 9, 'normal', [40, 49, 60], 0, 6);
+    };
+    if (f.note) noteSection('Compliance Notes', f.note);
+    if (f.techNotes) noteSection('Technician Notes', f.techNotes);
+    noteSection('Important', this._ttImportant);
 
     const fnameBase = (f.cert || f.customer || 'report').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
     doc.save(fnameBase + '_Site_Equipment_Test_Report.pdf');
@@ -1140,8 +1138,7 @@ window.BromarAdmin.testtag = {
         .tt-pill.oos { background: #f6ecd9; color: #b06a17; }
         .tt-loc-h { font-size: 0.85rem; font-weight: 700; margin: 1rem 0 0.3rem; color: var(--text-primary); }
         .tt-loc-h small { font-weight: 400; color: var(--text-secondary); margin-left: 0.4rem; }
-        .tt-note-line { margin-top: 1.25rem; padding-top: 0.6rem; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-secondary); font-style: italic; }
-        .tt-tech-box { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 0.7rem 0.85rem; font-size: 0.78rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap; background: var(--bg-main); }
+        .tt-note-body { font-size: 0.8rem; color: var(--text-primary); line-height: 1.55; white-space: pre-wrap; margin: 0 0 0.4rem; }
         .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
         .tt-req { margin-top: 0.5rem; }
         .tt-req-title { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem; }
