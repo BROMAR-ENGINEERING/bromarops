@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.01',
+  version: 'V1.02',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -324,9 +324,49 @@ window.BromarAdmin.testtag = {
     return this._ttCleanText(text);
   },
 
+  /* ── WinPATS encodes punctuation as SPCHR<code>SPCHR placeholder tokens ──
+     Add new codes here as you find them (unknown codes are logged to the
+     console and stripped, so check there if a character goes missing). */
+  _ttSpecialMap: {
+    HPNMK: '-',   // hyphen        34-40
+    SQOTE: "'",   // apostrophe    D'aloia
+    FWDSL: '/',   // slash         2/98
+    DQOTE: '"',   // double quote
+    BCKSL: '\\',  // backslash
+    AMPSD: '&',   // ampersand
+    ATSGN: '@',   // at sign
+    HASHT: '#',   // hash
+    PRCNT: '%',   // percent
+    DOLLR: '$',   // dollar
+    PLUSS: '+',   // plus
+    EQUAL: '=',   // equals
+    CULON: ':',   // colon
+    SMCLN: ';',   // semicolon
+    COMMA: ',',   // comma
+    FSTOP: '.',   // full stop
+    QMARK: '?',   // question mark
+    EXCLM: '!',   // exclamation
+    ASTRK: '*',   // asterisk
+    LPARN: '(',   // open paren
+    RPARN: ')',   // close paren
+    PIPES: '|',   // pipe
+  },
+  _ttDecodeSpecial(s) {
+    if (!s || s.indexOf('SPCHR') === -1) return s;
+    return s.replace(/SPCHR([A-Z]{2,10}?)SPCHR/g, (match, code) => {
+      if (Object.prototype.hasOwnProperty.call(this._ttSpecialMap, code)) {
+        return this._ttSpecialMap[code];
+      }
+      console.warn('[TestTag] Unknown WinPATS placeholder "' + code + '" — add it to _ttSpecialMap. Removed for now.');
+      return '';
+    });
+  },
+
   /* ── Repair mojibake + normalise punctuation to plain ASCII ── */
   _ttCleanText(s) {
     if (!s) return s;
+    // 0) Decode WinPATS SPCHR placeholder tokens first
+    s = this._ttDecodeSpecial(s);
     // 1) Repair UTF-8 bytes that were mis-read as Windows-1252
     const moji = [
       ['\u00E2\u20AC\u2122', "'"], ['\u00E2\u20AC\u02DC', "'"],   // ' '
@@ -700,7 +740,7 @@ window.BromarAdmin.testtag = {
           <div class="tt-card"><div class="n">${total}</div><div class="l">Equipment</div></div>
           <div class="tt-card ok"><div class="n">${pass}</div><div class="l">Pass</div></div>
           <div class="tt-card bad"><div class="n">${fail}</div><div class="l">Fail</div></div>
-          <div class="tt-card warn"><div class="n">${oos}</div><div class="l">Out of Svc</div></div>
+          <div class="tt-card warn"><div class="n">${oos}</div><div class="l">Out of Svc (OOS)</div></div>
           <div class="tt-card"><div class="n">${locs}</div><div class="l">Boards</div></div>
           <div class="tt-card"><div class="n">${overdue}</div><div class="l">Overdue</div></div>
         </div>
@@ -821,6 +861,7 @@ window.BromarAdmin.testtag = {
     const ensure = need => { if (y + need > 286) { doc.addPage(); stamp(); y = 26; } };
     const para = (txt, size, style, color, indent, gap) => {
       indent = indent || 0; gap = gap == null ? 2 : gap;
+      doc.setFont('helvetica', style).setFontSize(size);
       const lines = doc.splitTextToSize(this._ttAscii(txt), W - 2 * M - indent);
       const lh = size * 0.45;
       ensure(lines.length * lh + gap);
@@ -841,7 +882,8 @@ window.BromarAdmin.testtag = {
         body: this._ttStandards.map(s => [this._ttAscii(s[0]), this._ttAscii(s[1])]),
         styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: orange, fontSize: 8 },
         alternateRowStyles: { fillColor: [250, 251, 253] },
-        columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.4 } },
+        tableWidth: W - 2 * M,
+        columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.4 }, 1: { cellWidth: (W - 2 * M) * 0.6 } },
         didDrawPage: stamp,
       });
       y = doc.lastAutoTable.finalY + 8;
@@ -858,6 +900,7 @@ window.BromarAdmin.testtag = {
           para(sec.heading, 9, 'bold', orange, 0, 1.5);
           sec.points.forEach(pt => {
             const t = this._ttAscii(pt);
+            doc.setFont('helvetica', 'normal').setFontSize(8);
             const lines = doc.splitTextToSize(t, W - 2 * M - 6);
             const lh = 8 * 0.45;
             ensure(lines.length * lh + 1);
@@ -873,12 +916,13 @@ window.BromarAdmin.testtag = {
       y += 2;
     }
 
-    if (y > 250) { doc.addPage(); stamp(); y = 26; }
+    if (f.summary) { doc.addPage(); stamp(); y = 26; }
+    else if (y > 250) { doc.addPage(); stamp(); y = 26; }
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
     doc.text('Results Summary', M, y); y += 5;
 
     const cards = [['Equipment', total, navy], ['Pass', pass, [29, 122, 92]], ['Fail', fail, [192, 57, 43]],
-      ['Out of svc', oos, [176, 106, 23]], ['Boards', boards.length, navy], ['Overdue', overdue, navy]];
+      ['Out of Svc (OOS)', oos, [176, 106, 23]], ['Boards', boards.length, navy], ['Overdue', overdue, navy]];
     const cw = (W - 2 * M - 5 * 4) / 6;
     cards.forEach((c, i) => {
       const x = M + i * (cw + 4);
