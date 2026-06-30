@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.10',
+  version: 'V1.11',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -93,6 +93,7 @@ window.BromarAdmin.testtag = {
     ['IΔn', 'Rated residual operating current of the RCD/RCBO (e.g. 30 mA)'],
     ['Trip time', 'Time to disconnect at the rated residual current; pass limit 300 ms'],
     ['Visual', 'Visual inspection for damage, wear and compliance'],
+    ['Class I', 'Earthed equipment \u2014 protected by a connection to protective earth'],
     ['Class II', 'Double-insulated equipment (no protective earth)'],
   ],
   _ttStandards: [
@@ -121,15 +122,14 @@ window.BromarAdmin.testtag = {
         {
           heading: 'Residual Current Devices (RCD / RCBO)',
           points: [
-            'Push-button test \u2014 the device must trip immediately to <strong>PASS</strong>.',
-            'Instrument trip-time test at the rated residual current (IΔn); pass limit <strong>300 ms</strong>, each phase tested.',
-            'Portable RCDs are also push-button tested daily by the user before use.',
+            'Push-button test <strong>monthly</strong> \u2014 the device must trip immediately to <strong>PASS</strong>; portable RCDs are also push-button tested daily by the user before use.',
+            'Operating-time (trip-time) test at the rated residual current (IΔn) at 3-monthly intervals; pass limit <strong>300 ms</strong>, each phase tested.',
+            'A device that fails to trip, or a trip time exceeding 300 ms, is recorded as <strong>FAIL</strong>.',
           ],
         },
       ],
       colourTable: {
-        note: 'Tag colours follow common industry convention \u2014 confirm the scheme adopted by the principal contractor for the site.',
-        rows: [['December \u2013 February', 'Red'], ['March \u2013 May', 'Green'], ['June \u2013 August', 'Blue'], ['September \u2013 November', 'Yellow']],
+        rows: [['Dec \u2013 Feb', 'Red'], ['Mar \u2013 May', 'Green'], ['Jun \u2013 Aug', 'Blue'], ['Sep \u2013 Nov', 'Yellow']],
       },
       records: 'Retain testing records in accordance with AS/NZS 3012 and site WHS requirements, and provide a copy to the customer.',
     },
@@ -232,10 +232,11 @@ window.BromarAdmin.testtag = {
     if (r.colourTable) {
       const cmap = { Red: '#dc2626', Green: '#16a34a', Blue: '#2563eb', Yellow: '#eab308' };
       h += '<div class="tt-req-sub">Tag Colour by Test Period</div>' +
-        '<table class="tt-tbl tt-colour"><thead><tr><th style="width:55%">Test Period</th><th>Tag Colour</th></tr></thead><tbody>' +
-        r.colourTable.rows.map(c => '<tr><td>' + c[0] + '</td><td><span class="tt-swatch" style="background:' + (cmap[c[1]] || '#888') + '"></span>' + c[1] + '</td></tr>').join('') +
-        '</tbody></table>' +
-        '<div class="tt-req-records" style="font-style:italic">' + r.colourTable.note + '</div>';
+        '<table class="tt-tbl tt-colour"><thead><tr>' +
+        r.colourTable.rows.map(c => '<th style="text-align:center">' + c[0] + '</th>').join('') +
+        '</tr></thead><tbody><tr>' +
+        r.colourTable.rows.map(c => '<td style="text-align:center;font-weight:600;color:#fff;background:' + (cmap[c[1]] || '#888') + '">' + c[1] + '</td>').join('') +
+        '</tr></tbody></table>';
     }
     h += '<div class="tt-req-records"><strong>Records.</strong> ' + r.records + '</div></div>';
     return h;
@@ -825,7 +826,7 @@ window.BromarAdmin.testtag = {
           <div class="tt-card"><div class="n">${locs}</div><div class="l">Locations</div></div>
           <div class="tt-card"><div class="n">${overdue}</div><div class="l">Overdue</div></div>
         </div>
-        ${(() => { const e = this._ttEarliestDue(); return e ? '<div class="tt-due-callout"><span>Next retest due</span><strong>' + e.str + '</strong>' + (e.location ? '<em>' + this._ttEsc(e.location) + '</em>' : '') + '</div>' : ''; })()}
+        ${(() => { const e = this._ttEarliestDue(); return e ? '<div class="tt-due-callout"><span>Next retest due</span><strong>' + e.str + '</strong></div>' : ''; })()}
         ${this._ttExceptionsHTML()}
         <h2 class="tt-sec">Location Summary</h2>
         <table class="tt-tbl"><thead><tr>
@@ -1007,25 +1008,24 @@ window.BromarAdmin.testtag = {
         });
         if (r.colourTable) {
           const cmap = { Red: [220, 38, 38], Green: [22, 163, 74], Blue: [37, 99, 235], Yellow: [234, 179, 8] };
-          ensure(10);
+          ensure(14);
           para('Tag Colour by Test Period', 9, 'bold', orange, 0, 1.5);
           doc.autoTable({
             startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
-            head: [['Test Period', 'Tag Colour']],
-            body: r.colourTable.rows.map(c => [c[0], c[1]]),
-            styles: { fontSize: 8, cellPadding: 1.6 }, headStyles: { fillColor: orange, fontSize: 8 },
-            tableWidth: (W - 2 * M) * 0.6,
-            columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.36 }, 1: { halign: 'center', fontStyle: 'bold' } },
+            head: [r.colourTable.rows.map(c => c[0])],
+            body: [r.colourTable.rows.map(c => c[1])],
+            styles: { fontSize: 8, cellPadding: 1.8, halign: 'center' },
+            headStyles: { fillColor: orange, fontSize: 8, halign: 'center' },
+            tableWidth: W - 2 * M,
             didParseCell: d => {
-              if (d.section === 'body' && d.column.index === 1) {
+              if (d.section === 'body') {
                 const rgb = cmap[d.cell.raw];
-                if (rgb) { d.cell.styles.fillColor = rgb; d.cell.styles.textColor = [255, 255, 255]; }
+                if (rgb) { d.cell.styles.fillColor = rgb; d.cell.styles.textColor = [255, 255, 255]; d.cell.styles.fontStyle = 'bold'; }
               }
             },
             didDrawPage: stamp,
           });
-          y = doc.lastAutoTable.finalY + 2;
-          para(r.colourTable.note, 7.5, 'italic', [...muted], 0, 2);
+          y = doc.lastAutoTable.finalY + 4;
         }
         para('Records.  ' + r.records, 8, 'italic', [...muted], 0, 2);
       }
@@ -1058,10 +1058,6 @@ window.BromarAdmin.testtag = {
       doc.text('NEXT RETEST DUE', M + 4, y + 6.3);
       doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...orange);
       doc.text(nextDue.str, M + 42, y + 6.8);
-      if (nextDue.location) {
-        doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...muted);
-        doc.text(this._ttAscii(nextDue.location), W - M - 4, y + 6.3, { align: 'right' });
-      }
       y += 15;
     }
 
