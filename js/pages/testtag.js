@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.13',
+  version: 'V1.14',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -814,6 +814,30 @@ window.BromarPages.admin = {
       }
 
       /* Test & Tag actions */
+      const ttViewBtn = e.target.closest('[data-tt-view]');
+      if (ttViewBtn) {
+        if (this._ttView !== 'register') this._ttForm = this._ttReadForm();
+        this._ttView = ttViewBtn.dataset.ttView;
+        this._renderTestTag(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('#tt-save')) {
+        this._ttSaveToRegister(true);
+        return;
+      }
+      const ttOpen = e.target.closest('[data-tt-open]');
+      if (ttOpen) {
+        this._ttOpenFromRegister(ttOpen.dataset.ttOpen, container.querySelector('#admin-section-content'));
+        return;
+      }
+      const ttDel = e.target.closest('[data-tt-delete]');
+      if (ttDel) {
+        const cert = ttDel.dataset.ttCert || 'this report';
+        if (confirm('Delete ' + cert + ' from the register? This cannot be undone.')) {
+          this._ttDeleteFromRegister(ttDel.dataset.ttDelete, container.querySelector('#admin-section-content'));
+        }
+        return;
+      }
       if (e.target.closest('#tt-cert-regen')) {
         const el = document.getElementById('tt-cert');
         if (el) el.value = this._ttGenCert();
@@ -862,6 +886,10 @@ window.BromarPages.admin = {
         if (cert && (!cert.value.trim() || /^BRO-TT-/.test(cert.value.trim()))) {
           cert.value = this._ttGenCert();
         }
+      }
+      /* Test & Tag: filter the register as you type */
+      if (e.target.matches('#tt-reg-search')) {
+        this._ttRenderRegisterList(container.querySelector('#admin-section-content'));
       }
     });
   },
@@ -1998,6 +2026,12 @@ window.BromarPages.admin = {
      SECTION: Test & Tag Report Builder
      ════════════════════════════════════════ */
   _ttModel: null,
+  _ttView: 'build',
+  _ttForm: null,
+  _ttRegister: [],
+  _ttRegisterError: null,
+  _ttFlashTimer: null,
+  _TT_TABLE: 'test_tag_reports',
   _ttORG: {
     name: 'JJTJ Pty Ltd T/A Bromar Electrical Services (Aust)',
     short: 'Bromar Electrical Services',
@@ -2149,7 +2183,18 @@ window.BromarPages.admin = {
   _renderTestTag(target) {
     target.innerHTML = `
       <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Test & Tag Report Builder</h2></div>
+        <div class="admin-section-header">
+          <h2>Test & Tag Reports</h2>
+          <div class="co-toolbar">
+            <button class="btn-secondary ${this._ttView !== 'register' ? 'active' : ''}" data-tt-view="build">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New Report
+            </button>
+            <button class="btn-secondary ${this._ttView === 'register' ? 'active' : ''}" data-tt-view="register">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4H4zM4 10h16v10H4zM8 14h8"/></svg>Register
+            </button>
+          </div>
+        </div>
+        <div id="tt-section-body">
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem">Load a WinPATS HTML export, confirm details, export a clean PDF.</p>
 
         <div class="tt-layout">
@@ -2209,7 +2254,11 @@ window.BromarPages.admin = {
               <button class="btn-secondary" id="tt-refresh" disabled style="flex:1">Update Preview</button>
               <button class="btn-primary" id="tt-pdf" disabled style="flex:1;padding:0.7rem 1rem">Download PDF</button>
             </div>
-            <p style="font-size:0.7rem;color:var(--text-secondary);text-align:center;margin-top:0.5rem;opacity:0.6">Runs in your browser — nothing uploaded.</p>
+            <button class="btn-secondary" id="tt-save" disabled style="width:100%;margin-top:0.5rem">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save to Register
+            </button>
+            <div id="tt-save-feedback"></div>
+            <p style="font-size:0.7rem;color:var(--text-secondary);text-align:center;margin-top:0.5rem;opacity:0.6">Saved reports go to your register; nothing else is uploaded.</p>
           </div>
 
           <div class="tt-preview-area">
@@ -2220,10 +2269,25 @@ window.BromarPages.admin = {
             <div id="tt-preview"></div>
           </div>
         </div>
+        </div>
       </div>
     `;
 
     this._ttBindDropZone(target);
+
+    if (this._ttView === 'register') { this._ttShowRegister(target); return; }
+
+    /* Restore a loaded report when returning to the build view */
+    if (this._ttModel) {
+      if (this._ttForm) this._ttPopulateForm(this._ttForm);
+      ['tt-refresh','tt-pdf','tt-save'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+      const loaded = document.getElementById('tt-loaded');
+      if (loaded) {
+        loaded.classList.add('show');
+        loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' switchboards loaded';
+      }
+      this._ttRenderReport(target);
+    }
   },
 
   _ttBindDropZone(sectionTarget) {
@@ -2248,6 +2312,158 @@ window.BromarPages.admin = {
     });
   },
 
+  /* ── Register: write the current report to Supabase (upsert by cert_no) ── */
+  async _ttSaveToRegister(showNote) {
+    if (!this._ttModel) return;
+    const f = this._ttReadForm();
+    if (!f.cert) { if (showNote) this._ttFlash('Add a certificate number first.', 'error'); return; }
+    const assets = this._ttModel.assets;
+    const boards = this._ttGroupBoards(assets);
+    const payload = {
+      cert_no: f.cert,
+      job_number: f.job || null,
+      customer: f.customer || null,
+      site_name: f.site || null,
+      site_address: f.address || null,
+      contact: f.contact || null,
+      contact_email: f.email || null,
+      phone: f.phone || null,
+      date_range: f.range || null,
+      installation_type: f.instType,
+      tested_by: f.tester || null,
+      generated_date: this._ttModel.head.generated || new Date().toLocaleDateString('en-GB'),
+      total: assets.length,
+      pass: assets.filter(a => a.state === 'pass').length,
+      fail: assets.filter(a => a.state === 'fail').length,
+      oos: assets.filter(a => a.state === 'oos').length,
+      boards: boards.length,
+      overdue: parseInt(this._ttModel.stats['Overdue'] || '0', 10) || 0,
+      note: f.note || null,
+      report_data: { head: this._ttModel.head, stats: this._ttModel.stats, assets, form: f },
+      updated_at: new Date().toISOString(),
+    };
+    const headers = { ...this._sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' };
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?on_conflict=cert_no', {
+        method: 'POST', headers, body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      if (showNote) this._ttFlash('Saved to register: ' + f.cert, 'success');
+    } catch (err) {
+      console.error('Register save error:', err);
+      if (showNote) this._ttFlash('Could not save to register — is the table set up?', 'error');
+    }
+  },
+
+  _ttFlash(msg, type) {
+    const el = document.getElementById('tt-save-feedback');
+    if (!el) return;
+    el.innerHTML = '<div class="co-upload-result ' + (type || 'success') + '" style="margin-top:0.6rem">' + msg + '</div>';
+    clearTimeout(this._ttFlashTimer);
+    this._ttFlashTimer = setTimeout(() => { const e2 = document.getElementById('tt-save-feedback'); if (e2) e2.innerHTML = ''; }, 4000);
+  },
+
+  /* ── Register: fetch + render the lookup list ── */
+  async _ttShowRegister(target) {
+    const body = target.querySelector('#tt-section-body');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
+        <input type="text" id="tt-reg-search" placeholder="Search cert no, job, customer, site…" style="flex:1;min-width:200px;padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;outline:none">
+      </div>
+      <div id="tt-reg-list"><div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading register…</p></div></div>
+    `;
+    await this._ttFetchRegister();
+    this._ttRenderRegisterList(target);
+  },
+
+  async _ttFetchRegister() {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?select=*&order=updated_at.desc', { headers: this._sbHeaders() });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      this._ttRegister = Array.isArray(data) ? data : [];
+      this._ttRegisterError = null;
+    } catch (err) {
+      console.error('Register fetch error:', err);
+      this._ttRegister = [];
+      this._ttRegisterError = err.message;
+    }
+  },
+
+  _ttRenderRegisterList(target) {
+    const list = target.querySelector('#tt-reg-list');
+    if (!list) return;
+    if (this._ttRegisterError) {
+      list.innerHTML = '<div class="admin-placeholder"><p>Register not available yet. Create the <strong>test_tag_reports</strong> table in Supabase, then reopen this tab.</p></div>';
+      return;
+    }
+    const q = (document.getElementById('tt-reg-search')?.value || '').toLowerCase().trim();
+    let rows = this._ttRegister;
+    if (q) rows = rows.filter(r => [r.cert_no, r.job_number, r.customer, r.site_name, r.site_address, r.date_range].filter(Boolean).join(' ').toLowerCase().includes(q));
+    if (!rows.length) {
+      list.innerHTML = '<div class="admin-placeholder"><p>' + (this._ttRegister.length ? 'No reports match your search.' : 'No reports saved yet. Build a report, then Save to Register or Download PDF.') + '</p></div>';
+      return;
+    }
+    const body = rows.map(r => {
+      const results = '<span style="color:var(--success);font-weight:600">' + (r.pass || 0) + 'P</span>' +
+        (r.fail ? ' \u00b7 <span style="color:var(--error);font-weight:600">' + r.fail + 'F</span>' : '') +
+        (r.oos ? ' \u00b7 <span style="color:#b06a17;font-weight:600">' + r.oos + ' OOS</span>' : '');
+      const siteLine = (r.site_name && r.site_name !== r.customer) ? '<br><span style="color:var(--text-secondary);font-size:0.8rem">' + r.site_name + '</span>' : '';
+      return '<tr>' +
+        '<td><strong>' + (r.cert_no || '\u2014') + '</strong>' +
+          '<span class="co-mobile-meta">' + (r.customer || '') + ' \u00b7 ' + (r.date_range || '') + '</span></td>' +
+        '<td class="hide-mobile">' + (r.job_number || '\u2014') + '</td>' +
+        '<td class="hide-mobile">' + (r.customer || '\u2014') + siteLine + '</td>' +
+        '<td class="hide-mobile">' + (r.date_range || '\u2014') + '</td>' +
+        '<td>' + results + '</td>' +
+        '<td class="hide-mobile">' + (r.generated_date || '') + '</td>' +
+        '<td><div style="display:flex;gap:0.3rem">' +
+          '<button class="sup-action-btn" data-tt-open="' + r.id + '" title="Open"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14L21 3M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/></svg></button>' +
+          '<button class="sup-action-btn sup-action-delete" data-tt-delete="' + r.id + '" data-tt-cert="' + (r.cert_no || '') + '" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    list.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem">' + rows.length + ' report' + (rows.length !== 1 ? 's' : '') + '</div>' +
+      '<table class="co-list-table"><thead><tr>' +
+      '<th>Cert No.</th><th class="hide-mobile">Job</th><th class="hide-mobile">Customer / Site</th>' +
+      '<th class="hide-mobile">Date Range</th><th>Results</th><th class="hide-mobile">Generated</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
+  },
+
+  _ttOpenFromRegister(id, target) {
+    const rec = this._ttRegister.find(r => String(r.id) === String(id));
+    if (!rec || !rec.report_data) { alert('This report has no stored data to re-open.'); return; }
+    const rd = rec.report_data;
+    this._ttModel = { head: rd.head || {}, stats: rd.stats || {}, assets: rd.assets || [] };
+    this._ttForm = rd.form || null;
+    this._ttView = 'build';
+    this._renderTestTag(target);
+  },
+
+  async _ttDeleteFromRegister(id, target) {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?id=eq.' + id, { method: 'DELETE', headers: this._sbHeaders() });
+      if (!res.ok) throw new Error(await res.text());
+      await this._ttFetchRegister();
+      this._ttRenderRegisterList(target);
+    } catch (err) {
+      console.error('Register delete error:', err);
+      alert('Delete failed: ' + err.message);
+    }
+  },
+
+  _ttPopulateForm(f) {
+    if (!f) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    set('tt-customer', f.customer); set('tt-site', f.site); set('tt-address', f.address);
+    set('tt-contact', f.contact); set('tt-phone', f.phone); set('tt-email', f.email);
+    set('tt-job', f.job); set('tt-range', f.range); set('tt-cert', f.cert); set('tt-tester', f.tester);
+    set('tt-insttype', f.instType); set('tt-note', f.note);
+    const ck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly);
+  },
+
   _ttLoadReport(text, sectionTarget) {
     this._ttModel = this._ttParseReport(text);
     const h = this._ttModel.head;
@@ -2261,8 +2477,10 @@ window.BromarPages.admin = {
 
     const refreshBtn = document.getElementById('tt-refresh');
     const pdfBtn = document.getElementById('tt-pdf');
+    const saveBtn = document.getElementById('tt-save');
     if (refreshBtn) refreshBtn.disabled = false;
     if (pdfBtn) pdfBtn.disabled = false;
+    if (saveBtn) saveBtn.disabled = false;
 
     const loaded = document.getElementById('tt-loaded');
     if (loaded) {
@@ -2381,6 +2599,7 @@ window.BromarPages.admin = {
   async _ttRenderReport(sectionTarget) {
     if (!this._ttModel) return;
     const f = this._ttReadForm();
+    this._ttForm = f;
     const boards = this._ttGroupBoards(this._ttModel.assets);
     const total = this._ttModel.assets.length;
     const pass = this._ttModel.assets.filter(a => a.state === 'pass').length;
@@ -2692,6 +2911,7 @@ window.BromarPages.admin = {
 
     const safe = (f.customer || 'report').replace(/[^a-z0-9]+/gi, '_');
     doc.save(safe + '_Test_Report.pdf');
+    await this._ttSaveToRegister(true);
   },
 
   /* ════════════════════════════════════════
