@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.03',
+  version: 'V1.05',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -675,7 +675,13 @@ window.BromarAdmin.testtag = {
       return p[0] ? p[0].toLocaleDateString('en-GB') : '\u2014';
     };
     return [...m.values()].sort((a, b) => b.items.length - a.items.length)
-      .map(g => ({ ...g, subsText: fmt(g.subs), earliest: earliest(g.dues) }));
+      .map(g => ({
+        ...g,
+        items: [...g.items].sort((a, b) =>
+          (a.barcode || '').localeCompare(b.barcode || '', undefined, { numeric: true, sensitivity: 'base' })),
+        subsText: fmt(g.subs),
+        earliest: earliest(g.dues)
+      }));
   },
 
   async _ttRenderReport(sectionTarget) {
@@ -832,7 +838,7 @@ window.BromarAdmin.testtag = {
       /* Footer: generated (left) \u00b7 title (centre) \u00b7 page (right) */
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
       doc.text('Generated ' + (this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')), M, 290);
-      doc.text('Site Equipment Test Report', W / 2, 290, { align: 'center' });
+      doc.text('Site Equipment Test Report' + (f.cert ? '   \u00b7   ' + f.cert : ''), W / 2, 290, { align: 'center' });
       doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 290, { align: 'right' });
     };
 
@@ -973,7 +979,7 @@ window.BromarAdmin.testtag = {
         doc.autoTable({
           startY: y + 3, margin: { left: M, right: M, top: 22, bottom: 14 },
           head: [[{ content: g.location + '  \u2014  ' + (g.subsText || '') + ' (' + g.items.length + ')', colSpan: 6,
-            styles: { fillColor: [51, 83, 143], halign: 'left', fontStyle: 'bold', fontSize: 8.5 } }],
+            styles: { fillColor: [68, 71, 77], halign: 'left', fontStyle: 'bold', fontSize: 8.5 } }],
             ['Barcode', 'Description', 'Test performed', 'Trip / result', 'Status', 'Due']],
           body: items.map(a => [a.barcode, a.description, a.testPerformed, a.measure, a.status, a.due || '\u2014']),
           styles: { fontSize: 7.5, cellPadding: 1.6 }, headStyles: { fillColor: orange, fontSize: 7.5 },
