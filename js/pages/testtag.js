@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.06',
+  version: 'V1.10',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -86,6 +86,15 @@ window.BromarAdmin.testtag = {
   /* ── Applicable standards (shown at the start of the report) ── */
   _ttStandardsIntro: 'The testing presented in this report was conducted in accordance with relevant Australian standards, Energy Safe Victoria publications, and Work Health and Safety regulations.',
   _ttImportant: 'This report must be retained for a minimum of 7 years in accordance with AS/NZS 3760:2022. The results recorded reflect the condition of the equipment at the time of testing only. All equipment must be re-inspected and re-tested on or before the due dates listed in this report. Any item marked Out of Service (OOS) has been withdrawn from service and must not be used until it has been inspected, repaired and successfully re-tested by a competent person. This report covers only the equipment listed herein; any equipment not presented for testing is excluded. Retain this document as evidence of compliance and make it available on request to Energy Safe Victoria, WorkSafe, or other authorised parties.',
+  _ttLegend: [
+    ['OOS', 'Out of Service — equipment withdrawn from use; not to be used until repaired and re-tested'],
+    ['RCD', 'Residual Current Device'],
+    ['RCBO', 'Residual Current Breaker with Overcurrent protection'],
+    ['IΔn', 'Rated residual operating current of the RCD/RCBO (e.g. 30 mA)'],
+    ['Trip time', 'Time to disconnect at the rated residual current; pass limit 300 ms'],
+    ['Visual', 'Visual inspection for damage, wear and compliance'],
+    ['Class II', 'Double-insulated equipment (no protective earth)'],
+  ],
   _ttStandards: [
     ['AS/NZS 3000:2018 (Amdt 3)', 'Electrical Installations — Wiring Rules'],
     ['AS/NZS 3012:2019', 'Electrical Installations — Construction & demolition sites'],
@@ -98,49 +107,54 @@ window.BromarAdmin.testtag = {
   /* ── Requirements summaries (selectable) ── */
   _ttReq: {
     construction: {
-      title: 'Construction & Demolition Sites — Fixed RCD/RCBO Summary',
-      intro: 'This report applies to the routine testing of fixed residual current devices (RCDs) and residual current circuit breakers with overcurrent protection (RCBOs) installed in switchboards and distribution boards on construction and demolition sites, in accordance with AS/NZS 3012.',
+      title: 'Construction & Demolition Sites — Inspection, Testing & Tagging (AS/NZS 3012:2019)',
+      intro: 'Portable equipment, flexible leads, portable RCDs and portable distribution equipment on construction and demolition sites are inspected and tested at 3-monthly intervals per AS/NZS 3012:2019. A colour-coded tag identifies the quarter in which each item was last tested.',
       sections: [
         {
-          heading: 'Monthly Test Requirements',
+          heading: 'Portable Equipment & Leads (Test & Tag)',
           points: [
-            'The integral <strong>TEST</strong> button shall be operated. The device must trip immediately to achieve a <strong>PASS</strong>.',
-            'An instrument trip-time test shall be performed at the device\u2019s rated residual operating current (IΔn).',
-            'For multi-phase RCDs/RCBOs, testing shall be performed on each phase.',
-            'The measured trip time shall not exceed <strong>300 ms</strong>. Results greater than 300 ms shall be recorded as a <strong>FAIL</strong>.',
+            'Visual inspection of lead, plug, casing and fittings, plus earth continuity (Class I) and insulation resistance testing.',
+            'Passed items carry the current quarter\u2019s colour-coded tag; damaged items are recorded <strong>FAIL</strong>, tagged Out of Service and removed.',
+            'Flexible leads and portable RCDs are tested and tagged on the same 3-monthly cycle.',
+          ],
+        },
+        {
+          heading: 'Residual Current Devices (RCD / RCBO)',
+          points: [
+            'Push-button test \u2014 the device must trip immediately to <strong>PASS</strong>.',
+            'Instrument trip-time test at the rated residual current (IΔn); pass limit <strong>300 ms</strong>, each phase tested.',
+            'Portable RCDs are also push-button tested daily by the user before use.',
           ],
         },
       ],
-      records: 'A completed copy of this report should be provided to the customer for their records. Testing records should be retained in accordance with AS/NZS 3012 and applicable workplace or regulatory requirements.',
+      colourTable: {
+        note: 'Tag colours follow common industry convention \u2014 confirm the scheme adopted by the principal contractor for the site.',
+        rows: [['December \u2013 February', 'Red'], ['March \u2013 May', 'Green'], ['June \u2013 August', 'Blue'], ['September \u2013 November', 'Yellow']],
+      },
+      records: 'Retain testing records in accordance with AS/NZS 3012 and site WHS requirements, and provide a copy to the customer.',
     },
     commercial: {
-      title: 'Commercial & Industrial Installations — Fixed RCD/RCBO Testing Summary',
-      intro: 'This report applies to the routine testing of fixed residual current devices (RCDs) and residual current circuit breakers with overcurrent protection (RCBOs) installed within commercial and industrial electrical installations, in accordance with AS/NZS 3760:2022.',
+      title: 'Commercial & Industrial — In-Service Inspection, Testing & Tagging (AS/NZS 3760:2022)',
+      intro: 'In-service safety inspection and testing of portable electrical equipment and RCDs in commercial and industrial environments, per AS/NZS 3760:2022. Each item is inspected, tested and fitted with a durable tag showing the test date, result, next test date and tester.',
       sections: [
         {
-          heading: '6-Monthly Test — Push Button Test Only',
+          heading: 'Portable Equipment (Test & Tag)',
           points: [
-            'Press the integral <strong>TEST</strong> button on the RCD/RCBO.',
-            'To achieve a <strong>PASS</strong>, the device must trip immediately.',
-            'If the device does not trip, record the result as <strong>FAIL</strong>.',
-            'Trip-time testing is not required for the 6-month push-button test; the trip-time columns on this report may be disregarded.',
+            'Visual inspection of lead, plug, casing and fittings; any damage results in a <strong>FAIL</strong>.',
+            'Earth continuity (Class I) and insulation resistance tested with a PAT instrument.',
+            'Passed items are tagged with test/retest dates and tester ID; retest intervals follow AS/NZS 3760 Table 4 for the environment (typically 6 or 12 months).',
           ],
         },
         {
-          heading: '12-Monthly Test — Instrument Trip-Time Test',
+          heading: 'Residual Current Devices (RCD / RCBO)',
           points: [
-            'Press the integral <strong>TEST</strong> button on the RCD/RCBO.',
-            'To achieve a <strong>PASS</strong>, the device must trip immediately.',
-            'If the device does not trip, record the result as <strong>FAIL</strong>.',
-            'Perform an instrument trip-time test at the device\u2019s rated residual operating current (IΔn).',
-            'For multi-phase RCDs/RCBOs, perform the test on each phase.',
-            'Record the measured trip time.',
-            'To achieve a <strong>PASS</strong>, the measured trip time at IΔn shall not exceed <strong>300 ms</strong>.',
-            'If the measured trip time exceeds 300 ms, record the result as <strong>FAIL</strong>.',
+            'Push-button test \u2014 the device must trip immediately to <strong>PASS</strong>.',
+            'Instrument trip-time test at the rated residual current (IΔn); pass limit <strong>300 ms</strong>, each phase tested.',
+            'A device that fails to trip, or a trip time exceeding 300 ms, is recorded as <strong>FAIL</strong>.',
           ],
         },
       ],
-      records: 'A completed copy of this report shall be provided to the customer for their records. In accordance with AS/NZS 3760:2022, testing records should be retained for a minimum of 7 years.',
+      records: 'Provide a completed copy of this report to the customer and retain testing records for a minimum of 7 years.',
     },
   },
 
@@ -166,6 +180,37 @@ window.BromarAdmin.testtag = {
   _ttEsc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   },
+  _ttEarliestDue() {
+    if (!this._ttModel) return null;
+    let best = null;
+    for (const a of this._ttModel.assets) {
+      if (!a.due) continue;
+      const mx = a.due.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (!mx) continue;
+      const d = new Date(+mx[3], +mx[2] - 1, +mx[1]);
+      if (!best || d < best.d) best = { d, str: a.due, location: a.location };
+    }
+    return best;
+  },
+  _ttExceptions() {
+    if (!this._ttModel) return [];
+    return this._ttModel.assets
+      .filter(a => a.state === 'oos' || a.state === 'fail')
+      .sort((a, b) => (a.location || '').localeCompare(b.location || '') ||
+        (a.barcode || '').localeCompare(b.barcode || '', undefined, { numeric: true }));
+  },
+  _ttExceptionsHTML() {
+    const ex = this._ttExceptions();
+    if (!ex.length) {
+      return '<div class="tt-allclear">\u2713 All items passed \u2014 no items require attention.</div>';
+    }
+    return '<h2 class="tt-sec">Items Requiring Attention</h2>' +
+      '<table class="tt-tbl"><thead><tr><th>Location</th><th>Sub Location</th><th>Barcode</th><th>Description</th><th class="tt-tc">Status</th></tr></thead><tbody>' +
+      ex.map(a => '<tr><td>' + this._ttEsc(a.location || '\u2014') + '</td><td>' + this._ttEsc(a.sublocation && a.sublocation !== 'NA' ? a.sublocation : '\u2014') +
+        '</td><td>' + this._ttEsc(a.barcode || '\u2014') + '</td><td>' + this._ttEsc(a.description || '\u2014') +
+        '</td><td class="tt-tc" style="color:#b06a17;font-weight:600">' + this._ttEsc(a.status || a.state) + '</td></tr>').join('') +
+      '</tbody></table>';
+  },
 
   _ttStandardsHTML() {
     const rows = this._ttStandards.map(s => '<tr><td>' + s[0] + '</td><td>' + s[1] + '</td></tr>').join('');
@@ -184,6 +229,14 @@ window.BromarAdmin.testtag = {
       h += '<div class="tt-req-sub">' + s.heading + '</div><ul class="tt-req-list">' +
         s.points.map(p => '<li>' + p + '</li>').join('') + '</ul>';
     });
+    if (r.colourTable) {
+      const cmap = { Red: '#dc2626', Green: '#16a34a', Blue: '#2563eb', Yellow: '#eab308' };
+      h += '<div class="tt-req-sub">Tag Colour by Test Period</div>' +
+        '<table class="tt-tbl tt-colour"><thead><tr><th style="width:55%">Test Period</th><th>Tag Colour</th></tr></thead><tbody>' +
+        r.colourTable.rows.map(c => '<tr><td>' + c[0] + '</td><td><span class="tt-swatch" style="background:' + (cmap[c[1]] || '#888') + '"></span>' + c[1] + '</td></tr>').join('') +
+        '</tbody></table>' +
+        '<div class="tt-req-records" style="font-style:italic">' + r.colourTable.note + '</div>';
+    }
     h += '<div class="tt-req-records"><strong>Records.</strong> ' + r.records + '</div></div>';
     return h;
   },
@@ -239,6 +292,12 @@ window.BromarAdmin.testtag = {
               </div>
             </div>
             <div class="tt-form-row"><label>Tested By</label><input type="text" id="tt-tester" placeholder="Technician name"></div>
+            <div class="tt-form-row"><label>Licence / REC No.</label><input type="text" id="tt-licence" value="REC 30340"></div>
+
+            <div class="section-label" style="margin-top:1.25rem">Test Instrument</div>
+            <div class="tt-form-row"><label>Instrument (make / model)</label><input type="text" id="tt-instrument" placeholder="e.g. Metrel MI 3309 PAT"></div>
+            <div class="tt-form-row"><label>Instrument Serial</label><input type="text" id="tt-instr-serial" placeholder="Serial number"></div>
+            <div class="tt-form-row"><label>Calibration Due</label><input type="text" id="tt-instr-cal" placeholder="e.g. 03/2027"></div>
 
             <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
             <div class="tt-form-row">
@@ -544,6 +603,7 @@ window.BromarAdmin.testtag = {
     set('tt-customer', f.customer); set('tt-site', f.site); set('tt-address', f.address);
     set('tt-contact', f.contact); set('tt-phone', f.phone); set('tt-email', f.email);
     set('tt-job', f.job); set('tt-range', f.range); set('tt-cert', f.cert); set('tt-tester', f.tester);
+    set('tt-licence', f.licence); set('tt-instrument', f.instrument); set('tt-instr-serial', f.instrSerial); set('tt-instr-cal', f.instrCal);
     set('tt-insttype', f.instType); set('tt-note', f.note); set('tt-tech-notes', f.techNotes);
     const ck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
     ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly);
@@ -582,6 +642,8 @@ window.BromarAdmin.testtag = {
       contact: g('tt-contact').trim(), phone: g('tt-phone').trim(),
       email: g('tt-email').trim(), range: g('tt-range').trim(),
       cert: g('tt-cert').trim(), job: g('tt-job').trim(), tester: g('tt-tester').trim(),
+      licence: g('tt-licence').trim(),
+      instrument: g('tt-instrument').trim(), instrSerial: g('tt-instr-serial').trim(), instrCal: g('tt-instr-cal').trim(),
       instType: g('tt-insttype') || 'commercial',
       summary: document.getElementById('tt-summary')?.checked ?? true,
       note: g('tt-note').trim(),
@@ -752,6 +814,7 @@ window.BromarAdmin.testtag = {
           <div><div class="k">Job Number</div><div class="v">${f.job || '\u2014'}</div></div>
           <div><div class="k">Date Range</div><div class="v">${f.range || '\u2014'}</div></div>
         </div>
+        ${(f.instrument || f.instrSerial || f.instrCal) ? '<div class="tt-instr-line"><strong>Test instrument:</strong> ' + this._ttEsc([f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : '', f.instrCal ? 'Calibration due ' + f.instrCal : ''].filter(Boolean).join('  \u00b7  ')) + '</div>' : ''}
         ${f.summary ? this._ttStandardsHTML() + this._ttReqHTML(f.instType) : ''}
         <h2 class="tt-sec">Results Summary</h2>
         <div class="tt-cards">
@@ -762,6 +825,8 @@ window.BromarAdmin.testtag = {
           <div class="tt-card"><div class="n">${locs}</div><div class="l">Locations</div></div>
           <div class="tt-card"><div class="n">${overdue}</div><div class="l">Overdue</div></div>
         </div>
+        ${(() => { const e = this._ttEarliestDue(); return e ? '<div class="tt-due-callout"><span>Next retest due</span><strong>' + e.str + '</strong>' + (e.location ? '<em>' + this._ttEsc(e.location) + '</em>' : '') + '</div>' : ''; })()}
+        ${this._ttExceptionsHTML()}
         <h2 class="tt-sec">Location Summary</h2>
         <table class="tt-tbl"><thead><tr>
           <th>Location</th><th>Sub Location</th>
@@ -779,6 +844,10 @@ window.BromarAdmin.testtag = {
         ${f.note ? '<h2 class="tt-sec">Compliance Notes</h2><div class="tt-note-body">' + this._ttEsc(f.note) + '</div>' : ''}
         ${f.techNotes ? '<h2 class="tt-sec">Technician Notes</h2><div class="tt-note-body">' + this._ttEsc(f.techNotes) + '</div>' : ''}
         <h2 class="tt-sec">Important</h2><div class="tt-note-body">${this._ttImportant}</div>
+        <h2 class="tt-sec">Legend</h2>
+        <table class="tt-tbl tt-legend"><tbody>${
+          this._ttLegend.map(r => '<tr><td class="t">' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('')
+        }</tbody></table>
       </div>
     `;
   },
@@ -876,6 +945,10 @@ window.BromarAdmin.testtag = {
     y = pairRow([['Site address', f.address], ['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')]], y);
     y = pairRow([['Job number', f.job], ['Date range', f.range]], y);
     y = pairRow([['Cert no.', f.cert], ['Tested by', f.tester || '\u2014']], y);
+    if (f.instrument || f.instrSerial || f.instrCal || f.licence) {
+      const instr = [f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : ''].filter(Boolean).join('  \u00b7  ') || '\u2014';
+      y = pairRow([['Test instrument', instr], ['Calibration due', f.instrCal || '\u2014']], y);
+    }
     y += 2;
 
     /* Page-flow helpers for the standards / requirements text */
@@ -932,6 +1005,28 @@ window.BromarAdmin.testtag = {
           });
           y += 1.5;
         });
+        if (r.colourTable) {
+          const cmap = { Red: [220, 38, 38], Green: [22, 163, 74], Blue: [37, 99, 235], Yellow: [234, 179, 8] };
+          ensure(10);
+          para('Tag Colour by Test Period', 9, 'bold', orange, 0, 1.5);
+          doc.autoTable({
+            startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+            head: [['Test Period', 'Tag Colour']],
+            body: r.colourTable.rows.map(c => [c[0], c[1]]),
+            styles: { fontSize: 8, cellPadding: 1.6 }, headStyles: { fillColor: orange, fontSize: 8 },
+            tableWidth: (W - 2 * M) * 0.6,
+            columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.36 }, 1: { halign: 'center', fontStyle: 'bold' } },
+            didParseCell: d => {
+              if (d.section === 'body' && d.column.index === 1) {
+                const rgb = cmap[d.cell.raw];
+                if (rgb) { d.cell.styles.fillColor = rgb; d.cell.styles.textColor = [255, 255, 255]; }
+              }
+            },
+            didDrawPage: stamp,
+          });
+          y = doc.lastAutoTable.finalY + 2;
+          para(r.colourTable.note, 7.5, 'italic', [...muted], 0, 2);
+        }
         para('Records.  ' + r.records, 8, 'italic', [...muted], 0, 2);
       }
       y += 2;
@@ -952,6 +1047,49 @@ window.BromarAdmin.testtag = {
       doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(...muted).text(c[0].toUpperCase(), x + cw / 2, y + 13, { align: 'center' });
     });
     y += 24;
+
+    /* Next retest due callout */
+    const nextDue = this._ttEarliestDue();
+    if (nextDue) {
+      if (y > 268) { doc.addPage(); stamp(); y = 26; }
+      doc.setFillColor(252, 243, 234).setDrawColor(...orange);
+      doc.roundedRect(M, y, W - 2 * M, 10, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...muted);
+      doc.text('NEXT RETEST DUE', M + 4, y + 6.3);
+      doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...orange);
+      doc.text(nextDue.str, M + 42, y + 6.8);
+      if (nextDue.location) {
+        doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...muted);
+        doc.text(this._ttAscii(nextDue.location), W - M - 4, y + 6.3, { align: 'right' });
+      }
+      y += 15;
+    }
+
+    /* Items requiring attention (OOS / Fail) */
+    const exceptions = this._ttExceptions();
+    if (exceptions.length) {
+      if (y > 240) { doc.addPage(); stamp(); y = 26; }
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+      doc.text('Items Requiring Attention', M, y); y += 5;
+      doc.autoTable({
+        startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+        head: [['Location', 'Sub Location', 'Barcode', 'Description', 'Status']],
+        body: exceptions.map(a => [a.location || '\u2014', (a.sublocation && a.sublocation !== 'NA' ? a.sublocation : '\u2014'),
+          a.barcode || '\u2014', this._ttAscii(a.description || '\u2014'), a.status || a.state]),
+        styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: [176, 106, 23], fontSize: 8 },
+        alternateRowStyles: { fillColor: [253, 248, 240] },
+        columnStyles: { 4: { halign: 'center', textColor: [176, 106, 23], fontStyle: 'bold' } },
+        didDrawPage: stamp,
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    } else {
+      if (y > 270) { doc.addPage(); stamp(); y = 26; }
+      doc.setFillColor(225, 245, 233).setDrawColor(180, 220, 195);
+      doc.roundedRect(M, y, W - 2 * M, 9, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(29, 122, 92);
+      doc.text('All items passed \u2014 no items require attention.', M + 4, y + 6);
+      y += 15;
+    }
 
     if (y > 250) { doc.addPage(); stamp(); y = 26; }
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
@@ -985,8 +1123,8 @@ window.BromarAdmin.testtag = {
         doc.autoTable({
           startY: y + 3, margin: { left: M, right: M, top: 22, bottom: 14 },
           head: [[
-            { content: g.location + '  (' + g.items.length + ')', colSpan: 4, styles: { ...hStyle, halign: 'left' } },
-            { content: g.subsText ? 'Sub Location: ' + g.subsText : '', colSpan: 2, styles: { ...hStyle, halign: 'right' } }
+            { content: g.location + '  (' + g.items.length + ')', colSpan: 2, styles: { ...hStyle, halign: 'left' } },
+            { content: g.subsText ? 'Sub Location: ' + g.subsText : '', colSpan: 4, styles: { ...hStyle, halign: 'right', overflow: 'linebreak' } }
             ],
             ['Barcode', 'Description', 'Test performed', 'Trip / result', 'Status', 'Due']],
           body: items.map(a => [a.barcode, a.description, a.testPerformed, a.measure, a.status, a.due || '\u2014']),
@@ -1018,6 +1156,19 @@ window.BromarAdmin.testtag = {
     if (f.note) noteSection('Compliance Notes', f.note);
     if (f.techNotes) noteSection('Technician Notes', f.techNotes);
     noteSection('Important', this._ttImportant);
+
+    /* Legend */
+    ensure(16);
+    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+    doc.text('Legend', M, y); y += 5;
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+      body: this._ttLegend.map(r => [this._ttAscii(r[0]), this._ttAscii(r[1])]),
+      styles: { fontSize: 8, cellPadding: 1.6 },
+      columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.18, fontStyle: 'bold', textColor: [40, 49, 60] } },
+      theme: 'plain', alternateRowStyles: { fillColor: [250, 251, 253] },
+      didDrawPage: stamp,
+    });
 
     const fnameBase = (f.cert || f.customer || 'report').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
     doc.save(fnameBase + '_Site_Equipment_Test_Report.pdf');
@@ -1139,6 +1290,15 @@ window.BromarAdmin.testtag = {
         .tt-loc-h { font-size: 0.85rem; font-weight: 700; margin: 1rem 0 0.3rem; color: var(--text-primary); }
         .tt-loc-h small { font-weight: 400; color: var(--text-secondary); margin-left: 0.4rem; }
         .tt-note-body { font-size: 0.8rem; color: var(--text-primary); line-height: 1.55; white-space: pre-wrap; margin: 0 0 0.4rem; }
+        .tt-instr-line { font-size: 0.74rem; color: var(--text-secondary); margin: 0.6rem 0 0.2rem; padding: 0.4rem 0.6rem; background: var(--bg-main); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+        .tt-allclear { margin: 1rem 0 0.5rem; padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); background: var(--success-bg); color: var(--success); font-weight: 600; font-size: 0.82rem; }
+        .tt-due-callout { display: flex; align-items: center; gap: 0.6rem; margin: 1rem 0 0.25rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); background: rgba(234,88,12,0.08); border: 1px solid rgba(234,88,12,0.25); font-size: 0.85rem; }
+        .tt-due-callout span { color: var(--text-secondary); text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.04em; font-weight: 600; }
+        .tt-due-callout strong { color: var(--accent); font-size: 1rem; }
+        .tt-due-callout em { color: var(--text-secondary); font-style: normal; font-size: 0.78rem; }
+        .tt-legend td.t { font-weight: 600; white-space: nowrap; width: 18%; color: var(--text-primary); }
+        .tt-colour { max-width: 360px; }
+        .tt-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 0.5rem; vertical-align: -1px; border: 1px solid rgba(0,0,0,0.15); }
         .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
         .tt-req { margin-top: 0.5rem; }
         .tt-req-title { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem; }
