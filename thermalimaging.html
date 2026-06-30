@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bromar — Thermal Imaging Report Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#ea580c; --accent-light:#fb923c; --navy:#243b6b;
+    --text-primary:#1f2937; --text-secondary:#6b7280;
+    --bg-page:#eef1f6; --bg-main:#ffffff; --bg-secondary:#f4f7fc; --card-hover:#eef2fb;
+    --border:#e2e8f0; --radius-sm:8px; --shadow:rgba(15,23,42,0.07);
+    --success:#1d7a5c; --success-bg:#e1f5e9; --error:#c0392b; --error-bg:#fdecea;
+    --sev-normal:#1d7a5c; --sev-advisory:#2563eb; --sev-intermediate:#b06a17; --sev-serious:#ea580c; --sev-critical:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg-page);color:var(--text-primary);font-family:'Outfit',system-ui,sans-serif;font-size:14px;line-height:1.5}
+  .wrap{max-width:1320px;margin:0 auto;padding:1.25rem}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+  .topbar h1{font-size:1.3rem;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:.55rem;margin:0}
+  .topbar h1::before{content:'';width:4px;height:24px;border-radius:4px;background:linear-gradient(180deg,var(--accent),var(--accent-light))}
+  .topbar .sub{font-size:.78rem;color:var(--text-secondary)}
+  .card{background:var(--bg-main);border:1px solid var(--border);border-radius:12px;box-shadow:0 2px 10px var(--shadow)}
+  .layout{display:grid;grid-template-columns:340px 1fr;gap:1.25rem;align-items:start}
+  .panel{padding:1.1rem 1.15rem}
+  .section-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin:1.25rem 0 .5rem}
+  .section-label:first-child{margin-top:0}
+  .row{margin-bottom:.5rem}
+  .row label{display:block;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin-bottom:.15rem}
+  input,select,textarea{width:100%;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:inherit;font-size:.82rem;outline:none;transition:border .15s}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  textarea{resize:vertical;min-height:54px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+  .checkbox{display:flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:500;cursor:pointer;margin-top:.45rem}
+  .checkbox input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-family:inherit;font-weight:600;font-size:.82rem;padding:.55rem .8rem;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center;gap:.4rem}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn-primary:hover{background:#d24f0a;color:#fff}
+  .btn svg{width:14px;height:14px;pointer-events:none}
+  .drop{display:flex;flex-direction:column;align-items:center;text-align:center;padding:1.2rem;border:2px dashed var(--border);border-radius:var(--radius-sm);background:var(--bg-main);cursor:pointer;color:var(--text-secondary);transition:all .15s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--card-hover);color:var(--text-primary)}
+  .drop svg{width:26px;height:26px;opacity:.4;margin-bottom:.35rem}
+  .drop strong{display:block;color:var(--text-primary);font-size:.85rem;margin-bottom:.15rem}
+  .drop span{font-size:.76rem}
+  .loaded{display:none;font-size:.8rem;font-weight:600;color:var(--success);margin-top:.45rem;text-align:center}
+  .loaded.show{display:block}
+  .privacy{font-size:.7rem;color:var(--text-secondary);text-align:center;margin-top:.5rem;opacity:.75}
+  .actions{display:flex;gap:.5rem;margin-top:1.25rem}
+  .actions .btn{flex:1}
+
+  /* ── Findings editor ── */
+  .work{padding:1.1rem 1.15rem;min-height:60vh}
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:48vh;color:var(--text-secondary);text-align:center}
+  .empty svg{width:42px;height:42px;opacity:.3;margin-bottom:.6rem}
+  .board{margin-bottom:1.6rem}
+  .board-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem;padding-bottom:.5rem;border-bottom:2px solid var(--accent)}
+  .board-head input{font-size:1rem;font-weight:700;border:1px solid transparent;background:transparent;padding:.3rem .4rem}
+  .board-head input:hover{border-color:var(--border)}
+  .board-head input:focus{border-color:var(--accent);background:var(--bg-main)}
+  .board-head .count{font-size:.72rem;color:var(--text-secondary);white-space:nowrap}
+  .finding{display:grid;grid-template-columns:200px 1fr;gap:1rem;padding:.9rem;border:1px solid var(--border);border-radius:10px;background:var(--bg-secondary);margin-bottom:.7rem}
+  .finding .thumb{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:#fff;cursor:zoom-in}
+  .finding .fname{font-size:.68rem;color:var(--text-secondary);margin-top:.3rem;word-break:break-all;text-align:center}
+  .ffields{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem .7rem;align-content:start}
+  .ffields .full{grid-column:1 / -1}
+  .dt-box{display:flex;align-items:center;gap:.5rem;background:var(--bg-main);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.35rem .6rem}
+  .dt-box .k{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary)}
+  .dt-box .v{font-size:1rem;font-weight:700}
+  .sev-pill{display:inline-flex;align-items:center;gap:.35rem;padding:1px 9px;border-radius:20px;font-size:.7rem;font-weight:700;color:#fff}
+  .sev-dot{width:8px;height:8px;border-radius:50%;background:#fff;opacity:.85}
+
+  /* ── Live report preview ── */
+  .preview-wrap{margin-top:1.5rem}
+  .sheet{background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);padding:1.5rem 2rem;box-shadow:0 2px 8px var(--shadow)}
+  .rpt-top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;border-bottom:3px solid var(--accent);padding-bottom:.75rem;margin-bottom:.75rem}
+  .rpt-org{font-size:1rem;font-weight:700;line-height:1.25}
+  .rpt-org span{display:block;font-size:.64rem;font-weight:400;color:var(--text-secondary);margin-top:.12rem}
+  .rpt-meta{text-align:right;font-size:.64rem;color:var(--text-secondary);line-height:1.6;white-space:nowrap}
+  .rpt-title{font-size:1.2rem;font-weight:700;color:var(--accent);text-align:center;margin:1rem 0 .75rem}
+  .cust{display:grid;grid-template-columns:1fr 1fr;gap:.6rem 1.25rem;font-size:.82rem;margin-bottom:1rem}
+  .cust .k{font-size:.64rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);font-weight:600}
+  .cust .v{word-break:break-word}
+  .instr-line{font-size:.74rem;color:var(--text-secondary);margin:.6rem 0;padding:.4rem .6rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)}
+  .sec{font-size:.85rem;font-weight:700;color:var(--accent);margin:1.25rem 0 .4rem;padding-bottom:.25rem;border-bottom:1px solid var(--border)}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;margin-bottom:1rem}
+  .scard{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center}
+  .scard .n{font-size:1.1rem;font-weight:700;line-height:1}
+  .scard .l{font-size:.55rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin-top:.25rem;font-weight:600}
+  .tbl{width:100%;border-collapse:collapse;font-size:.75rem}
+  .tbl th{background:var(--accent);color:#fff;text-align:left;padding:.35rem .5rem;font-weight:600;font-size:.7rem}
+  .tbl td{padding:.35rem .5rem;border-bottom:1px solid var(--border)}
+  .tbl tr:nth-child(2n) td{background:var(--bg-secondary)}
+  .tc{text-align:center}
+  .allclear{margin:1rem 0 .5rem;padding:.6rem .85rem;border-radius:var(--radius-sm);background:var(--success-bg);color:var(--success);font-weight:600;font-size:.82rem}
+  .pv-detail{display:flex;gap:1rem;padding:.7rem 0;border-bottom:1px solid var(--border)}
+  .pv-detail img{width:150px;height:auto;border-radius:6px;border:1px solid var(--border);flex-shrink:0;object-fit:cover}
+  .pv-kv{font-size:.78rem;display:grid;grid-template-columns:auto 1fr;gap:.15rem .6rem;align-content:start}
+  .pv-kv .k{color:var(--text-secondary);font-weight:600}
+  .note-body{font-size:.8rem;line-height:1.55;white-space:pre-wrap;margin-bottom:.4rem}
+
+  .modal{position:fixed;inset:0;background:rgba(15,23,42,.8);display:none;align-items:center;justify-content:center;z-index:50;padding:1rem}
+  .modal.show{display:flex}
+  .modal img{max-width:95vw;max-height:92vh;border-radius:8px}
+
+  @media (max-width:980px){
+    .layout{grid-template-columns:1fr}
+    .finding{grid-template-columns:1fr}
+    .finding .thumb{max-width:240px;justify-self:center}
+  }
+  @media (max-width:560px){
+    .ffields{grid-template-columns:1fr}
+    .cards{grid-template-columns:repeat(3,1fr)}
+    .cust{grid-template-columns:1fr}
+    .sheet{padding:1rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Thermal Imaging Report Builder</h1>
+    <div class="sub">Pick a parent folder &middot; each sub-folder is a switchboard &middot; photos stay on this PC</div>
+  </div>
+
+  <div class="layout">
+    <!-- ── Left: report-level details ── -->
+    <div class="card panel">
+      <div class="section-label">Load Photos</div>
+      <label class="drop" id="drop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <strong>Choose switchboard folder</strong>
+        <span>parent folder containing one sub-folder per board</span>
+        <input type="file" id="dir" webkitdirectory directory multiple style="display:none">
+      </label>
+      <button class="btn" id="addImages" style="width:100%;margin-top:.5rem">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Add loose images
+      </button>
+      <input type="file" id="files" accept="image/*" multiple style="display:none">
+      <div class="loaded" id="loaded"></div>
+
+      <div class="section-label">Customer Details</div>
+      <div class="row"><label>Customer</label><input id="f-customer"></div>
+      <div class="row"><label>Site Name</label><input id="f-site" placeholder="e.g. Dandenong South Plant"></div>
+      <div class="row"><label>Site Address</label><input id="f-address"></div>
+      <div class="two">
+        <div class="row"><label>Contact</label><input id="f-contact"></div>
+        <div class="row"><label>Phone</label><input id="f-phone"></div>
+      </div>
+      <div class="row"><label>Contact Email</label><input id="f-email"></div>
+      <div class="two">
+        <div class="row"><label>Job Number</label><input id="f-job" placeholder="e.g. 5133"></div>
+        <div class="row"><label>Survey Date</label><input id="f-date"></div>
+      </div>
+      <div class="row"><label>Certificate No.</label>
+        <div style="display:flex;gap:.4rem">
+          <input id="f-cert" style="flex:1">
+          <button class="btn" id="regen" title="Regenerate" style="flex-shrink:0;padding:.45rem .6rem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="row"><label>Surveyed By</label><input id="f-tester" placeholder="Thermographer name"></div>
+      <div class="row"><label>Licence / REC No.</label><input id="f-licence" value="REC 30340"></div>
+
+      <div class="section-label">Thermal Camera</div>
+      <div class="row"><label>Camera (make / model)</label><input id="f-instrument" placeholder="e.g. FLIK E8-XT"></div>
+      <div class="two">
+        <div class="row"><label>Serial</label><input id="f-instr-serial"></div>
+        <div class="row"><label>Calibration Due</label><input id="f-instr-cal" placeholder="03/2027"></div>
+      </div>
+      <div class="two">
+        <div class="row"><label>Emissivity</label><input id="f-emiss" value="0.95"></div>
+        <div class="row"><label>Ambient °C</label><input id="f-ambient" type="number" placeholder="e.g. 25"></div>
+      </div>
+      <p class="privacy" style="margin-top:.3rem">Ambient is the default reference for ΔT when a finding has no reference temperature.</p>
+
+      <div class="section-label">Report Options</div>
+      <label class="checkbox"><input type="checkbox" id="opt-summary" checked> Include methodology &amp; severity table</label>
+      <label class="checkbox"><input type="checkbox" id="opt-detail" checked> Include per-switchboard photo detail</label>
+      <label class="checkbox"><input type="checkbox" id="opt-flagged"> Detail: show flagged findings only</label>
+
+      <div class="row" style="margin-top:1rem"><label>Survey Notes</label>
+        <textarea id="f-note" rows="3" placeholder="Conditions, load state, access limitations, follow-up actions&hellip;"></textarea>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="refresh" disabled>Update Preview</button>
+        <button class="btn-primary btn" id="pdf" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download PDF
+        </button>
+      </div>
+      <p class="privacy">Photos are read in your browser and embedded into the PDF. Nothing is uploaded.</p>
+    </div>
+
+    <!-- ── Right: findings editor + preview ── -->
+    <div class="card work" id="work">
+      <div class="empty" id="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13l2 2 4-4"/></svg>
+        <p>Choose a switchboard folder to begin.<br>Each sub-folder becomes a switchboard; each photo becomes a finding.</p>
+      </div>
+      <div id="findings"></div>
+      <div class="preview-wrap" id="previewWrap" style="display:none">
+        <div class="section-label" style="margin-top:0">Report Preview</div>
+        <div id="preview"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal"><img id="modalImg" alt=""></div>
+
+<script>
+"use strict";
+/* ============================================================
+   BROMAR — THERMAL IMAGING REPORT BUILDER  (standalone)
+   Same PDF theme as the Test & Tag builder: orange top bar,
+   navy/orange type, helvetica, autoTable. Photos embed locally.
+   ============================================================ */
+
+const ORG = {
+  hdrName:'Bromar Electrical Services Pty Ltd',
+  hdrAddr:'2/98-108 Western Ave, Westmeadows 3049',
+  hdrPhoneRec:'PH: 9335 5344    REC: 30340',
+  web:'www.bromar.com.au'
+};
+
+/* ── Severity model — edit these bands to your standard (NETA / ISO 18434 / insurer) ──
+   Classified on ΔT = max temperature − reference (similar component or ambient). */
+const SEVERITY = {
+  normal:       { label:'Normal',       css:'--sev-normal',       rgb:[29,122,92],  action:'No action required. Condition normal.' },
+  advisory:     { label:'Advisory',     css:'--sev-advisory',     rgb:[37,99,235],  action:'Investigate at next scheduled maintenance. Monitor.' },
+  intermediate: { label:'Intermediate', css:'--sev-intermediate', rgb:[176,106,23], action:'Probable deficiency. Repair as time permits.' },
+  serious:      { label:'Serious',      css:'--sev-serious',      rgb:[234,88,12],  action:'Repair soon. Increase monitoring until rectified.' },
+  critical:     { label:'Critical',     css:'--sev-critical',     rgb:[192,57,43],  action:'Immediate action required. Repair without delay.' },
+};
+const SEV_ORDER = ['normal','advisory','intermediate','serious','critical'];
+const FLAG_FROM = 'intermediate'; // findings at this level or worse = "requires attention"
+function classify(dt){
+  if (dt == null || isNaN(dt)) return null;
+  if (dt < 5)  return 'normal';
+  if (dt < 10) return 'advisory';
+  if (dt < 20) return 'intermediate';
+  if (dt < 40) return 'serious';
+  return 'critical';
+}
+function sevRank(k){ return SEV_ORDER.indexOf(k); }
+
+const STANDARDS = [
+  ['ISO 18434-1:2008','Condition monitoring & diagnostics of machines — Thermography — General procedures'],
+  ['AS/NZS 3000:2018','Electrical Installations — Wiring Rules'],
+  ['Electricity Safety Act 1998 (Vic)','Victorian electrical safety legislation'],
+  ['NETA MTS (guideline)','Thermographic severity & suggested-action guidance'],
+];
+const METHODOLOGY = 'This infrared thermographic survey was carried out with the installation energised and under representative load. Temperatures were measured with a calibrated thermal imaging camera at the emissivity and ambient conditions recorded above. Each finding is assessed by its temperature rise (delta-T) relative to a reference — either the ambient air temperature or a similar component under similar load — and classified per the severity table below. Thermography detects abnormal heating only; the absence of a finding does not guarantee the absence of a fault.';
+const IMPORTANT = 'This report reflects the condition of the equipment at the time of survey and under the load present at that time. All findings should be confirmed and rectified by a licensed electrician. Critical and serious findings indicate a risk of failure, fire or injury and should be addressed without delay. The installation should be re-surveyed periodically as part of a planned maintenance program. Retain this document as evidence of inspection and make it available on request to authorised parties.';
+
+const SEV_TABLE = [
+  ['delta-T < 5 C',  'Normal',       'No action required'],
+  ['5 - 9 C',        'Advisory',     'Investigate at next maintenance; monitor'],
+  ['10 - 19 C',      'Intermediate', 'Probable deficiency; repair as time permits'],
+  ['20 - 39 C',      'Serious',      'Repair soon; increase monitoring'],
+  ['>= 40 C',        'Critical',     'Immediate action; repair without delay'],
+];
+
+/* ── State ── */
+const state = { boards: [] };  // [{ name, notes, findings:[ finding ] }]
+let uid = 0;
+
+const $ = id => document.getElementById(id);
+const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const natCmp = (a,b) => String(a).localeCompare(String(b), undefined, { numeric:true, sensitivity:'base' });
+
+function genCert(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  const ymd = d.getFullYear()+p(d.getMonth()+1)+p(d.getDate());
+  const job = ($('f-job').value||'').trim().replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  return 'BRO-TI-'+ymd+'-'+(job || (p(d.getHours())+p(d.getMinutes())));
+}
+
+/* ── File intake ── */
+function boardNameFor(file){
+  const path = file.webkitRelativePath || file.name;
+  const parts = path.split('/').filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length-2] : 'Unsorted';
+}
+function fileKey(f){ return (f.webkitRelativePath||f.name)+'|'+f.size+'|'+f.lastModified; }
+
+function addFiles(fileList){
+  const imgs = [...fileList].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|bmp|gif)$/i.test(f.name));
+  if (!imgs.length){ flashLoaded('No image files found in that selection.', true); return; }
+  const seen = new Set();
+  state.boards.forEach(b => b.findings.forEach(fd => seen.add(fd.key)));
+  let added = 0;
+  for (const file of imgs){
+    const key = fileKey(file);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const bname = boardNameFor(file);
+    let board = state.boards.find(b => b.name === bname);
+    if (!board){ board = { name:bname, notes:'', findings:[] }; state.boards.push(board); }
+    board.findings.push({
+      id:++uid, key, file, url:URL.createObjectURL(file), filename:file.name,
+      component:'', load:'', maxT:'', refT:'', notes:'',
+      sevManual:false, severity:'normal', actionEdited:false, action:SEVERITY.normal.action
+    });
+    added++;
+  }
+  state.boards.sort((a,b)=>natCmp(a.name,b.name));
+  state.boards.forEach(b => b.findings.sort((x,y)=>natCmp(x.filename,y.filename)));
+  recomputeAll();
+  const totalImgs = state.boards.reduce((n,b)=>n+b.findings.length,0);
+  flashLoaded('\u2713 '+totalImgs+' photo'+(totalImgs!==1?'s':'')+' \u00b7 '+state.boards.length+' switchboard'+(state.boards.length!==1?'s':'')+' loaded');
+  ['refresh','pdf'].forEach(i=>$(i).disabled=false);
+  $('empty').style.display='none';
+  renderFindings();
+  renderPreview();
+}
+function flashLoaded(msg, err){
+  const el = $('loaded'); el.classList.add('show');
+  el.style.color = err ? 'var(--error)' : 'var(--success)';
+  el.textContent = msg;
+}
+
+/* ── Per-finding derived values ── */
+function refOf(fd){
+  const r = num(fd.refT);
+  if (r != null) return r;
+  return num($('f-ambient').value);
+}
+function dtOf(fd){
+  const mx = num(fd.maxT), rf = refOf(fd);
+  return (mx==null || rf==null) ? null : +(mx-rf).toFixed(1);
+}
+function effSev(fd){
+  if (fd.sevManual) return fd.severity;
+  const auto = classify(dtOf(fd));
+  return auto || 'normal';
+}
+function recomputeAll(){
+  for (const b of state.boards) for (const fd of b.findings){
+    if (!fd.sevManual){ const auto = classify(dtOf(fd)); fd.severity = auto || 'normal'; }
+    if (!fd.actionEdited) fd.action = SEVERITY[effSev(fd)].action;
+  }
+}
+
+/* ── Findings editor render ── */
+function sevPill(key){
+  const s = SEVERITY[key];
+  return '<span class="sev-pill" style="background:'+`rgb(${s.rgb.join(',')})`+'"><span class="sev-dot"></span>'+s.label+'</span>';
+}
+function renderFindings(){
+  const host = $('findings');
+  host.innerHTML = state.boards.map((b,bi)=>{
+    const rows = b.findings.map(fd=>{
+      const dt = dtOf(fd), sev = effSev(fd);
+      const sevOpts = ['<option value="auto"'+(!fd.sevManual?' selected':'')+'>Auto (ΔT)</option>']
+        .concat(SEV_ORDER.map(k=>'<option value="'+k+'"'+(fd.sevManual&&fd.severity===k?' selected':'')+'>'+SEVERITY[k].label+'</option>')).join('');
+      return `
+      <div class="finding" data-fid="${fd.id}">
+        <div>
+          <img class="thumb" src="${fd.url}" alt="" data-zoom="${fd.url}">
+          <div class="fname">${esc(fd.filename)}</div>
+        </div>
+        <div class="ffields">
+          <div class="row full"><label>Component / location</label><input data-k="component" value="${esc(fd.component)}" placeholder="e.g. Main switch — L1 terminal"></div>
+          <div class="row"><label>Load (A)</label><input data-k="load" value="${esc(fd.load)}" inputmode="decimal"></div>
+          <div class="row"><label>Max temp (°C)</label><input data-k="maxT" value="${esc(fd.maxT)}" inputmode="decimal"></div>
+          <div class="row"><label>Reference (°C)</label><input data-k="refT" value="${esc(fd.refT)}" inputmode="decimal" placeholder="ambient if blank"></div>
+          <div class="dt-box"><span class="k">ΔT</span><span class="v" style="color:rgb(${SEVERITY[sev].rgb.join(',')})">${dt==null?'—':dt+' °C'}</span></div>
+          <div class="row"><label>Severity</label><select data-k="severity">${sevOpts}</select></div>
+          <div class="row full" style="display:flex;align-items:center;gap:.6rem">${sevPill(sev)}</div>
+          <div class="row full"><label>Recommended action</label><input data-k="action" value="${esc(fd.action)}"></div>
+          <div class="row full"><label>Notes</label><input data-k="notes" value="${esc(fd.notes)}" placeholder="Observations, qualifiers&hellip;"></div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="board" data-bi="${bi}">
+      <div class="board-head">
+        <input data-bname="${bi}" value="${esc(b.name)}">
+        <span class="count">${b.findings.length} photo${b.findings.length!==1?'s':''}</span>
+      </div>${rows}</div>`;
+  }).join('');
+}
+
+/* ── Live preview (mirrors the PDF) ── */
+function stats(){
+  const all = state.boards.flatMap(b=>b.findings);
+  const c = { total:all.length, boards:state.boards.length, normal:0, advisory:0, intermediate:0, serious:0, critical:0 };
+  for (const fd of all) c[effSev(fd)]++;
+  return c;
+}
+function flagged(){
+  return state.boards.flatMap(b=>b.findings.map(fd=>({fd,board:b.name})))
+    .filter(x=>sevRank(effSev(x.fd))>=sevRank(FLAG_FROM))
+    .sort((a,b)=>sevRank(effSev(b.fd))-sevRank(effSev(a.fd)));
+}
+function rf(id){ return ($(id).value||'').trim(); }
+function renderPreview(){
+  if (!state.boards.length) return;
+  $('previewWrap').style.display='block';
+  const c = stats(), fl = flagged();
+  const summaryOn = $('opt-summary').checked, detailOn = $('opt-detail').checked, flaggedOnly = $('opt-flagged').checked;
+  const cert = rf('f-cert'), date = rf('f-date') || new Date().toLocaleDateString('en-GB');
+
+  const instr = [rf('f-instrument'), rf('f-instr-serial')?'S/N '+rf('f-instr-serial'):'',
+    rf('f-emiss')?'ε '+rf('f-emiss'):'', rf('f-ambient')?'Ambient '+rf('f-ambient')+'°C':'',
+    rf('f-instr-cal')?'Cal due '+rf('f-instr-cal'):''].filter(Boolean).join('  ·  ');
+
+  const stdHTML = !summaryOn ? '' :
+    '<h2 class="sec">Methodology</h2><div class="note-body">'+esc(METHODOLOGY).replace(/delta-T/g,'ΔT')+'</div>'+
+    '<h2 class="sec">Applicable Standards</h2><table class="tbl"><thead><tr><th style="width:42%">Document</th><th>Description</th></tr></thead><tbody>'+
+      STANDARDS.map(s=>'<tr><td>'+esc(s[0])+'</td><td>'+esc(s[1])+'</td></tr>').join('')+'</tbody></table>'+
+    '<h2 class="sec">Severity Classification</h2><table class="tbl"><thead><tr><th>Temperature rise (ΔT)</th><th>Classification</th><th>Suggested action</th></tr></thead><tbody>'+
+      SEV_TABLE.map((r,i)=>'<tr><td>'+esc(r[0]).replace(/delta-T/,'ΔT')+'</td><td style="font-weight:600;color:rgb('+SEVERITY[SEV_ORDER[i]].rgb.join(',')+')">'+esc(r[1])+'</td><td>'+esc(r[2])+'</td></tr>').join('')+'</tbody></table>';
+
+  const flagHTML = fl.length
+    ? '<h2 class="sec">Findings Requiring Attention</h2><table class="tbl"><thead><tr><th>Switchboard</th><th>Component</th><th class="tc">Load</th><th class="tc">Max °C</th><th class="tc">Ref °C</th><th class="tc">ΔT</th><th class="tc">Severity</th></tr></thead><tbody>'+
+      fl.map(x=>{const fd=x.fd,s=effSev(fd);return '<tr><td>'+esc(x.board)+'</td><td>'+esc(fd.component||'—')+'</td><td class="tc">'+esc(fd.load||'—')+'</td><td class="tc">'+esc(fd.maxT||'—')+'</td><td class="tc">'+(refOf(fd)??'—')+'</td><td class="tc">'+(dtOf(fd)??'—')+'</td><td class="tc" style="font-weight:700;color:rgb('+SEVERITY[s].rgb.join(',')+')">'+SEVERITY[s].label+'</td></tr>';}).join('')+
+      '</tbody></table>'
+    : '<div class="allclear">\u2713 No findings require attention — all measurements within normal limits.</div>';
+
+  let detailHTML='';
+  if (detailOn){
+    for (const b of state.boards){
+      let items = b.findings;
+      if (flaggedOnly) items = items.filter(fd=>sevRank(effSev(fd))>=sevRank(FLAG_FROM));
+      if (!items.length) continue;
+      detailHTML += '<div class="sec">'+esc(b.name)+'</div>'+
+        items.map(fd=>{const s=effSev(fd);return `<div class="pv-detail">
+          <img src="${fd.url}" alt="">
+          <div class="pv-kv">
+            <span class="k">Component</span><span>${esc(fd.component||'—')}</span>
+            <span class="k">Load</span><span>${esc(fd.load||'—')} A</span>
+            <span class="k">Max / Ref</span><span>${esc(fd.maxT||'—')} °C / ${refOf(fd)??'—'} °C</span>
+            <span class="k">ΔT</span><span style="font-weight:700;color:rgb(${SEVERITY[s].rgb.join(',')})">${dtOf(fd)??'—'} °C — ${SEVERITY[s].label}</span>
+            <span class="k">Action</span><span>${esc(fd.action||'—')}</span>
+            ${fd.notes?'<span class="k">Notes</span><span>'+esc(fd.notes)+'</span>':''}
+          </div></div>`;}).join('');
+    }
+  }
+
+  $('preview').innerHTML = `<div class="sheet">
+    <div class="rpt-top">
+      <div class="rpt-org">${ORG.hdrName}<span>${ORG.hdrAddr}</span><span>PH: 9335 5344 · REC: 30340</span><span>WEB: ${ORG.web}</span></div>
+      <div class="rpt-meta">Cert no. ${esc(cert||'—')}<br>Survey ${esc(date)}${rf('f-tester')?'<br>Surveyed by '+esc(rf('f-tester')):''}</div>
+    </div>
+    <div class="rpt-title">Thermal Imaging Inspection Report</div>
+    <div class="cust">
+      <div><div class="k">Customer</div><div class="v">${esc(rf('f-customer')||'—')}</div></div>
+      <div><div class="k">Site Name</div><div class="v">${esc(rf('f-site')||'—')}</div></div>
+      <div><div class="k">Site Address</div><div class="v">${esc(rf('f-address')||'—')}</div></div>
+      <div><div class="k">Contact</div><div class="v">${esc(rf('f-contact')||'—')}${rf('f-email')?' · '+esc(rf('f-email')):''}</div></div>
+      <div><div class="k">Job Number</div><div class="v">${esc(rf('f-job')||'—')}</div></div>
+      <div><div class="k">Survey Date</div><div class="v">${esc(date)}</div></div>
+    </div>
+    ${instr?'<div class="instr-line"><strong>Camera:</strong> '+esc(instr)+'</div>':''}
+    ${stdHTML}
+    <h2 class="sec">Results Summary</h2>
+    <div class="cards">
+      <div class="scard"><div class="n">${c.boards}</div><div class="l">Switchboards</div></div>
+      <div class="scard"><div class="n">${c.total}</div><div class="l">Findings</div></div>
+      <div class="scard"><div class="n" style="color:var(--sev-critical)">${c.critical}</div><div class="l">Critical</div></div>
+      <div class="scard"><div class="n" style="color:var(--sev-serious)">${c.serious}</div><div class="l">Serious</div></div>
+      <div class="scard"><div class="n" style="color:var(--sev-intermediate)">${c.intermediate}</div><div class="l">Intermediate</div></div>
+      <div class="scard"><div class="n" style="color:var(--sev-advisory)">${c.advisory}</div><div class="l">Advisory</div></div>
+    </div>
+    ${flagHTML}
+    <h2 class="sec">Switchboard Summary</h2>
+    <table class="tbl"><thead><tr><th>Switchboard</th><th class="tc">Findings</th><th class="tc">Critical</th><th class="tc">Serious</th><th class="tc">Interm.</th><th class="tc">Worst</th></tr></thead><tbody>${
+      state.boards.map(b=>{
+        const cc={critical:0,serious:0,intermediate:0,advisory:0,normal:0}; let worst='normal';
+        b.findings.forEach(fd=>{const s=effSev(fd);cc[s]++;if(sevRank(s)>sevRank(worst))worst=s;});
+        return '<tr><td>'+esc(b.name)+'</td><td class="tc">'+b.findings.length+'</td><td class="tc"'+(cc.critical?' style="color:var(--sev-critical);font-weight:600"':'')+'>'+cc.critical+'</td><td class="tc"'+(cc.serious?' style="color:var(--sev-serious);font-weight:600"':'')+'>'+cc.serious+'</td><td class="tc"'+(cc.intermediate?' style="color:var(--sev-intermediate);font-weight:600"':'')+'>'+cc.intermediate+'</td><td class="tc" style="font-weight:700;color:rgb('+SEVERITY[worst].rgb.join(',')+')">'+SEVERITY[worst].label+'</td></tr>';
+      }).join('')
+    }</tbody></table>
+    ${detailOn?'<h2 class="sec">Photo Detail by Switchboard</h2>'+detailHTML:''}
+    ${rf('f-note')?'<h2 class="sec">Survey Notes</h2><div class="note-body">'+esc(rf('f-note'))+'</div>':''}
+    <h2 class="sec">Important</h2><div class="note-body">${esc(IMPORTANT)}</div>
+  </div>`;
+}
+
+/* ── Image processing for PDF (downscale + EXIF orientation) ── */
+async function processImage(file, maxSide=1200, quality=0.82){
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation:'from-image' }); }
+  catch(e){ try { bmp = await createImageBitmap(file); } catch(e2){ return null; } }
+  let { width:w, height:h } = bmp;
+  const scale = Math.min(1, maxSide/Math.max(w,h));
+  w = Math.max(1, Math.round(w*scale)); h = Math.max(1, Math.round(h*scale));
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  if (bmp.close) bmp.close();
+  return { dataUrl: cv.toDataURL('image/jpeg', quality), w, h };
+}
+
+/* ── jsPDF loader ── */
+let jspdfPromise=null;
+function loadJsPDF(){
+  if (window.jspdf) return Promise.resolve();
+  if (jspdfPromise) return jspdfPromise;
+  jspdfPromise = new Promise((res,rej)=>{
+    const a=document.createElement('script');
+    a.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    a.onload=()=>{const b=document.createElement('script');
+      b.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+      b.onload=res; b.onerror=()=>rej(new Error('autoTable failed')); document.head.appendChild(b);};
+    a.onerror=()=>rej(new Error('jsPDF failed')); document.head.appendChild(a);
+  });
+  return jspdfPromise;
+}
+const asc = s => String(s==null?'':s).replace(/Δ/g,'Delta ').replace(/[≥]/g,'>=').replace(/[≤]/g,'<=').replace(/[–—]/g,'-').replace(/ε/g,'e=');
+
+/* ── Build PDF ── */
+async function buildPDF(){
+  await loadJsPDF();
+  const { jsPDF } = window.jspdf;
+  const c = stats(), fl = flagged();
+  const navy=[36,59,107], orange=[234,88,12], muted=[107,114,128], ink=[40,49,60];
+  const doc = new jsPDF('p','mm','a4');
+  const W = doc.internal.pageSize.getWidth(), M = 14;
+  const cert = rf('f-cert'), date = rf('f-date') || new Date().toLocaleDateString('en-GB');
+
+  const stamp = () => {
+    doc.setFillColor(...orange); doc.rect(0,0,W,3,'F');
+    const rx=W-M;
+    doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(...navy);
+    doc.text(ORG.hdrName, rx, 8, {align:'right'});
+    doc.setFont('helvetica','normal').setFontSize(7).setTextColor(...muted);
+    doc.text(ORG.hdrAddr, rx, 12, {align:'right'});
+    doc.text(ORG.hdrPhoneRec, rx, 15.5, {align:'right'});
+    doc.text('WEB: '+ORG.web, rx, 19, {align:'right'});
+    doc.setFont('helvetica','bold').setFontSize(11).setTextColor(...navy);
+    doc.text('Bromar Electrical Services', M, 11);
+    doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(...muted);
+    doc.text('Generated '+date, M, 290);
+    doc.text('Thermal Imaging Inspection Report'+(cert?'   ·   '+cert:''), W/2, 290, {align:'center'});
+    doc.text('Page '+doc.internal.getNumberOfPages(), W-M, 290, {align:'right'});
+  };
+  const ensure = need => { if (y+need>286){ doc.addPage(); stamp(); y=26; } };
+  const para = (txt,size,style,color,indent,gap) => {
+    indent=indent||0; gap=gap==null?2:gap;
+    doc.setFont('helvetica',style).setFontSize(size);
+    const lines=doc.splitTextToSize(asc(txt), W-2*M-indent);
+    const lh=size*0.45; ensure(lines.length*lh+gap);
+    doc.setFont('helvetica',style).setFontSize(size).setTextColor(...color);
+    doc.text(lines, M+indent, y); y += lines.length*lh+gap;
+  };
+
+  stamp();
+  let y=28;
+  doc.setFont('helvetica','bold').setFontSize(19).setTextColor(...navy);
+  doc.text('Thermal Imaging Inspection Report', W/2, y, {align:'center'}); y+=9;
+  doc.setDrawColor(...orange).setLineWidth(0.8).line(M,y,W-M,y); y+=9;
+
+  const colW=W/2-M-5;
+  const pairRow=(pairs,sy)=>{
+    let maxLines=1;
+    const blocks=pairs.map(([k,v],i)=>{const x=i===0?M:W/2;const lines=doc.splitTextToSize(asc(v||'—'),colW);maxLines=Math.max(maxLines,lines.length);return{x,k,lines};});
+    blocks.forEach(b=>{doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(...muted);doc.text(b.k.toUpperCase(),b.x,sy);doc.setFont('helvetica','bold').setFontSize(9).setTextColor(...ink);doc.text(b.lines,b.x,sy+4.5);});
+    return sy+4.5+maxLines*4+3;
+  };
+  y=pairRow([['Customer',rf('f-customer')],['Site name',rf('f-site')]],y);
+  y=pairRow([['Site address',rf('f-address')],['Contact',(rf('f-contact'))+(rf('f-email')?' · '+rf('f-email'):'')]],y);
+  y=pairRow([['Job number',rf('f-job')],['Survey date',date]],y);
+  y=pairRow([['Cert no.',cert],['Surveyed by',rf('f-tester')||'—']],y);
+  const camera=[rf('f-instrument'),rf('f-instr-serial')?'S/N '+rf('f-instr-serial'):''].filter(Boolean).join('  ·  ')||'—';
+  const cond=[rf('f-emiss')?'e='+rf('f-emiss'):'',rf('f-ambient')?'Ambient '+rf('f-ambient')+' C':'',rf('f-instr-cal')?'Cal due '+rf('f-instr-cal'):''].filter(Boolean).join('  ·  ')||'—';
+  y=pairRow([['Camera',camera],['Conditions',cond]],y);
+  y+=2;
+
+  if ($('opt-summary').checked){
+    ensure(10);
+    doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Methodology',M,y); y+=5;
+    para(METHODOLOGY,8.5,'normal',ink,0,4);
+    ensure(10);
+    doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Applicable Standards',M,y); y+=4;
+    doc.autoTable({ startY:y+2, margin:{left:M,right:M,top:22,bottom:14},
+      head:[['Document','Description']], body:STANDARDS.map(s=>[asc(s[0]),asc(s[1])]),
+      styles:{fontSize:8,cellPadding:1.8}, headStyles:{fillColor:orange,fontSize:8},
+      alternateRowStyles:{fillColor:[250,251,253]}, tableWidth:W-2*M,
+      columnStyles:{0:{cellWidth:(W-2*M)*0.4},1:{cellWidth:(W-2*M)*0.6}}, didDrawPage:stamp });
+    y=doc.lastAutoTable.finalY+8;
+    ensure(12);
+    doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Severity Classification',M,y); y+=4;
+    doc.autoTable({ startY:y+2, margin:{left:M,right:M,top:22,bottom:14},
+      head:[['Temperature rise (Delta-T)','Classification','Suggested action']],
+      body:SEV_TABLE.map(r=>[asc(r[0]),r[1],r[2]]),
+      styles:{fontSize:8,cellPadding:1.8}, headStyles:{fillColor:orange,fontSize:8},
+      tableWidth:W-2*M, columnStyles:{0:{cellWidth:(W-2*M)*0.26},1:{cellWidth:(W-2*M)*0.22}},
+      didParseCell:d=>{ if(d.section==='body'&&d.column.index===1){const rgb=SEVERITY[SEV_ORDER[d.row.index]].rgb;d.cell.styles.textColor=rgb;d.cell.styles.fontStyle='bold';} },
+      didDrawPage:stamp });
+    y=doc.lastAutoTable.finalY+8;
+  }
+
+  if ($('opt-summary').checked){ doc.addPage(); stamp(); y=26; }
+  else if (y>250){ doc.addPage(); stamp(); y=26; }
+  doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Results Summary',M,y); y+=5;
+  const cards=[['Switchboards',c.boards,navy],['Findings',c.total,navy],['Critical',c.critical,SEVERITY.critical.rgb],
+    ['Serious',c.serious,SEVERITY.serious.rgb],['Intermediate',c.intermediate,SEVERITY.intermediate.rgb],['Advisory',c.advisory,SEVERITY.advisory.rgb]];
+  const cw=(W-2*M-5*4)/6;
+  cards.forEach((cd,i)=>{const x=M+i*(cw+4);doc.setFillColor(244,247,252).roundedRect(x,y,cw,16,2,2,'F');
+    doc.setFont('helvetica','bold').setFontSize(15).setTextColor(...cd[2]).text(String(cd[1]),x+cw/2,y+8,{align:'center'});
+    doc.setFont('helvetica','normal').setFontSize(6.5).setTextColor(...muted).text(cd[0].toUpperCase(),x+cw/2,y+13,{align:'center'});});
+  y+=24;
+
+  if (fl.length){
+    ensure(20);
+    doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Findings Requiring Attention',M,y); y+=4;
+    doc.autoTable({ startY:y+2, margin:{left:M,right:M,top:22,bottom:14},
+      head:[['Switchboard','Component','Load','Max C','Ref C','Delta-T','Severity']],
+      body:fl.map(x=>{const fd=x.fd;return[x.board,asc(fd.component||'—'),fd.load||'—',fd.maxT||'—',String(refOf(fd)??'—'),String(dtOf(fd)??'—'),SEVERITY[effSev(fd)].label];}),
+      styles:{fontSize:8,cellPadding:1.8}, headStyles:{fillColor:[176,106,23],fontSize:8},
+      alternateRowStyles:{fillColor:[253,248,240]},
+      columnStyles:{2:{halign:'center'},3:{halign:'center'},4:{halign:'center'},5:{halign:'center'},6:{halign:'center',fontStyle:'bold'}},
+      didParseCell:d=>{ if(d.section==='body'&&d.column.index===6){const k=fl[d.row.index]&&effSev(fl[d.row.index].fd);if(k)d.cell.styles.textColor=SEVERITY[k].rgb;} },
+      didDrawPage:stamp });
+    y=doc.lastAutoTable.finalY+8;
+  } else {
+    ensure(12);
+    doc.setFillColor(225,245,233).setDrawColor(180,220,195).roundedRect(M,y,W-2*M,9,2,2,'FD');
+    doc.setFont('helvetica','bold').setFontSize(9).setTextColor(29,122,92);
+    doc.text('No findings require attention - all measurements within normal limits.',M+4,y+6); y+=15;
+  }
+
+  if (y>250){ doc.addPage(); stamp(); y=26; }
+  doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Switchboard Summary',M,y); y+=4;
+  doc.autoTable({ startY:y+2, margin:{left:M,right:M,top:22,bottom:14},
+    head:[['Switchboard','Findings','Critical','Serious','Interm.','Worst']],
+    body:state.boards.map(b=>{const cc={critical:0,serious:0,intermediate:0,advisory:0,normal:0};let worst='normal';b.findings.forEach(fd=>{const s=effSev(fd);cc[s]++;if(sevRank(s)>sevRank(worst))worst=s;});return[b.name,b.findings.length,cc.critical,cc.serious,cc.intermediate,SEVERITY[worst].label];}),
+    styles:{fontSize:8,cellPadding:1.8}, headStyles:{fillColor:orange,fontSize:8},
+    alternateRowStyles:{fillColor:[250,251,253]},
+    columnStyles:{1:{halign:'center'},2:{halign:'center'},3:{halign:'center'},4:{halign:'center'},5:{halign:'center',fontStyle:'bold'}},
+    didParseCell:d=>{ if(d.section==='body'){ if(d.column.index===2&&d.cell.raw>0)d.cell.styles.textColor=SEVERITY.critical.rgb; if(d.column.index===3&&d.cell.raw>0)d.cell.styles.textColor=SEVERITY.serious.rgb; if(d.column.index===4&&d.cell.raw>0)d.cell.styles.textColor=SEVERITY.intermediate.rgb; } },
+    didDrawPage:stamp });
+  y=doc.lastAutoTable.finalY+8;
+
+  /* Photo detail by switchboard */
+  if ($('opt-detail').checked){
+    const flaggedOnly=$('opt-flagged').checked;
+    doc.addPage(); stamp(); y=26;
+    doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy); doc.text('Photo Detail by Switchboard',M,y); y+=7;
+    for (const b of state.boards){
+      let items=b.findings;
+      if (flaggedOnly) items=items.filter(fd=>sevRank(effSev(fd))>=sevRank(FLAG_FROM));
+      if (!items.length) continue;
+      ensure(12);
+      doc.setFillColor(68,71,77).rect(M,y-4,W-2*M,7,'F');
+      doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(255,255,255);
+      doc.text(b.name+'  ('+items.length+')', M+2, y+0.8); y+=8;
+
+      for (const fd of items){
+        const proc = await processImage(fd.file);
+        const sev = effSev(fd), sg = SEVERITY[sev];
+        let imgW=78, imgH=58;
+        if (proc){ imgH=imgW*(proc.h/proc.w); if(imgH>58){imgH=58;imgW=imgH*(proc.w/proc.h);} }
+        const blockH=Math.max(imgH,46)+6;
+        if (y+blockH>286){ doc.addPage(); stamp(); y=26; }
+        const top=y;
+        if (proc){ try{ doc.addImage(proc.dataUrl,'JPEG',M,top,imgW,imgH);}catch(e){} }
+        else { doc.setFillColor(240,240,240).rect(M,top,imgW,imgH,'F'); doc.setFontSize(7).setTextColor(...muted).text('image unavailable',M+imgW/2,top+imgH/2,{align:'center'}); }
+
+        const tx=M+imgW+6, tw=W-M-tx; let ty=top+4;
+        doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(...ink);
+        doc.text(doc.splitTextToSize(asc(fd.component||fd.filename||'Finding'),tw),tx,ty); ty+=5.5;
+        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...ink);
+        const line=(label,val)=>{doc.setFont('helvetica','bold');doc.text(label,tx,ty);doc.setFont('helvetica','normal');doc.text(asc(val),tx+24,ty);ty+=4.4;};
+        line('Load','('+(fd.load||'—')+' A)');
+        line('Max / Ref',(fd.maxT||'—')+' C  /  '+(refOf(fd)??'—')+' C');
+        line('Delta-T',(dtOf(fd)??'—')+' C');
+        /* severity chip */
+        doc.setFillColor(...sg.rgb).roundedRect(tx,ty-3.2,2+doc.getTextWidth(sg.label)+6,5,1,1,'F');
+        doc.setFont('helvetica','bold').setFontSize(8).setTextColor(255,255,255).text(sg.label,tx+3,ty+0.4); ty+=6;
+        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...ink);
+        const aLines=doc.splitTextToSize('Action: '+asc(fd.action||'—'),tw); doc.text(aLines,tx,ty); ty+=aLines.length*3.8;
+        if (fd.notes){ const nLines=doc.splitTextToSize('Notes: '+asc(fd.notes),tw); doc.text(nLines,tx,ty); ty+=nLines.length*3.8; }
+
+        y=Math.max(top+imgH, ty)+5;
+        doc.setDrawColor(...[226,232,240]).setLineWidth(0.2).line(M,y-2.5,W-M,y-2.5);
+      }
+      y+=3;
+    }
+  }
+
+  /* Survey notes + Important */
+  doc.addPage(); stamp(); y=26;
+  const noteSec=(h,t)=>{ensure(16);doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...navy);doc.text(h,M,y);y+=5.5;para(t,9,'normal',ink,0,6);};
+  if (rf('f-note')) noteSec('Survey Notes', rf('f-note'));
+  noteSec('Important', IMPORTANT);
+
+  const base=(cert||rf('f-customer')||'thermal_report').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'');
+  doc.save(base+'_Thermal_Imaging_Report.pdf');
+}
+
+/* ── Events ── */
+$('dir').addEventListener('change', e=>{ if(e.target.files.length) addFiles(e.target.files); });
+$('addImages').addEventListener('click', ()=>$('files').click());
+$('files').addEventListener('change', e=>{ if(e.target.files.length) addFiles(e.target.files); });
+$('regen').addEventListener('click', ()=>{ $('f-cert').value=genCert(); renderPreview(); });
+$('refresh').addEventListener('click', ()=>{ recomputeAll(); renderFindings(); renderPreview(); });
+$('pdf').addEventListener('click', async ()=>{
+  const btn=$('pdf'); const old=btn.innerHTML; btn.disabled=true; btn.textContent='Building PDF…';
+  try{ await buildPDF(); }catch(err){ alert('PDF error: '+err.message); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
+});
+
+/* drag & drop onto the folder zone (loose files) */
+const drop=$('drop');
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{ if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+
+/* report-level field changes refresh the preview */
+['f-customer','f-site','f-address','f-contact','f-phone','f-email','f-job','f-date','f-cert','f-tester','f-licence','f-instrument','f-instr-serial','f-instr-cal','f-emiss','f-note']
+  .forEach(id=>$(id).addEventListener('input', renderPreview));
+$('f-ambient').addEventListener('input', ()=>{ recomputeAll(); renderFindings(); renderPreview(); });
+['opt-summary','opt-detail','opt-flagged'].forEach(id=>$(id).addEventListener('change', renderPreview));
+$('f-job').addEventListener('input', ()=>{ const cert=$('f-cert'); if(!cert.value.trim()||/^BRO-TI-/.test(cert.value.trim())) cert.value=genCert(); renderPreview(); });
+
+/* findings editor: delegated input/change handling */
+const findingsHost=$('findings');
+function findFinding(id){ for(const b of state.boards){ const fd=b.findings.find(f=>f.id==id); if(fd) return fd; } return null; }
+function onFieldEdit(e){
+  const board=e.target.closest('[data-bname]');
+  if (board){ const bi=+board.dataset.bname; state.boards[bi].name=e.target.value; renderPreview(); return; }
+  const wrap=e.target.closest('[data-fid]'); if(!wrap) return;
+  const fd=findFinding(wrap.dataset.fid); if(!fd) return;
+  const k=e.target.dataset.k; if(!k) return;
+  if (k==='severity'){
+    if (e.target.value==='auto'){ fd.sevManual=false; const auto=classify(dtOf(fd)); fd.severity=auto||'normal'; }
+    else { fd.sevManual=true; fd.severity=e.target.value; }
+    if (!fd.actionEdited) fd.action=SEVERITY[effSev(fd)].action;
+    renderFindings(); renderPreview(); return;
+  }
+  if (k==='action'){ fd.actionEdited=true; fd.action=e.target.value; renderPreview(); return; }
+  fd[k]=e.target.value;
+  if (['maxT','refT'].includes(k)){
+    if (!fd.sevManual){ const auto=classify(dtOf(fd)); fd.severity=auto||'normal'; }
+    if (!fd.actionEdited) fd.action=SEVERITY[effSev(fd)].action;
+    renderFindings(); renderPreview(); return;
+  }
+  renderPreview();
+}
+findingsHost.addEventListener('input', onFieldEdit);
+findingsHost.addEventListener('change', onFieldEdit);
+findingsHost.addEventListener('click', e=>{ const z=e.target.closest('[data-zoom]'); if(z){ $('modalImg').src=z.dataset.zoom; $('modal').classList.add('show'); } });
+$('modal').addEventListener('click', ()=>$('modal').classList.remove('show'));
+
+/* init */
+$('f-date').value = new Date().toLocaleDateString('en-GB');
+$('f-cert').value = genCert();
+</script>
+</body>
+</html>
