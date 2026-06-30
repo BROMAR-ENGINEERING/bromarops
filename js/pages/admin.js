@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.11',
+  version: 'V1.14',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -565,14 +565,20 @@ window.BromarPages.admin = {
         }
         .tt-rpt-top {
           display: flex; justify-content: space-between; align-items: flex-start;
-          border-bottom: 3px solid var(--accent); padding-bottom: 0.75rem; margin-bottom: 0.75rem;
+          gap: 1rem; border-bottom: 3px solid var(--accent); padding-bottom: 0.75rem; margin-bottom: 0.75rem;
         }
+        .tt-rpt-brand { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+        .tt-rpt-logo { height: 34px; width: auto; flex-shrink: 0; }
+        .tt-rpt-logo.tt-logo-dark { display: none; }
+        [data-theme="dark"] .tt-rpt-logo.tt-logo-light { display: none; }
+        [data-theme="dark"] .tt-rpt-logo.tt-logo-dark { display: block; }
         .tt-rpt-org { font-size: 1rem; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
         .tt-rpt-org span { display: block; font-size: 0.65rem; font-weight: 400; color: var(--text-secondary); margin-top: 0.15rem; }
-        .tt-rpt-meta { text-align: right; font-size: 0.65rem; color: var(--text-secondary); line-height: 1.6; }
+        .tt-rpt-meta { text-align: right; font-size: 0.65rem; color: var(--text-secondary); line-height: 1.6; flex-shrink: 0; white-space: nowrap; }
         .tt-rpt-title { font-size: 1.2rem; font-weight: 700; color: var(--accent); text-align: center; margin: 1rem 0 0.75rem; }
-        .tt-cust { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 1.25rem; font-size: 0.82rem; margin-bottom: 1rem; }
+        .tt-cust { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1.25rem; font-size: 0.82rem; margin-bottom: 1rem; }
         .tt-cust .k { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); font-weight: 600; }
+        .tt-cust .v { word-break: break-word; }
         .tt-cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.4rem; margin-bottom: 1.25rem; }
         .tt-card {
           background: var(--bg-secondary); border: 1px solid var(--border);
@@ -596,6 +602,14 @@ window.BromarPages.admin = {
         .tt-loc-h { font-size: 0.85rem; font-weight: 700; margin: 1rem 0 0.3rem; color: var(--text-primary); }
         .tt-loc-h small { font-weight: 400; color: var(--text-secondary); margin-left: 0.4rem; }
         .tt-note-line { margin-top: 1.25rem; padding-top: 0.6rem; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-secondary); font-style: italic; }
+        .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
+        .tt-req { margin-top: 0.5rem; }
+        .tt-req-title { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem; }
+        .tt-req-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.6rem; }
+        .tt-req-sub { font-size: 0.8rem; font-weight: 700; color: var(--accent); margin: 0.6rem 0 0.25rem; }
+        .tt-req-list { margin: 0 0 0.4rem 1.1rem; padding: 0; }
+        .tt-req-list li { font-size: 0.76rem; color: var(--text-primary); margin-bottom: 0.15rem; line-height: 1.45; }
+        .tt-req-records { font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.5rem; line-height: 1.45; }
 
         @media (max-width: 900px) {
           .tt-layout { grid-template-columns: 1fr; }
@@ -800,6 +814,35 @@ window.BromarPages.admin = {
       }
 
       /* Test & Tag actions */
+      const ttViewBtn = e.target.closest('[data-tt-view]');
+      if (ttViewBtn) {
+        if (this._ttView !== 'register') this._ttForm = this._ttReadForm();
+        this._ttView = ttViewBtn.dataset.ttView;
+        this._renderTestTag(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('#tt-save')) {
+        this._ttSaveToRegister(true);
+        return;
+      }
+      const ttOpen = e.target.closest('[data-tt-open]');
+      if (ttOpen) {
+        this._ttOpenFromRegister(ttOpen.dataset.ttOpen, container.querySelector('#admin-section-content'));
+        return;
+      }
+      const ttDel = e.target.closest('[data-tt-delete]');
+      if (ttDel) {
+        const cert = ttDel.dataset.ttCert || 'this report';
+        if (confirm('Delete ' + cert + ' from the register? This cannot be undone.')) {
+          this._ttDeleteFromRegister(ttDel.dataset.ttDelete, container.querySelector('#admin-section-content'));
+        }
+        return;
+      }
+      if (e.target.closest('#tt-cert-regen')) {
+        const el = document.getElementById('tt-cert');
+        if (el) el.value = this._ttGenCert();
+        return;
+      }
       if (e.target.closest('#tt-refresh')) {
         this._ttRenderReport(container.querySelector('#admin-section-content'));
         return;
@@ -827,11 +870,26 @@ window.BromarPages.admin = {
       if (e.target.matches('#sup-category-filter') || e.target.matches('#sup-search')) {
         this._renderSupplierList(container.querySelector('#sup-list-area'));
       }
+      /* Test & Tag: installation type switches the requirements block live */
+      if (e.target.matches('#tt-insttype')) {
+        this._ttRenderReport(container.querySelector('#admin-section-content'));
+      }
     });
 
     container.addEventListener('input', (e) => {
       if (e.target.matches('#sup-search')) {
         this._renderSupplierList(container.querySelector('#sup-list-area'));
+      }
+      /* Test & Tag: keep the generated cert in sync with the job number */
+      if (e.target.matches('#tt-job')) {
+        const cert = document.getElementById('tt-cert');
+        if (cert && (!cert.value.trim() || /^BRO-TT-/.test(cert.value.trim()))) {
+          cert.value = this._ttGenCert();
+        }
+      }
+      /* Test & Tag: filter the register as you type */
+      if (e.target.matches('#tt-reg-search')) {
+        this._ttRenderRegisterList(container.querySelector('#admin-section-content'));
       }
     });
   },
@@ -1968,17 +2026,175 @@ window.BromarPages.admin = {
      SECTION: Test & Tag Report Builder
      ════════════════════════════════════════ */
   _ttModel: null,
+  _ttView: 'build',
+  _ttForm: null,
+  _ttRegister: [],
+  _ttRegisterError: null,
+  _ttFlashTimer: null,
+  _TT_TABLE: 'test_tag_reports',
   _ttORG: {
     name: 'JJTJ Pty Ltd T/A Bromar Electrical Services (Aust)',
     short: 'Bromar Electrical Services',
     addr: 'Western Ave, Westmeadows 3049, Australia',
     phone: '03 9335 5344', web: 'www.bromar.com.au', email: 'admin@bromar.com.au'
   },
+  _ttLogoColour: 'assets/Bromar-Primary-Logo-Full-Colour.png',
+  _ttLogoWhite: 'assets/Bromar-Primary-Logo-Reverse-White.png',
+  _ttLogoDataUrl: null,
+  _ttLogoDims: null,
+
+  /* Fetch + cache the colour logo as a base64 data URL (for the PDF, which always has a white page) */
+  async _ttGetLogoDataUrl() {
+    if (this._ttLogoDataUrl) return this._ttLogoDataUrl;
+    try {
+      const res = await fetch(this._ttLogoColour);
+      if (!res.ok) throw new Error('logo fetch failed');
+      const blob = await res.blob();
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+      const dims = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => resolve({ w: 300, h: 80 });
+        img.src = dataUrl;
+      });
+      this._ttLogoDataUrl = dataUrl;
+      this._ttLogoDims = dims;
+      return dataUrl;
+    } catch (err) {
+      console.warn('Logo load failed, falling back to text header:', err);
+      return null;
+    }
+  },
+
+  /* Clean up junk due-dates coming through from the WinPATS export (epoch placeholder for "no due date") */
+  _ttCleanDate(val) {
+    if (!val) return '';
+    const s = String(val).trim();
+    if (!s || s === '01/01/1970' || s === '—') return '';
+    return s;
+  },
+
+  /* ── Applicable standards (shown at the start of the report) ── */
+  _ttStandardsIntro: 'The testing presented in this report was conducted in accordance with relevant Australian standards, Energy Safe Victoria publications, and Work Health and Safety regulations.',
+  _ttStandards: [
+    ['AS/NZS 3000:2018 (Amdt 3)', 'Electrical Installations — Wiring Rules'],
+    ['AS/NZS 3012:2019', 'Electrical Installations — Construction & demolition sites'],
+    ['AS/NZS 3760:2022', 'In-service safety inspection & testing of electrical equipment and RCDs'],
+    ['Electricity Safety Act 1998 (2020 Amdt)', 'Victorian electrical safety act'],
+    ['ESV Prohibition Notice 200701', 'Energy Safe Victoria — 2020 RCBO Prohibition Notice'],
+    ['ESV RCBO Compliant RCBO List', 'Energy Safe Victoria RCBO/RCD compliant list'],
+  ],
+
+  /* ── Requirements summaries (selectable) ── */
+  _ttReq: {
+    construction: {
+      title: 'Construction & Demolition Sites — Fixed RCD/RCBO Summary',
+      intro: 'This report applies to the routine testing of fixed residual current devices (RCDs) and residual current circuit breakers with overcurrent protection (RCBOs) installed in switchboards and distribution boards on construction and demolition sites, in accordance with AS/NZS 3012.',
+      sections: [
+        {
+          heading: 'Monthly Test Requirements',
+          points: [
+            'The integral <strong>TEST</strong> button shall be operated. The device must trip immediately to achieve a <strong>PASS</strong>.',
+            'An instrument trip-time test shall be performed at the device\u2019s rated residual operating current (IΔn).',
+            'For multi-phase RCDs/RCBOs, testing shall be performed on each phase.',
+            'The measured trip time shall not exceed <strong>300 ms</strong>. Results greater than 300 ms shall be recorded as a <strong>FAIL</strong>.',
+          ],
+        },
+      ],
+      records: 'A completed copy of this report should be provided to the customer for their records. Testing records should be retained in accordance with AS/NZS 3012 and applicable workplace or regulatory requirements.',
+    },
+    commercial: {
+      title: 'Commercial & Industrial Installations — Fixed RCD/RCBO Testing Summary',
+      intro: 'This report applies to the routine testing of fixed residual current devices (RCDs) and residual current circuit breakers with overcurrent protection (RCBOs) installed within commercial and industrial electrical installations, in accordance with AS/NZS 3760:2022.',
+      sections: [
+        {
+          heading: '6-Monthly Test — Push Button Test Only',
+          points: [
+            'Press the integral <strong>TEST</strong> button on the RCD/RCBO.',
+            'To achieve a <strong>PASS</strong>, the device must trip immediately.',
+            'If the device does not trip, record the result as <strong>FAIL</strong>.',
+            'Trip-time testing is not required for the 6-month push-button test; the trip-time columns on this report may be disregarded.',
+          ],
+        },
+        {
+          heading: '12-Monthly Test — Instrument Trip-Time Test',
+          points: [
+            'Press the integral <strong>TEST</strong> button on the RCD/RCBO.',
+            'To achieve a <strong>PASS</strong>, the device must trip immediately.',
+            'If the device does not trip, record the result as <strong>FAIL</strong>.',
+            'Perform an instrument trip-time test at the device\u2019s rated residual operating current (IΔn).',
+            'For multi-phase RCDs/RCBOs, perform the test on each phase.',
+            'Record the measured trip time.',
+            'To achieve a <strong>PASS</strong>, the measured trip time at IΔn shall not exceed <strong>300 ms</strong>.',
+            'If the measured trip time exceeds 300 ms, record the result as <strong>FAIL</strong>.',
+          ],
+        },
+      ],
+      records: 'A completed copy of this report shall be provided to the customer for their records. In accordance with AS/NZS 3760:2022, testing records should be retained for a minimum of 7 years.',
+    },
+  },
+
+  /* Build a clean Bromar certificate number from job number + date.
+     Format: BRO-TT-YYYYMMDD-<JOB>  (falls back to HHMM when no job entered) */
+  _ttGenCert() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    const ymd = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+    const job = (document.getElementById('tt-job')?.value || '').trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    return 'BRO-TT-' + ymd + '-' + (job || (p(d.getHours()) + p(d.getMinutes())));
+  },
+
+  /* Strip HTML + map non-Latin chars so jsPDF's standard fonts render cleanly */
+  _ttAscii(s) {
+    return String(s)
+      .replace(/<[^>]+>/g, '')
+      .replace(/IΔn/g, 'I delta-n')
+      .replace(/[Δ∆]/g, 'delta')
+      .replace(/[\u2018\u2019\u201A]/g, "'")
+      .replace(/[\u201C\u201D\u201E]/g, '"');
+  },
+
+  _ttStandardsHTML() {
+    const rows = this._ttStandards.map(s => '<tr><td>' + s[0] + '</td><td>' + s[1] + '</td></tr>').join('');
+    return '<h2 class="tt-sec">Applicable Standards</h2>' +
+      '<p class="tt-std-intro">' + this._ttStandardsIntro + '</p>' +
+      '<table class="tt-tbl"><thead><tr><th style="width:40%">Document</th><th>Description</th></tr></thead><tbody>' +
+      rows + '</tbody></table>';
+  },
+
+  _ttReqHTML(type) {
+    const r = this._ttReq[type]; if (!r) return '';
+    let h = '<h2 class="tt-sec">Testing Requirements</h2><div class="tt-req">';
+    h += '<div class="tt-req-title">' + r.title + '</div>';
+    h += '<p class="tt-req-intro">' + r.intro + '</p>';
+    r.sections.forEach(s => {
+      h += '<div class="tt-req-sub">' + s.heading + '</div><ul class="tt-req-list">' +
+        s.points.map(p => '<li>' + p + '</li>').join('') + '</ul>';
+    });
+    h += '<div class="tt-req-records"><strong>Records.</strong> ' + r.records + '</div></div>';
+    return h;
+  },
 
   _renderTestTag(target) {
     target.innerHTML = `
       <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Test & Tag Report Builder</h2></div>
+        <div class="admin-section-header">
+          <h2>Test & Tag Reports</h2>
+          <div class="co-toolbar">
+            <button class="btn-secondary ${this._ttView !== 'register' ? 'active' : ''}" data-tt-view="build">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New Report
+            </button>
+            <button class="btn-secondary ${this._ttView === 'register' ? 'active' : ''}" data-tt-view="register">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4H4zM4 10h16v10H4zM8 14h8"/></svg>Register
+            </button>
+          </div>
+        </div>
+        <div id="tt-section-body">
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem">Load a WinPATS HTML export, confirm details, export a clean PDF.</p>
 
         <div class="tt-layout">
@@ -1994,6 +2210,7 @@ window.BromarPages.admin = {
 
             <div class="section-label" style="margin-top:1.25rem">Customer Details</div>
             <div class="tt-form-row"><label>Customer</label><input type="text" id="tt-customer"></div>
+            <div class="tt-form-row"><label>Site Name</label><input type="text" id="tt-site" placeholder="e.g. Dandenong South Plant"></div>
             <div class="tt-form-row"><label>Site Address</label><input type="text" id="tt-address"></div>
             <div class="tt-form-2col">
               <div class="tt-form-row"><label>Contact</label><input type="text" id="tt-contact"></div>
@@ -2001,10 +2218,29 @@ window.BromarPages.admin = {
             </div>
             <div class="tt-form-row"><label>Contact Email</label><input type="text" id="tt-email"></div>
             <div class="tt-form-2col">
+              <div class="tt-form-row"><label>Job Number</label><input type="text" id="tt-job" placeholder="e.g. 5133"></div>
               <div class="tt-form-row"><label>Date Range</label><input type="text" id="tt-range"></div>
-              <div class="tt-form-row"><label>Cert Ref</label><input type="text" id="tt-cert"></div>
+            </div>
+            <div class="tt-form-row">
+              <label>Certificate No.</label>
+              <div style="display:flex;gap:0.4rem">
+                <input type="text" id="tt-cert" style="flex:1">
+                <button class="btn-secondary" id="tt-cert-regen" type="button" title="Regenerate" style="padding:0.45rem 0.6rem;flex-shrink:0">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                </button>
+              </div>
             </div>
             <div class="tt-form-row"><label>Tested By</label><input type="text" id="tt-tester" placeholder="Technician name"></div>
+
+            <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
+            <div class="tt-form-row">
+              <label>Installation Type</label>
+              <select id="tt-insttype" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem">
+                <option value="commercial">Commercial / Industrial (AS/NZS 3760)</option>
+                <option value="construction">Construction / Demolition (AS/NZS 3012)</option>
+              </select>
+            </div>
+            <label class="tt-checkbox"><input type="checkbox" id="tt-summary" checked> Include standards table &amp; requirements summary</label>
 
             <div class="section-label" style="margin-top:1.25rem">Options</div>
             <div class="tt-form-row">
@@ -2018,7 +2254,11 @@ window.BromarPages.admin = {
               <button class="btn-secondary" id="tt-refresh" disabled style="flex:1">Update Preview</button>
               <button class="btn-primary" id="tt-pdf" disabled style="flex:1;padding:0.7rem 1rem">Download PDF</button>
             </div>
-            <p style="font-size:0.7rem;color:var(--text-secondary);text-align:center;margin-top:0.5rem;opacity:0.6">Runs in your browser — nothing uploaded.</p>
+            <button class="btn-secondary" id="tt-save" disabled style="width:100%;margin-top:0.5rem">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save to Register
+            </button>
+            <div id="tt-save-feedback"></div>
+            <p style="font-size:0.7rem;color:var(--text-secondary);text-align:center;margin-top:0.5rem;opacity:0.6">Saved reports go to your register; nothing else is uploaded.</p>
           </div>
 
           <div class="tt-preview-area">
@@ -2029,10 +2269,25 @@ window.BromarPages.admin = {
             <div id="tt-preview"></div>
           </div>
         </div>
+        </div>
       </div>
     `;
 
     this._ttBindDropZone(target);
+
+    if (this._ttView === 'register') { this._ttShowRegister(target); return; }
+
+    /* Restore a loaded report when returning to the build view */
+    if (this._ttModel) {
+      if (this._ttForm) this._ttPopulateForm(this._ttForm);
+      ['tt-refresh','tt-pdf','tt-save'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+      const loaded = document.getElementById('tt-loaded');
+      if (loaded) {
+        loaded.classList.add('show');
+        loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' switchboards loaded';
+      }
+      this._ttRenderReport(target);
+    }
   },
 
   _ttBindDropZone(sectionTarget) {
@@ -2057,17 +2312,175 @@ window.BromarPages.admin = {
     });
   },
 
+  /* ── Register: write the current report to Supabase (upsert by cert_no) ── */
+  async _ttSaveToRegister(showNote) {
+    if (!this._ttModel) return;
+    const f = this._ttReadForm();
+    if (!f.cert) { if (showNote) this._ttFlash('Add a certificate number first.', 'error'); return; }
+    const assets = this._ttModel.assets;
+    const boards = this._ttGroupBoards(assets);
+    const payload = {
+      cert_no: f.cert,
+      job_number: f.job || null,
+      customer: f.customer || null,
+      site_name: f.site || null,
+      site_address: f.address || null,
+      contact: f.contact || null,
+      contact_email: f.email || null,
+      phone: f.phone || null,
+      date_range: f.range || null,
+      installation_type: f.instType,
+      tested_by: f.tester || null,
+      generated_date: this._ttModel.head.generated || new Date().toLocaleDateString('en-GB'),
+      total: assets.length,
+      pass: assets.filter(a => a.state === 'pass').length,
+      fail: assets.filter(a => a.state === 'fail').length,
+      oos: assets.filter(a => a.state === 'oos').length,
+      boards: boards.length,
+      overdue: parseInt(this._ttModel.stats['Overdue'] || '0', 10) || 0,
+      note: f.note || null,
+      report_data: { head: this._ttModel.head, stats: this._ttModel.stats, assets, form: f },
+      updated_at: new Date().toISOString(),
+    };
+    const headers = { ...this._sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' };
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?on_conflict=cert_no', {
+        method: 'POST', headers, body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      if (showNote) this._ttFlash('Saved to register: ' + f.cert, 'success');
+    } catch (err) {
+      console.error('Register save error:', err);
+      if (showNote) this._ttFlash('Could not save to register — is the table set up?', 'error');
+    }
+  },
+
+  _ttFlash(msg, type) {
+    const el = document.getElementById('tt-save-feedback');
+    if (!el) return;
+    el.innerHTML = '<div class="co-upload-result ' + (type || 'success') + '" style="margin-top:0.6rem">' + msg + '</div>';
+    clearTimeout(this._ttFlashTimer);
+    this._ttFlashTimer = setTimeout(() => { const e2 = document.getElementById('tt-save-feedback'); if (e2) e2.innerHTML = ''; }, 4000);
+  },
+
+  /* ── Register: fetch + render the lookup list ── */
+  async _ttShowRegister(target) {
+    const body = target.querySelector('#tt-section-body');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
+        <input type="text" id="tt-reg-search" placeholder="Search cert no, job, customer, site…" style="flex:1;min-width:200px;padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;outline:none">
+      </div>
+      <div id="tt-reg-list"><div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading register…</p></div></div>
+    `;
+    await this._ttFetchRegister();
+    this._ttRenderRegisterList(target);
+  },
+
+  async _ttFetchRegister() {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?select=*&order=updated_at.desc', { headers: this._sbHeaders() });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      this._ttRegister = Array.isArray(data) ? data : [];
+      this._ttRegisterError = null;
+    } catch (err) {
+      console.error('Register fetch error:', err);
+      this._ttRegister = [];
+      this._ttRegisterError = err.message;
+    }
+  },
+
+  _ttRenderRegisterList(target) {
+    const list = target.querySelector('#tt-reg-list');
+    if (!list) return;
+    if (this._ttRegisterError) {
+      list.innerHTML = '<div class="admin-placeholder"><p>Register not available yet. Create the <strong>test_tag_reports</strong> table in Supabase, then reopen this tab.</p></div>';
+      return;
+    }
+    const q = (document.getElementById('tt-reg-search')?.value || '').toLowerCase().trim();
+    let rows = this._ttRegister;
+    if (q) rows = rows.filter(r => [r.cert_no, r.job_number, r.customer, r.site_name, r.site_address, r.date_range].filter(Boolean).join(' ').toLowerCase().includes(q));
+    if (!rows.length) {
+      list.innerHTML = '<div class="admin-placeholder"><p>' + (this._ttRegister.length ? 'No reports match your search.' : 'No reports saved yet. Build a report, then Save to Register or Download PDF.') + '</p></div>';
+      return;
+    }
+    const body = rows.map(r => {
+      const results = '<span style="color:var(--success);font-weight:600">' + (r.pass || 0) + 'P</span>' +
+        (r.fail ? ' \u00b7 <span style="color:var(--error);font-weight:600">' + r.fail + 'F</span>' : '') +
+        (r.oos ? ' \u00b7 <span style="color:#b06a17;font-weight:600">' + r.oos + ' OOS</span>' : '');
+      const siteLine = (r.site_name && r.site_name !== r.customer) ? '<br><span style="color:var(--text-secondary);font-size:0.8rem">' + r.site_name + '</span>' : '';
+      return '<tr>' +
+        '<td><strong>' + (r.cert_no || '\u2014') + '</strong>' +
+          '<span class="co-mobile-meta">' + (r.customer || '') + ' \u00b7 ' + (r.date_range || '') + '</span></td>' +
+        '<td class="hide-mobile">' + (r.job_number || '\u2014') + '</td>' +
+        '<td class="hide-mobile">' + (r.customer || '\u2014') + siteLine + '</td>' +
+        '<td class="hide-mobile">' + (r.date_range || '\u2014') + '</td>' +
+        '<td>' + results + '</td>' +
+        '<td class="hide-mobile">' + (r.generated_date || '') + '</td>' +
+        '<td><div style="display:flex;gap:0.3rem">' +
+          '<button class="sup-action-btn" data-tt-open="' + r.id + '" title="Open"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14L21 3M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/></svg></button>' +
+          '<button class="sup-action-btn sup-action-delete" data-tt-delete="' + r.id + '" data-tt-cert="' + (r.cert_no || '') + '" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    list.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem">' + rows.length + ' report' + (rows.length !== 1 ? 's' : '') + '</div>' +
+      '<table class="co-list-table"><thead><tr>' +
+      '<th>Cert No.</th><th class="hide-mobile">Job</th><th class="hide-mobile">Customer / Site</th>' +
+      '<th class="hide-mobile">Date Range</th><th>Results</th><th class="hide-mobile">Generated</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
+  },
+
+  _ttOpenFromRegister(id, target) {
+    const rec = this._ttRegister.find(r => String(r.id) === String(id));
+    if (!rec || !rec.report_data) { alert('This report has no stored data to re-open.'); return; }
+    const rd = rec.report_data;
+    this._ttModel = { head: rd.head || {}, stats: rd.stats || {}, assets: rd.assets || [] };
+    this._ttForm = rd.form || null;
+    this._ttView = 'build';
+    this._renderTestTag(target);
+  },
+
+  async _ttDeleteFromRegister(id, target) {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?id=eq.' + id, { method: 'DELETE', headers: this._sbHeaders() });
+      if (!res.ok) throw new Error(await res.text());
+      await this._ttFetchRegister();
+      this._ttRenderRegisterList(target);
+    } catch (err) {
+      console.error('Register delete error:', err);
+      alert('Delete failed: ' + err.message);
+    }
+  },
+
+  _ttPopulateForm(f) {
+    if (!f) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    set('tt-customer', f.customer); set('tt-site', f.site); set('tt-address', f.address);
+    set('tt-contact', f.contact); set('tt-phone', f.phone); set('tt-email', f.email);
+    set('tt-job', f.job); set('tt-range', f.range); set('tt-cert', f.cert); set('tt-tester', f.tester);
+    set('tt-insttype', f.instType); set('tt-note', f.note);
+    const ck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly);
+  },
+
   _ttLoadReport(text, sectionTarget) {
     this._ttModel = this._ttParseReport(text);
     const h = this._ttModel.head;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
     set('tt-customer', h.customer); set('tt-address', h.address); set('tt-contact', h.contact);
-    set('tt-phone', h.phone); set('tt-email', h.email); set('tt-range', h.range); set('tt-cert', h.cert);
+    set('tt-phone', h.phone); set('tt-email', h.email); set('tt-range', h.range);
+    set('tt-site', h.site || h.customer);
+    /* Generate a clean Bromar cert number rather than reuse the WinPATS one */
+    const certEl = document.getElementById('tt-cert');
+    if (certEl) certEl.value = this._ttGenCert();
 
     const refreshBtn = document.getElementById('tt-refresh');
     const pdfBtn = document.getElementById('tt-pdf');
+    const saveBtn = document.getElementById('tt-save');
     if (refreshBtn) refreshBtn.disabled = false;
     if (pdfBtn) pdfBtn.disabled = false;
+    if (saveBtn) saveBtn.disabled = false;
 
     const loaded = document.getElementById('tt-loaded');
     if (loaded) {
@@ -2080,10 +2493,12 @@ window.BromarPages.admin = {
   _ttReadForm() {
     const g = id => (document.getElementById(id) || {}).value || '';
     return {
-      customer: g('tt-customer').trim(), address: g('tt-address').trim(),
+      customer: g('tt-customer').trim(), site: g('tt-site').trim(), address: g('tt-address').trim(),
       contact: g('tt-contact').trim(), phone: g('tt-phone').trim(),
       email: g('tt-email').trim(), range: g('tt-range').trim(),
-      cert: g('tt-cert').trim(), tester: g('tt-tester').trim(),
+      cert: g('tt-cert').trim(), job: g('tt-job').trim(), tester: g('tt-tester').trim(),
+      instType: g('tt-insttype') || 'commercial',
+      summary: document.getElementById('tt-summary')?.checked ?? true,
       note: g('tt-note').trim(),
       detail: document.getElementById('tt-detail')?.checked ?? true,
       oosOnly: document.getElementById('tt-oosonly')?.checked ?? false,
@@ -2096,7 +2511,7 @@ window.BromarPages.admin = {
     const mat = t => [...t.querySelectorAll('tr')].map(tr =>
       [...tr.querySelectorAll('td,th')].map(c => c.textContent.replace(/\s+/g, ' ').trim()));
 
-    const head = { customer:'', address:'', contact:'', email:'', phone:'', range:'', cert:'', generated:'' };
+    const head = { customer:'', site:'', address:'', contact:'', email:'', phone:'', range:'', cert:'', generated:'' };
     const stats = {};
     const assets = [];
     const labels = new Set(['Test Date:','Final Status:','Comments:','Test Performed:']);
@@ -2109,6 +2524,7 @@ window.BromarPages.admin = {
         if (r.length >= 2) {
           const k = r[0].replace(':','').trim(), v = r[1].trim();
           if (k === 'Customer' && !head.customer) head.customer = v;
+          else if (k === 'Site' && !head.site) head.site = v;
           else if (k === 'Address' && !head.address) head.address = v;
           else if (k === 'Contact Person' && !head.contact) head.contact = v;
           else if (k === 'Contact Email' && !head.email) head.email = v;
@@ -2148,7 +2564,7 @@ window.BromarPages.admin = {
       a.barcode = a['Barcode'] || '';
       a.description = a['Description'] || '';
       a.tested = a['Tested On'] || a['Test Date'] || '';
-      a.due = a['Due'] || '';
+      a.due = this._ttCleanDate(a['Due']);
       a.testPerformed = a['Test Performed'] || '';
       let st = (a['Final Status'] || '').trim();
       if (!st) { const r = a['Result']; st = r === 'P' ? 'Pass' : r === 'F' ? 'Fail' : '\u2014'; }
@@ -2180,9 +2596,10 @@ window.BromarPages.admin = {
       .map(g => ({ ...g, subsText: fmt(g.subs), earliest: earliest(g.dues) }));
   },
 
-  _ttRenderReport(sectionTarget) {
+  async _ttRenderReport(sectionTarget) {
     if (!this._ttModel) return;
     const f = this._ttReadForm();
+    this._ttForm = f;
     const boards = this._ttGroupBoards(this._ttModel.assets);
     const total = this._ttModel.assets.length;
     const pass = this._ttModel.assets.filter(a => a.state === 'pass').length;
@@ -2217,19 +2634,34 @@ window.BromarPages.admin = {
     const previewEl = sectionTarget.querySelector('#tt-preview');
     if (!previewEl) return;
 
+    /* Try to load the actual Bromar logo; fall back to typeset name if it can't be fetched */
+    const logoUrl = await this._ttGetLogoDataUrl();
+    const brandHTML = logoUrl
+      ? '<img class="tt-rpt-logo tt-logo-light" src="' + this._ttLogoColour + '" alt="Bromar">' +
+        '<img class="tt-rpt-logo tt-logo-dark" src="' + this._ttLogoWhite + '" alt="Bromar">'
+      : '';
+    const brandName = logoUrl ? '' : 'Bromar Electrical Services';
+
     previewEl.innerHTML = `
       <div class="tt-sheet">
         <div class="tt-rpt-top">
-          <div class="tt-rpt-org">Bromar Electrical Services<span>${this._ttORG.addr} \u00b7 ${this._ttORG.phone} \u00b7 ${this._ttORG.web}</span></div>
-          <div class="tt-rpt-meta">Cert ref. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
+          <div class="tt-rpt-brand">
+            ${brandHTML}
+            <div class="tt-rpt-org">${brandName}<span>${this._ttORG.addr} \u00b7 ${this._ttORG.phone} \u00b7 ${this._ttORG.web}</span></div>
+          </div>
+          <div class="tt-rpt-meta">Cert no. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
         </div>
         <div class="tt-rpt-title">Site Equipment Test Report</div>
         <div class="tt-cust">
-          <div><div class="k">Customer</div>${f.customer || '\u2014'}</div>
-          <div><div class="k">Site Address</div>${f.address || '\u2014'}</div>
-          <div><div class="k">Contact</div>${f.contact || '\u2014'}${f.email ? ' \u00b7 ' + f.email : ''}</div>
-          <div><div class="k">Date Range</div>${f.range || '\u2014'}</div>
+          <div><div class="k">Customer</div><div class="v">${f.customer || '\u2014'}</div></div>
+          <div><div class="k">Site Name</div><div class="v">${f.site || '\u2014'}</div></div>
+          <div><div class="k">Site Address</div><div class="v">${f.address || '\u2014'}</div></div>
+          <div><div class="k">Contact</div><div class="v">${f.contact || '\u2014'}${f.email ? ' \u00b7 ' + f.email : ''}</div></div>
+          <div><div class="k">Job Number</div><div class="v">${f.job || '\u2014'}</div></div>
+          <div><div class="k">Date Range</div><div class="v">${f.range || '\u2014'}</div></div>
         </div>
+        ${f.summary ? this._ttStandardsHTML() + this._ttReqHTML(f.instType) : ''}
+        <h2 class="tt-sec">Results Summary</h2>
         <div class="tt-cards">
           <div class="tt-card"><div class="n">${total}</div><div class="l">Equipment</div></div>
           <div class="tt-card ok"><div class="n">${pass}</div><div class="l">Pass</div></div>
@@ -2280,6 +2712,7 @@ window.BromarPages.admin = {
   async _ttBuildPDF() {
     if (!this._ttModel) return;
     await this._ttLoadJsPDF();
+    const logoUrl = await this._ttGetLogoDataUrl();
     const { jsPDF } = window.jspdf;
     const f = this._ttReadForm();
     const boards = this._ttGroupBoards(this._ttModel.assets);
@@ -2292,32 +2725,123 @@ window.BromarPages.admin = {
     const doc = new jsPDF('p', 'mm', 'a4');
     const W = doc.internal.pageSize.getWidth(), M = 14;
 
+    /* Logo sizing: fit within a 38mm-wide / 14mm-tall box, preserving aspect ratio */
+    let logoW = 0, logoH = 0;
+    if (logoUrl && this._ttLogoDims) {
+      const maxW = 38, maxH = 14;
+      const ratio = this._ttLogoDims.w / this._ttLogoDims.h;
+      logoW = maxW; logoH = logoW / ratio;
+      if (logoH > maxH) { logoH = maxH; logoW = logoH * ratio; }
+    }
+
     const stamp = () => {
       doc.setFillColor(...orange); doc.rect(0, 0, W, 3, 'F');
-      doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...navy);
-      doc.text('Bromar Electrical Services', M, 12);
+      let textX = M;
+      if (logoUrl && logoW) {
+        doc.addImage(logoUrl, 'PNG', M, 6, logoW, logoH);
+        textX = M + logoW + 5;
+      } else {
+        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...navy);
+        doc.text('Bromar Electrical Services', textX, 12);
+      }
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
-      doc.text(this._ttORG.addr + ' \u00b7 ' + this._ttORG.phone, M, 16.5);
-      doc.text('Cert ref. ' + (f.cert || '\u2014'), W - M, 12, { align: 'right' });
+      doc.text(this._ttORG.addr + ' \u00b7 ' + this._ttORG.phone, textX, logoUrl ? 17 : 16.5);
+      doc.text('Cert no. ' + (f.cert || '\u2014'), W - M, 12, { align: 'right' });
       doc.setFontSize(7.5).setTextColor(...muted);
       doc.text('Generated ' + (this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')), M, 290);
       doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 290, { align: 'right' });
     };
 
     stamp();
-    let y = 30;
+    let y = 28;
     doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(...navy);
-    doc.text('Site Equipment Test Report', W / 2, y, { align: 'center' }); y += 11;
+    doc.text('Site Equipment Test Report', W / 2, y, { align: 'center' }); y += 9;
     doc.setDrawColor(...orange).setLineWidth(0.8).line(M, y, W - M, y); y += 9;
 
-    const pair = (k, v, x, yy) => {
-      doc.setFont('helvetica', 'normal').setTextColor(...muted).text(k.toUpperCase(), x, yy);
-      doc.setFont('helvetica', 'bold').setTextColor(40, 49, 60).text(v || '\u2014', x, yy + 4.5);
+    /* Customer detail pairs — wraps long values and advances y by the tallest
+       cell in each row, so a long address can never overlap the next row */
+    const colW = W / 2 - M - 5;
+    const pairRow = (pairs, startY) => {
+      let maxLines = 1;
+      const blocks = pairs.map(([k, v], i) => {
+        const x = i === 0 ? M : W / 2;
+        const lines = doc.splitTextToSize(v || '\u2014', colW);
+        maxLines = Math.max(maxLines, lines.length);
+        return { x, k, lines };
+      });
+      blocks.forEach(b => {
+        doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
+        doc.text(b.k.toUpperCase(), b.x, startY);
+        doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(40, 49, 60);
+        doc.text(b.lines, b.x, startY + 4.5);
+      });
+      return startY + 4.5 + maxLines * 4 + 3;
     };
-    pair('Customer', f.customer, M, y); pair('Site address', f.address, W / 2, y); y += 12;
-    pair('Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : ''), M, y); pair('Date range', f.range, W / 2, y); y += 12;
-    if (f.tester) { pair('Tested by', f.tester, M, y); y += 12; }
+    y = pairRow([['Customer', f.customer], ['Site name', f.site]], y);
+    y = pairRow([['Site address', f.address], ['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')]], y);
+    y = pairRow([['Job number', f.job], ['Date range', f.range]], y);
+    if (f.tester) y = pairRow([['Tested by', f.tester], ['', '']], y);
     y += 2;
+
+    /* Page-flow helpers for the standards / requirements text */
+    const ensure = need => { if (y + need > 286) { doc.addPage(); stamp(); y = 26; } };
+    const para = (txt, size, style, color, indent, gap) => {
+      indent = indent || 0; gap = gap == null ? 2 : gap;
+      const lines = doc.splitTextToSize(this._ttAscii(txt), W - 2 * M - indent);
+      const lh = size * 0.45;
+      ensure(lines.length * lh + gap);
+      doc.setFont('helvetica', style).setFontSize(size).setTextColor(...color);
+      doc.text(lines, M + indent, y);
+      y += lines.length * lh + gap;
+    };
+
+    if (f.summary) {
+      /* Applicable standards */
+      ensure(10);
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+      doc.text('Applicable Standards', M, y); y += 5;
+      para(this._ttStandardsIntro, 8.5, 'normal', [40, 49, 60], 0, 2);
+      doc.autoTable({
+        startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+        head: [['Document', 'Description']],
+        body: this._ttStandards.map(s => [this._ttAscii(s[0]), this._ttAscii(s[1])]),
+        styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: orange, fontSize: 8 },
+        alternateRowStyles: { fillColor: [250, 251, 253] },
+        columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.4 } },
+        didDrawPage: stamp,
+      });
+      y = doc.lastAutoTable.finalY + 8;
+
+      /* Testing requirements (selected type) */
+      const r = this._ttReq[f.instType];
+      if (r) {
+        ensure(14);
+        doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+        doc.text('Testing Requirements', M, y); y += 5;
+        para(r.title, 9.5, 'bold', [40, 49, 60], 0, 1.5);
+        para(r.intro, 8.5, 'normal', [40, 49, 60], 0, 2.5);
+        r.sections.forEach(sec => {
+          para(sec.heading, 9, 'bold', orange, 0, 1.5);
+          sec.points.forEach(pt => {
+            const t = this._ttAscii(pt);
+            const lines = doc.splitTextToSize(t, W - 2 * M - 6);
+            const lh = 8 * 0.45;
+            ensure(lines.length * lh + 1);
+            doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(40, 49, 60);
+            doc.text('\u2022', M + 1, y);
+            doc.text(lines, M + 6, y);
+            y += lines.length * lh + 1.2;
+          });
+          y += 1.5;
+        });
+        para('Records.  ' + r.records, 8, 'italic', [...muted], 0, 2);
+      }
+      y += 2;
+    }
+
+    if (y > 250) { doc.addPage(); stamp(); y = 26; }
+    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+    doc.text('Results Summary', M, y); y += 5;
 
     const cards = [['Equipment', total, navy], ['Pass', pass, [29, 122, 92]], ['Fail', fail, [192, 57, 43]],
       ['Out of svc', oos, [176, 106, 23]], ['Boards', boards.length, navy], ['Overdue', overdue, navy]];
@@ -2387,6 +2911,7 @@ window.BromarPages.admin = {
 
     const safe = (f.customer || 'report').replace(/[^a-z0-9]+/gi, '_');
     doc.save(safe + '_Test_Report.pdf');
+    await this._ttSaveToRegister(true);
   },
 
   /* ════════════════════════════════════════
