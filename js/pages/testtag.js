@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.12',
+  version: 'V1.13',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -602,6 +602,14 @@ window.BromarPages.admin = {
         .tt-loc-h { font-size: 0.85rem; font-weight: 700; margin: 1rem 0 0.3rem; color: var(--text-primary); }
         .tt-loc-h small { font-weight: 400; color: var(--text-secondary); margin-left: 0.4rem; }
         .tt-note-line { margin-top: 1.25rem; padding-top: 0.6rem; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-secondary); font-style: italic; }
+        .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
+        .tt-req { margin-top: 0.5rem; }
+        .tt-req-title { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem; }
+        .tt-req-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.6rem; }
+        .tt-req-sub { font-size: 0.8rem; font-weight: 700; color: var(--accent); margin: 0.6rem 0 0.25rem; }
+        .tt-req-list { margin: 0 0 0.4rem 1.1rem; padding: 0; }
+        .tt-req-list li { font-size: 0.76rem; color: var(--text-primary); margin-bottom: 0.15rem; line-height: 1.45; }
+        .tt-req-records { font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.5rem; line-height: 1.45; }
 
         @media (max-width: 900px) {
           .tt-layout { grid-template-columns: 1fr; }
@@ -806,6 +814,11 @@ window.BromarPages.admin = {
       }
 
       /* Test & Tag actions */
+      if (e.target.closest('#tt-cert-regen')) {
+        const el = document.getElementById('tt-cert');
+        if (el) el.value = this._ttGenCert();
+        return;
+      }
       if (e.target.closest('#tt-refresh')) {
         this._ttRenderReport(container.querySelector('#admin-section-content'));
         return;
@@ -833,11 +846,22 @@ window.BromarPages.admin = {
       if (e.target.matches('#sup-category-filter') || e.target.matches('#sup-search')) {
         this._renderSupplierList(container.querySelector('#sup-list-area'));
       }
+      /* Test & Tag: installation type switches the requirements block live */
+      if (e.target.matches('#tt-insttype')) {
+        this._ttRenderReport(container.querySelector('#admin-section-content'));
+      }
     });
 
     container.addEventListener('input', (e) => {
       if (e.target.matches('#sup-search')) {
         this._renderSupplierList(container.querySelector('#sup-list-area'));
+      }
+      /* Test & Tag: keep the generated cert in sync with the job number */
+      if (e.target.matches('#tt-job')) {
+        const cert = document.getElementById('tt-cert');
+        if (cert && (!cert.value.trim() || /^BRO-TT-/.test(cert.value.trim()))) {
+          cert.value = this._ttGenCert();
+        }
       }
     });
   },
@@ -2021,6 +2045,107 @@ window.BromarPages.admin = {
     return s;
   },
 
+  /* ── Applicable standards (shown at the start of the report) ── */
+  _ttStandardsIntro: 'The testing presented in this report was conducted in accordance with relevant Australian standards, Energy Safe Victoria publications, and Work Health and Safety regulations.',
+  _ttStandards: [
+    ['AS/NZS 3000:2018 (Amdt 3)', 'Electrical Installations — Wiring Rules'],
+    ['AS/NZS 3012:2019', 'Electrical Installations — Construction & demolition sites'],
+    ['AS/NZS 3760:2022', 'In-service safety inspection & testing of electrical equipment and RCDs'],
+    ['Electricity Safety Act 1998 (2020 Amdt)', 'Victorian electrical safety act'],
+    ['ESV Prohibition Notice 200701', 'Energy Safe Victoria — 2020 RCBO Prohibition Notice'],
+    ['ESV RCBO Compliant RCBO List', 'Energy Safe Victoria RCBO/RCD compliant list'],
+  ],
+
+  /* ── Requirements summaries (selectable) ── */
+  _ttReq: {
+    construction: {
+      title: 'Construction & Demolition Sites — Fixed RCD/RCBO Summary',
+      intro: 'This report applies to the routine testing of fixed residual current devices (RCDs) and residual current circuit breakers with overcurrent protection (RCBOs) installed in switchboards and distribution boards on construction and demolition sites, in accordance with AS/NZS 3012.',
+      sections: [
+        {
+          heading: 'Monthly Test Requirements',
+          points: [
+            'The integral <strong>TEST</strong> button shall be operated. The device must trip immediately to achieve a <strong>PASS</strong>.',
+            'An instrument trip-time test shall be performed at the device\u2019s rated residual operating current (IΔn).',
+            'For multi-phase RCDs/RCBOs, testing shall be performed on each phase.',
+            'The measured trip time shall not exceed <strong>300 ms</strong>. Results greater than 300 ms shall be recorded as a <strong>FAIL</strong>.',
+          ],
+        },
+      ],
+      records: 'A completed copy of this report should be provided to the customer for their records. Testing records should be retained in accordance with AS/NZS 3012 and applicable workplace or regulatory requirements.',
+    },
+    commercial: {
+      title: 'Commercial & Industrial Installations — Fixed RCD/RCBO Testing Summary',
+      intro: 'This report applies to the routine testing of fixed residual current devices (RCDs) and residual current circuit breakers with overcurrent protection (RCBOs) installed within commercial and industrial electrical installations, in accordance with AS/NZS 3760:2022.',
+      sections: [
+        {
+          heading: '6-Monthly Test — Push Button Test Only',
+          points: [
+            'Press the integral <strong>TEST</strong> button on the RCD/RCBO.',
+            'To achieve a <strong>PASS</strong>, the device must trip immediately.',
+            'If the device does not trip, record the result as <strong>FAIL</strong>.',
+            'Trip-time testing is not required for the 6-month push-button test; the trip-time columns on this report may be disregarded.',
+          ],
+        },
+        {
+          heading: '12-Monthly Test — Instrument Trip-Time Test',
+          points: [
+            'Press the integral <strong>TEST</strong> button on the RCD/RCBO.',
+            'To achieve a <strong>PASS</strong>, the device must trip immediately.',
+            'If the device does not trip, record the result as <strong>FAIL</strong>.',
+            'Perform an instrument trip-time test at the device\u2019s rated residual operating current (IΔn).',
+            'For multi-phase RCDs/RCBOs, perform the test on each phase.',
+            'Record the measured trip time.',
+            'To achieve a <strong>PASS</strong>, the measured trip time at IΔn shall not exceed <strong>300 ms</strong>.',
+            'If the measured trip time exceeds 300 ms, record the result as <strong>FAIL</strong>.',
+          ],
+        },
+      ],
+      records: 'A completed copy of this report shall be provided to the customer for their records. In accordance with AS/NZS 3760:2022, testing records should be retained for a minimum of 7 years.',
+    },
+  },
+
+  /* Build a clean Bromar certificate number from job number + date.
+     Format: BRO-TT-YYYYMMDD-<JOB>  (falls back to HHMM when no job entered) */
+  _ttGenCert() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    const ymd = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+    const job = (document.getElementById('tt-job')?.value || '').trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    return 'BRO-TT-' + ymd + '-' + (job || (p(d.getHours()) + p(d.getMinutes())));
+  },
+
+  /* Strip HTML + map non-Latin chars so jsPDF's standard fonts render cleanly */
+  _ttAscii(s) {
+    return String(s)
+      .replace(/<[^>]+>/g, '')
+      .replace(/IΔn/g, 'I delta-n')
+      .replace(/[Δ∆]/g, 'delta')
+      .replace(/[\u2018\u2019\u201A]/g, "'")
+      .replace(/[\u201C\u201D\u201E]/g, '"');
+  },
+
+  _ttStandardsHTML() {
+    const rows = this._ttStandards.map(s => '<tr><td>' + s[0] + '</td><td>' + s[1] + '</td></tr>').join('');
+    return '<h2 class="tt-sec">Applicable Standards</h2>' +
+      '<p class="tt-std-intro">' + this._ttStandardsIntro + '</p>' +
+      '<table class="tt-tbl"><thead><tr><th style="width:40%">Document</th><th>Description</th></tr></thead><tbody>' +
+      rows + '</tbody></table>';
+  },
+
+  _ttReqHTML(type) {
+    const r = this._ttReq[type]; if (!r) return '';
+    let h = '<h2 class="tt-sec">Testing Requirements</h2><div class="tt-req">';
+    h += '<div class="tt-req-title">' + r.title + '</div>';
+    h += '<p class="tt-req-intro">' + r.intro + '</p>';
+    r.sections.forEach(s => {
+      h += '<div class="tt-req-sub">' + s.heading + '</div><ul class="tt-req-list">' +
+        s.points.map(p => '<li>' + p + '</li>').join('') + '</ul>';
+    });
+    h += '<div class="tt-req-records"><strong>Records.</strong> ' + r.records + '</div></div>';
+    return h;
+  },
+
   _renderTestTag(target) {
     target.innerHTML = `
       <div class="card admin-section-panel">
@@ -2040,6 +2165,7 @@ window.BromarPages.admin = {
 
             <div class="section-label" style="margin-top:1.25rem">Customer Details</div>
             <div class="tt-form-row"><label>Customer</label><input type="text" id="tt-customer"></div>
+            <div class="tt-form-row"><label>Site Name</label><input type="text" id="tt-site" placeholder="e.g. Dandenong South Plant"></div>
             <div class="tt-form-row"><label>Site Address</label><input type="text" id="tt-address"></div>
             <div class="tt-form-2col">
               <div class="tt-form-row"><label>Contact</label><input type="text" id="tt-contact"></div>
@@ -2047,10 +2173,29 @@ window.BromarPages.admin = {
             </div>
             <div class="tt-form-row"><label>Contact Email</label><input type="text" id="tt-email"></div>
             <div class="tt-form-2col">
+              <div class="tt-form-row"><label>Job Number</label><input type="text" id="tt-job" placeholder="e.g. 5133"></div>
               <div class="tt-form-row"><label>Date Range</label><input type="text" id="tt-range"></div>
-              <div class="tt-form-row"><label>Cert Ref</label><input type="text" id="tt-cert"></div>
+            </div>
+            <div class="tt-form-row">
+              <label>Certificate No.</label>
+              <div style="display:flex;gap:0.4rem">
+                <input type="text" id="tt-cert" style="flex:1">
+                <button class="btn-secondary" id="tt-cert-regen" type="button" title="Regenerate" style="padding:0.45rem 0.6rem;flex-shrink:0">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                </button>
+              </div>
             </div>
             <div class="tt-form-row"><label>Tested By</label><input type="text" id="tt-tester" placeholder="Technician name"></div>
+
+            <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
+            <div class="tt-form-row">
+              <label>Installation Type</label>
+              <select id="tt-insttype" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem">
+                <option value="commercial">Commercial / Industrial (AS/NZS 3760)</option>
+                <option value="construction">Construction / Demolition (AS/NZS 3012)</option>
+              </select>
+            </div>
+            <label class="tt-checkbox"><input type="checkbox" id="tt-summary" checked> Include standards table &amp; requirements summary</label>
 
             <div class="section-label" style="margin-top:1.25rem">Options</div>
             <div class="tt-form-row">
@@ -2108,7 +2253,11 @@ window.BromarPages.admin = {
     const h = this._ttModel.head;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
     set('tt-customer', h.customer); set('tt-address', h.address); set('tt-contact', h.contact);
-    set('tt-phone', h.phone); set('tt-email', h.email); set('tt-range', h.range); set('tt-cert', h.cert);
+    set('tt-phone', h.phone); set('tt-email', h.email); set('tt-range', h.range);
+    set('tt-site', h.site || h.customer);
+    /* Generate a clean Bromar cert number rather than reuse the WinPATS one */
+    const certEl = document.getElementById('tt-cert');
+    if (certEl) certEl.value = this._ttGenCert();
 
     const refreshBtn = document.getElementById('tt-refresh');
     const pdfBtn = document.getElementById('tt-pdf');
@@ -2126,10 +2275,12 @@ window.BromarPages.admin = {
   _ttReadForm() {
     const g = id => (document.getElementById(id) || {}).value || '';
     return {
-      customer: g('tt-customer').trim(), address: g('tt-address').trim(),
+      customer: g('tt-customer').trim(), site: g('tt-site').trim(), address: g('tt-address').trim(),
       contact: g('tt-contact').trim(), phone: g('tt-phone').trim(),
       email: g('tt-email').trim(), range: g('tt-range').trim(),
-      cert: g('tt-cert').trim(), tester: g('tt-tester').trim(),
+      cert: g('tt-cert').trim(), job: g('tt-job').trim(), tester: g('tt-tester').trim(),
+      instType: g('tt-insttype') || 'commercial',
+      summary: document.getElementById('tt-summary')?.checked ?? true,
       note: g('tt-note').trim(),
       detail: document.getElementById('tt-detail')?.checked ?? true,
       oosOnly: document.getElementById('tt-oosonly')?.checked ?? false,
@@ -2142,7 +2293,7 @@ window.BromarPages.admin = {
     const mat = t => [...t.querySelectorAll('tr')].map(tr =>
       [...tr.querySelectorAll('td,th')].map(c => c.textContent.replace(/\s+/g, ' ').trim()));
 
-    const head = { customer:'', address:'', contact:'', email:'', phone:'', range:'', cert:'', generated:'' };
+    const head = { customer:'', site:'', address:'', contact:'', email:'', phone:'', range:'', cert:'', generated:'' };
     const stats = {};
     const assets = [];
     const labels = new Set(['Test Date:','Final Status:','Comments:','Test Performed:']);
@@ -2155,6 +2306,7 @@ window.BromarPages.admin = {
         if (r.length >= 2) {
           const k = r[0].replace(':','').trim(), v = r[1].trim();
           if (k === 'Customer' && !head.customer) head.customer = v;
+          else if (k === 'Site' && !head.site) head.site = v;
           else if (k === 'Address' && !head.address) head.address = v;
           else if (k === 'Contact Person' && !head.contact) head.contact = v;
           else if (k === 'Contact Email' && !head.email) head.email = v;
@@ -2278,15 +2430,19 @@ window.BromarPages.admin = {
             ${brandHTML}
             <div class="tt-rpt-org">${brandName}<span>${this._ttORG.addr} \u00b7 ${this._ttORG.phone} \u00b7 ${this._ttORG.web}</span></div>
           </div>
-          <div class="tt-rpt-meta">Cert ref. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
+          <div class="tt-rpt-meta">Cert no. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
         </div>
         <div class="tt-rpt-title">Site Equipment Test Report</div>
         <div class="tt-cust">
           <div><div class="k">Customer</div><div class="v">${f.customer || '\u2014'}</div></div>
+          <div><div class="k">Site Name</div><div class="v">${f.site || '\u2014'}</div></div>
           <div><div class="k">Site Address</div><div class="v">${f.address || '\u2014'}</div></div>
           <div><div class="k">Contact</div><div class="v">${f.contact || '\u2014'}${f.email ? ' \u00b7 ' + f.email : ''}</div></div>
+          <div><div class="k">Job Number</div><div class="v">${f.job || '\u2014'}</div></div>
           <div><div class="k">Date Range</div><div class="v">${f.range || '\u2014'}</div></div>
         </div>
+        ${f.summary ? this._ttStandardsHTML() + this._ttReqHTML(f.instType) : ''}
+        <h2 class="tt-sec">Results Summary</h2>
         <div class="tt-cards">
           <div class="tt-card"><div class="n">${total}</div><div class="l">Equipment</div></div>
           <div class="tt-card ok"><div class="n">${pass}</div><div class="l">Pass</div></div>
@@ -2371,7 +2527,7 @@ window.BromarPages.admin = {
       }
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
       doc.text(this._ttORG.addr + ' \u00b7 ' + this._ttORG.phone, textX, logoUrl ? 17 : 16.5);
-      doc.text('Cert ref. ' + (f.cert || '\u2014'), W - M, 12, { align: 'right' });
+      doc.text('Cert no. ' + (f.cert || '\u2014'), W - M, 12, { align: 'right' });
       doc.setFontSize(7.5).setTextColor(...muted);
       doc.text('Generated ' + (this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')), M, 290);
       doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 290, { align: 'right' });
@@ -2402,10 +2558,71 @@ window.BromarPages.admin = {
       });
       return startY + 4.5 + maxLines * 4 + 3;
     };
-    y = pairRow([['Customer', f.customer], ['Site address', f.address]], y);
-    y = pairRow([['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')], ['Date range', f.range]], y);
+    y = pairRow([['Customer', f.customer], ['Site name', f.site]], y);
+    y = pairRow([['Site address', f.address], ['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')]], y);
+    y = pairRow([['Job number', f.job], ['Date range', f.range]], y);
     if (f.tester) y = pairRow([['Tested by', f.tester], ['', '']], y);
     y += 2;
+
+    /* Page-flow helpers for the standards / requirements text */
+    const ensure = need => { if (y + need > 286) { doc.addPage(); stamp(); y = 26; } };
+    const para = (txt, size, style, color, indent, gap) => {
+      indent = indent || 0; gap = gap == null ? 2 : gap;
+      const lines = doc.splitTextToSize(this._ttAscii(txt), W - 2 * M - indent);
+      const lh = size * 0.45;
+      ensure(lines.length * lh + gap);
+      doc.setFont('helvetica', style).setFontSize(size).setTextColor(...color);
+      doc.text(lines, M + indent, y);
+      y += lines.length * lh + gap;
+    };
+
+    if (f.summary) {
+      /* Applicable standards */
+      ensure(10);
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+      doc.text('Applicable Standards', M, y); y += 5;
+      para(this._ttStandardsIntro, 8.5, 'normal', [40, 49, 60], 0, 2);
+      doc.autoTable({
+        startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+        head: [['Document', 'Description']],
+        body: this._ttStandards.map(s => [this._ttAscii(s[0]), this._ttAscii(s[1])]),
+        styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: orange, fontSize: 8 },
+        alternateRowStyles: { fillColor: [250, 251, 253] },
+        columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.4 } },
+        didDrawPage: stamp,
+      });
+      y = doc.lastAutoTable.finalY + 8;
+
+      /* Testing requirements (selected type) */
+      const r = this._ttReq[f.instType];
+      if (r) {
+        ensure(14);
+        doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+        doc.text('Testing Requirements', M, y); y += 5;
+        para(r.title, 9.5, 'bold', [40, 49, 60], 0, 1.5);
+        para(r.intro, 8.5, 'normal', [40, 49, 60], 0, 2.5);
+        r.sections.forEach(sec => {
+          para(sec.heading, 9, 'bold', orange, 0, 1.5);
+          sec.points.forEach(pt => {
+            const t = this._ttAscii(pt);
+            const lines = doc.splitTextToSize(t, W - 2 * M - 6);
+            const lh = 8 * 0.45;
+            ensure(lines.length * lh + 1);
+            doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(40, 49, 60);
+            doc.text('\u2022', M + 1, y);
+            doc.text(lines, M + 6, y);
+            y += lines.length * lh + 1.2;
+          });
+          y += 1.5;
+        });
+        para('Records.  ' + r.records, 8, 'italic', [...muted], 0, 2);
+      }
+      y += 2;
+    }
+
+    if (y > 250) { doc.addPage(); stamp(); y = 26; }
+    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+    doc.text('Results Summary', M, y); y += 5;
 
     const cards = [['Equipment', total, navy], ['Pass', pass, [29, 122, 92]], ['Fail', fail, [192, 57, 43]],
       ['Out of svc', oos, [176, 106, 23]], ['Boards', boards.length, navy], ['Overdue', overdue, navy]];
