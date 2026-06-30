@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.02',
+  version: 'V1.03',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -37,7 +37,10 @@ window.BromarAdmin.testtag = {
     name: 'JJTJ Pty Ltd T/A Bromar Electrical Services (Aust)',
     short: 'Bromar Electrical Services',
     addr: 'Western Ave, Westmeadows 3049, Australia',
-    phone: '03 9335 5344', web: 'www.bromar.com.au', email: 'admin@bromar.com.au'
+    phone: '03 9335 5344', web: 'www.bromar.com.au', email: 'admin@bromar.com.au',
+    hdrName: 'Bromar Electrical Services Pty Ltd',
+    hdrAddr: '2/98-108 Western Ave, Westmeadows 3049',
+    hdrPhoneRec: 'PH: 9335 5344    REC: 30340'
   },
   _ttLogoColour: 'assets/Bromar-Primary-Logo-Full-Colour.png',
   _ttLogoWhite: 'assets/Bromar-Primary-Logo-Reverse-White.png',
@@ -247,6 +250,10 @@ window.BromarAdmin.testtag = {
             <div class="tt-form-row">
               <label>Compliance / Footer Note</label>
               <textarea id="tt-note" rows="3">Testing carried out in accordance with AS/NZS 3760. RCD trip times measured at 30 mA; pass limit 300 ms.</textarea>
+            </div>
+            <div class="tt-form-row">
+              <label>Technician Notes</label>
+              <textarea id="tt-tech-notes" rows="4" placeholder="On-site observations, defects, recommendations, follow-up actions&hellip;"></textarea>
             </div>
             <label class="tt-checkbox"><input type="checkbox" id="tt-detail" checked> Include per-board circuit detail</label>
             <label class="tt-checkbox"><input type="checkbox" id="tt-oosonly"> Detail: show out-of-service / fail only</label>
@@ -533,7 +540,7 @@ window.BromarAdmin.testtag = {
     set('tt-customer', f.customer); set('tt-site', f.site); set('tt-address', f.address);
     set('tt-contact', f.contact); set('tt-phone', f.phone); set('tt-email', f.email);
     set('tt-job', f.job); set('tt-range', f.range); set('tt-cert', f.cert); set('tt-tester', f.tester);
-    set('tt-insttype', f.instType); set('tt-note', f.note);
+    set('tt-insttype', f.instType); set('tt-note', f.note); set('tt-tech-notes', f.techNotes);
     const ck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
     ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly);
   },
@@ -574,6 +581,7 @@ window.BromarAdmin.testtag = {
       instType: g('tt-insttype') || 'commercial',
       summary: document.getElementById('tt-summary')?.checked ?? true,
       note: g('tt-note').trim(),
+      techNotes: g('tt-tech-notes').trim(),
       detail: document.getElementById('tt-detail')?.checked ?? true,
       oosOnly: document.getElementById('tt-oosonly')?.checked ?? false,
     };
@@ -721,7 +729,7 @@ window.BromarAdmin.testtag = {
         <div class="tt-rpt-top">
           <div class="tt-rpt-brand">
             ${brandHTML}
-            <div class="tt-rpt-org">${brandName}<span>${this._ttORG.addr} \u00b7 ${this._ttORG.phone} \u00b7 ${this._ttORG.web}</span></div>
+            <div class="tt-rpt-org"><strong>${this._ttORG.hdrName}</strong><span>${this._ttORG.hdrAddr}</span><span>PH: 9335 5344 \u00b7 REC: 30340</span><span>WEB: ${this._ttORG.web}</span></div>
           </div>
           <div class="tt-rpt-meta">Cert no. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
         </div>
@@ -758,6 +766,7 @@ window.BromarAdmin.testtag = {
             '<td>' + g.earliest + '</td></tr>').join('')
         }</tbody></table>
         ${f.detail ? '<h2 class="tt-sec">Circuit Detail by Switchboard</h2>' + detailHTML : ''}
+        ${f.techNotes ? '<h2 class="tt-sec">Technician Notes</h2><div class="tt-tech-box">' + f.techNotes.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>') + '</div>' : ''}
         ${f.note ? '<div class="tt-note-line">' + f.note + '</div>' : ''}
       </div>
     `;
@@ -810,19 +819,20 @@ window.BromarAdmin.testtag = {
 
     const stamp = () => {
       doc.setFillColor(...orange); doc.rect(0, 0, W, 3, 'F');
-      let textX = M;
-      if (logoUrl && logoW) {
-        doc.addImage(logoUrl, 'PNG', M, 6, logoW, logoH);
-        textX = M + logoW + 5;
-      } else {
-        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...navy);
-        doc.text('Bromar Electrical Services', textX, 12);
-      }
+      /* Logo top-left */
+      if (logoUrl && logoW) doc.addImage(logoUrl, 'PNG', M, 7, logoW, logoH);
+      /* Company block, right-aligned */
+      const rx = W - M;
+      doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...navy);
+      doc.text(this._ttORG.hdrName, rx, 8, { align: 'right' });
+      doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...muted);
+      doc.text(this._ttORG.hdrAddr, rx, 12, { align: 'right' });
+      doc.text(this._ttORG.hdrPhoneRec, rx, 15.5, { align: 'right' });
+      doc.text('WEB: ' + this._ttORG.web, rx, 19, { align: 'right' });
+      /* Footer: generated (left) \u00b7 title (centre) \u00b7 page (right) */
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
-      doc.text(this._ttORG.addr + ' \u00b7 ' + this._ttORG.phone, textX, logoUrl ? 17 : 16.5);
-      doc.text('Cert no. ' + (f.cert || '\u2014'), W - M, 12, { align: 'right' });
-      doc.setFontSize(7.5).setTextColor(...muted);
       doc.text('Generated ' + (this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')), M, 290);
+      doc.text('Site Equipment Test Report', W / 2, 290, { align: 'center' });
       doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 290, { align: 'right' });
     };
 
@@ -854,7 +864,7 @@ window.BromarAdmin.testtag = {
     y = pairRow([['Customer', f.customer], ['Site name', f.site]], y);
     y = pairRow([['Site address', f.address], ['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')]], y);
     y = pairRow([['Job number', f.job], ['Date range', f.range]], y);
-    if (f.tester) y = pairRow([['Tested by', f.tester], ['', '']], y);
+    y = pairRow([['Cert no.', f.cert], ['Tested by', f.tester || '\u2014']], y);
     y += 2;
 
     /* Page-flow helpers for the standards / requirements text */
@@ -932,6 +942,9 @@ window.BromarAdmin.testtag = {
     });
     y += 24;
 
+    if (y > 250) { doc.addPage(); stamp(); y = 26; }
+    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+    doc.text('Switchboard Summary', M, y); y += 5;
     doc.autoTable({
       startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
       head: [['Switchboard', 'Sublocation', 'Circuits', 'Pass', 'Fail', 'OOS', 'Next due']],
@@ -980,6 +993,21 @@ window.BromarAdmin.testtag = {
       }
     }
 
+    if (f.techNotes) {
+      doc.setFont('helvetica', 'normal').setFontSize(8.5);
+      const tnLines = doc.splitTextToSize(this._ttAscii(f.techNotes), W - 2 * M - 8);
+      const boxH = tnLines.length * 8.5 * 0.45 + 7;
+      if (y + boxH + 10 > 286) { doc.addPage(); stamp(); y = 26; }
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
+      doc.text('Technician Notes', M, y); y += 5;
+      doc.setFillColor(248, 250, 252).setDrawColor(227, 231, 238);
+      doc.roundedRect(M, y, W - 2 * M, boxH, 2, 2, 'FD');
+      doc.setFillColor(...orange).rect(M, y, 1.4, boxH, 'F');
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(40, 49, 60);
+      doc.text(tnLines, M + 5, y + 5.5);
+      y += boxH + 8;
+    }
+
     if (f.note) {
       if (y > 270) { doc.addPage(); stamp(); y = 28; }
       doc.setDrawColor(227, 231, 238).line(M, y, W - M, y);
@@ -987,8 +1015,8 @@ window.BromarAdmin.testtag = {
       doc.text(doc.splitTextToSize(f.note, W - 2 * M), M, y + 5);
     }
 
-    const safe = (f.customer || 'report').replace(/[^a-z0-9]+/gi, '_');
-    doc.save(safe + '_Test_Report.pdf');
+    const fnameBase = (f.cert || f.customer || 'report').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    doc.save(fnameBase + '_Site_Equipment_Test_Report.pdf');
     await this._ttSaveToRegister(true);
   },
 
@@ -1107,6 +1135,7 @@ window.BromarAdmin.testtag = {
         .tt-loc-h { font-size: 0.85rem; font-weight: 700; margin: 1rem 0 0.3rem; color: var(--text-primary); }
         .tt-loc-h small { font-weight: 400; color: var(--text-secondary); margin-left: 0.4rem; }
         .tt-note-line { margin-top: 1.25rem; padding-top: 0.6rem; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-secondary); font-style: italic; }
+        .tt-tech-box { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 0.7rem 0.85rem; font-size: 0.78rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap; background: var(--bg-main); }
         .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
         .tt-req { margin-top: 0.5rem; }
         .tt-req-title { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem; }
