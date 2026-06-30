@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.11',
+  version: 'V1.12',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -104,6 +104,10 @@ window.BromarPages.admin = {
         <button class="admin-nav-tile" data-section="suppliers">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6v-2zm0 4h2v2H6v-2zm4-4h8v2h-8v-2zm0 4h8v2h-8v-2z"/></svg>
           <span>Suppliers</span>
+        </button>
+        <button class="admin-nav-tile" data-section="testtag">
+          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M9 3v2H5v2h14V5h-4V3H9zm0 0h6v2H9V3zM3 7v12a2 2 0 002 2h14a2 2 0 002-2V7H3zm5 4h2v2H8v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/></svg>
+          <span>Test &amp; Tag Reports</span>
         </button>
         <button class="admin-nav-tile" data-section="bugs">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M20 8h-2.81a5.99 5.99 0 00-1.82-2.43l1.63-1.63-1.41-1.41-2.02 2.02a5.97 5.97 0 00-3.14 0L8.41 2.53 7 3.94l1.63 1.63A5.99 5.99 0 006.81 8H4v2h2.09a6.01 6.01 0 000 4H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09a6.01 6.01 0 000-4H20V8zm-8 9a4 4 0 110-8 4 4 0 010 8z"/></svg>
@@ -738,6 +742,7 @@ window.BromarPages.admin = {
       compliance: this._renderCompliance,
       rdo: this._renderRDO,
       suppliers: this._renderSuppliers,
+      testtag: this._renderTestTag,
       bugs: this._renderBugs,
     };
     const renderer = sections[id];
@@ -1855,6 +1860,24 @@ window.BromarPages.admin = {
     } catch (err) {
       console.error('Supplier upload error:', err);
       if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Upload failed: ' + err.message + '</div>';
+    }
+  },
+
+  /* ════════════════════════════════════════
+     SECTION: Test & Tag (delegates to testtag.js)
+     ════════════════════════════════════════ */
+  _renderTestTag(target) {
+    if (window.BromarAdmin && window.BromarAdmin.testtag && window.BromarAdmin.testtag.render) {
+      window.BromarAdmin.testtag.render(target);
+    } else {
+      target.innerHTML = `
+        <div class="card admin-section-panel">
+          <div class="admin-section-header"><h2>Test & Tag Reports</h2></div>
+          <div class="admin-placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16A2 2 0 005.07 19z"/></svg>
+            <p>Test & Tag module not loaded. Check that <strong>testtag.js</strong> is included in index.html.</p>
+          </div>
+        </div>`;
     }
   },
 
