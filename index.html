@@ -12,7 +12,6 @@
   <!-- Page modules: each registers itself onto window.BromarPages -->
   <script src="js/pages/dashboard.js"></script>
   <script src="js/pages/jobs.js"></script>
-  <script src="js/pages/quotes.js"></script>
   <script src="js/pages/scheduling.js"></script>
   <script src="js/pages/timesheets.js"></script>
   <script src="js/pages/employees.js"></script>
@@ -22,6 +21,10 @@
   <script src="js/pages/tasks.js"></script>
   <script src="js/pages/materials.js"></script>
   <script src="js/pages/admin.js"></script>
+
+  <!-- Sub-modules: render inside another page rather than as their own sidebar entry -->
+  <!-- testtag registers onto window.BromarTestTag and renders as a tab inside Admin Tools -->
+  <script src="js/pages/testtag.js"></script>
 
   <!-- Core last: initialises the SPA after pages have registered -->
   <script src="js/core.js"></script>
