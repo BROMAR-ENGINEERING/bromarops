@@ -1,16 +1,18 @@
 /* ============================================================
    BROMAR OPS — TEST & TAG REPORT BUILDER
-   Standalone page module.
+   Sub-module rendered inside the Admin Tools "Test & Tag" tab.
+   admin.js calls  window.BromarAdmin.testtag.render(sectionContentEl)
+
    Loads a WinPATS HTML export, builds a clean PDF, and keeps a
    searchable register of issued reports (Supabase-backed).
 
    Register table: run test_tag_reports_table.sql in Supabase once.
+   Load order: include this <script> BEFORE js/pages/admin.js.
    ============================================================ */
 
-window.BromarPages = window.BromarPages || {};
-window.BromarPages.testtag = {
-  title: 'Test & Tag',
-  version: 'V1.00',
+window.BromarAdmin = window.BromarAdmin || {};
+window.BromarAdmin.testtag = {
+  version: 'V1.01',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -297,7 +299,7 @@ window.BromarPages.testtag = {
 
     fileInput.addEventListener('change', (e) => {
       const f = e.target.files[0];
-      if (f) f.text().then(t => self._ttLoadReport(t, sectionTarget));
+      if (f) self._ttReadFile(f).then(t => self._ttLoadReport(t, sectionTarget));
     });
     ['dragover','dragenter'].forEach(ev => {
       dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.add('over'); });
@@ -307,8 +309,41 @@ window.BromarPages.testtag = {
     });
     dropZone.addEventListener('drop', (e) => {
       const f = e.dataTransfer.files[0];
-      if (f) f.text().then(t => self._ttLoadReport(t, sectionTarget));
+      if (f) self._ttReadFile(f).then(t => self._ttLoadReport(t, sectionTarget));
     });
+  },
+
+  /* ── Read uploaded file with correct encoding ── */
+  async _ttReadFile(file) {
+    const buf = await file.arrayBuffer();
+    // Try UTF-8; if it produced replacement chars, the file is Windows-1252
+    let text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    if (text.includes('\uFFFD')) {
+      try { text = new TextDecoder('windows-1252').decode(buf); } catch (e) {}
+    }
+    return this._ttCleanText(text);
+  },
+
+  /* ── Repair mojibake + normalise punctuation to plain ASCII ── */
+  _ttCleanText(s) {
+    if (!s) return s;
+    // 1) Repair UTF-8 bytes that were mis-read as Windows-1252
+    const moji = [
+      ['\u00E2\u20AC\u2122', "'"], ['\u00E2\u20AC\u02DC', "'"],   // ' '
+      ['\u00E2\u20AC\u0153', '"'], ['\u00E2\u20AC\u009D', '"'], ['\u00E2\u20AC', '"'], // " "
+      ['\u00E2\u20AC\u201C', '-'], ['\u00E2\u20AC\u201D', '-'],   // - -
+      ['\u00E2\u20AC\u00A6', '...'], ['\u00E2\u20AC\u00A2', '-'], // ... *
+      ['\u00C2 ', ' '], ['\u00C2', '']
+    ];
+    for (const [bad, good] of moji) s = s.split(bad).join(good);
+    // 2) Normalise any real "smart" punctuation to ASCII
+    return s
+      .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+      .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+      .replace(/[\u2012-\u2015]/g, '-')
+      .replace(/\u2026/g, '...')
+      .replace(/\u00A0/g, ' ')
+      .replace(/\uFFFD/g, '');
   },
 
   /* ── Register: write the current report to Supabase (upsert by cert_no) ── */
@@ -1050,21 +1085,20 @@ window.BromarPages.testtag = {
 `;
   },
 
-  /* ── Page entry ── */
+  /* ── Entry point: admin.js calls this with the section-content element ── */
   render(container) {
-    const v = document.getElementById('app-version');
-    if (v) v.textContent = this.version;
-    container.innerHTML = `
-      <style>${this._ttStyles()}</style>
-      <div class="page-title-wrapper">
-        <h1>Test &amp; Tag</h1>
-        <p class="subtitle">Build clean WinPATS reports and keep a searchable register</p>
-      </div>
-      <div id="tt-host"></div>
-    `;
-    this._host = container.querySelector('#tt-host');
-    this._bindEvents(container);
-    this._ttRenderTestTag(this._host);
+    this._host = container;
+    this._injectStyles();
+    if (!container._ttBound) { this._bindEvents(container); container._ttBound = true; }
+    this._ttRenderTestTag(container);
+  },
+
+  _injectStyles() {
+    if (document.getElementById('tt-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'tt-styles';
+    st.textContent = this._ttStyles();
+    document.head.appendChild(st);
   },
 
   _bindEvents(container) {
