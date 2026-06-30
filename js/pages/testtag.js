@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.11',
+  version: 'V1.13',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -85,13 +85,14 @@ window.BromarAdmin.testtag = {
 
   /* ── Applicable standards (shown at the start of the report) ── */
   _ttStandardsIntro: 'The testing presented in this report was conducted in accordance with relevant Australian standards, Energy Safe Victoria publications, and Work Health and Safety regulations.',
-  _ttImportant: 'This report must be retained for a minimum of 7 years in accordance with AS/NZS 3760:2022. The results recorded reflect the condition of the equipment at the time of testing only. All equipment must be re-inspected and re-tested on or before the due dates listed in this report. Any item marked Out of Service (OOS) has been withdrawn from service and must not be used until it has been inspected, repaired and successfully re-tested by a competent person. This report covers only the equipment listed herein; any equipment not presented for testing is excluded. Retain this document as evidence of compliance and make it available on request to Energy Safe Victoria, WorkSafe, or other authorised parties.',
+  _ttImportant: 'This report must be retained for a minimum of 7 years in accordance with AS/NZS 3760:2022. The results recorded reflect the condition of the equipment at the time of testing only. All equipment must be re-inspected and re-tested on or before the due dates listed in this report. Any item marked Out of Service (OOS) has been withdrawn from service and must not be used until it has been inspected, repaired and successfully re-tested by a competent person. This report covers only the equipment listed herein; any equipment not presented for testing is excluded. Retain this document as evidence of compliance and make it available on request to authorised parties.',
   _ttLegend: [
     ['OOS', 'Out of Service — equipment withdrawn from use; not to be used until repaired and re-tested'],
     ['RCD', 'Residual Current Device'],
     ['RCBO', 'Residual Current Breaker with Overcurrent protection'],
     ['IΔn', 'Rated residual operating current of the RCD/RCBO (e.g. 30 mA)'],
     ['Trip time', 'Time to disconnect at the rated residual current; pass limit 300 ms'],
+    ['PAT', 'Portable Appliance Tester \u2014 instrument used to inspect and test portable electrical equipment'],
     ['Visual', 'Visual inspection for damage, wear and compliance'],
     ['Class I', 'Earthed equipment \u2014 protected by a connection to protective earth'],
     ['Class II', 'Double-insulated equipment (no protective earth)'],
@@ -319,7 +320,7 @@ window.BromarAdmin.testtag = {
               <label>Technician Notes</label>
               <textarea id="tt-tech-notes" rows="4" placeholder="On-site observations, defects, recommendations, follow-up actions&hellip;"></textarea>
             </div>
-            <label class="tt-checkbox"><input type="checkbox" id="tt-detail" checked> Include per-board circuit detail</label>
+            <label class="tt-checkbox"><input type="checkbox" id="tt-detail" checked> Include per-location equipment detail</label>
             <label class="tt-checkbox"><input type="checkbox" id="tt-oosonly"> Detail: show out-of-service / fail only</label>
 
             <div style="display:flex;gap:0.5rem;margin-top:1.25rem">
@@ -1027,7 +1028,6 @@ window.BromarAdmin.testtag = {
           });
           y = doc.lastAutoTable.finalY + 4;
         }
-        para('Records.  ' + r.records, 8, 'italic', [...muted], 0, 2);
       }
       y += 2;
     }
