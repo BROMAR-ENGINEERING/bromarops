@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.15',
+  version: 'V1.17',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -294,12 +294,15 @@ window.BromarAdmin.testtag = {
               </div>
             </div>
             <div class="tt-form-row"><label>Tested By</label><input type="text" id="tt-tester" placeholder="Technician name"></div>
-            <div class="tt-form-row"><label>Licence / REC No.</label><input type="text" id="tt-licence" value="REC 30340"></div>
 
-            <div class="section-label" style="margin-top:1.25rem">Test Instrument</div>
-            <div class="tt-form-row"><label>Instrument (make / model)</label><input type="text" id="tt-instrument" placeholder="e.g. Metrel MI 3309 PAT"></div>
-            <div class="tt-form-row"><label>Instrument Serial</label><input type="text" id="tt-instr-serial" placeholder="Serial number"></div>
-            <div class="tt-form-row"><label>Calibration Due</label><input type="text" id="tt-instr-cal" placeholder="e.g. 03/2027"></div>
+            <label class="tt-checkbox"><input type="checkbox" id="tt-showtester"> Record test instrument / meter details</label>
+            <div id="tt-instrument-wrap" style="display:none">
+              <div class="tt-form-row"><label>Licence / REC No.</label><input type="text" id="tt-licence" value="REC 30340"></div>
+              <div class="section-label" style="margin-top:0.75rem">Test Instrument</div>
+              <div class="tt-form-row"><label>Instrument (make / model)</label><input type="text" id="tt-instrument" placeholder="e.g. Metrel MI 3309 PAT"></div>
+              <div class="tt-form-row"><label>Instrument Serial</label><input type="text" id="tt-instr-serial" placeholder="Serial number"></div>
+              <div class="tt-form-row"><label>Calibration Due</label><input type="text" id="tt-instr-cal" placeholder="e.g. 03/2027"></div>
+            </div>
 
             <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
             <div class="tt-form-row">
@@ -322,7 +325,6 @@ window.BromarAdmin.testtag = {
             </div>
             <label class="tt-checkbox"><input type="checkbox" id="tt-detail" checked> Include per-location equipment detail</label>
             <label class="tt-checkbox"><input type="checkbox" id="tt-oosonly"> Detail: show out-of-service / fail only</label>
-            <label class="tt-checkbox"><input type="checkbox" id="tt-showtester" checked> Show tester &amp; instrument details</label>
 
             <div style="display:flex;gap:0.5rem;margin-top:1.25rem">
               <button class="btn-secondary" id="tt-refresh" disabled style="flex:1">Update Preview</button>
@@ -609,7 +611,9 @@ window.BromarAdmin.testtag = {
     set('tt-licence', f.licence); set('tt-instrument', f.instrument); set('tt-instr-serial', f.instrSerial); set('tt-instr-cal', f.instrCal);
     set('tt-insttype', f.instType); set('tt-note', f.note); set('tt-tech-notes', f.techNotes);
     const ck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
-    ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly); ck('tt-showtester', f.showTester !== false);
+    ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly); ck('tt-showtester', !!f.showTester);
+    const iw = document.getElementById('tt-instrument-wrap');
+    if (iw) iw.style.display = f.showTester ? '' : 'none';
   },
 
   _ttLoadReport(text, sectionTarget) {
@@ -653,7 +657,7 @@ window.BromarAdmin.testtag = {
       techNotes: g('tt-tech-notes').trim(),
       detail: document.getElementById('tt-detail')?.checked ?? true,
       oosOnly: document.getElementById('tt-oosonly')?.checked ?? false,
-      showTester: document.getElementById('tt-showtester')?.checked ?? true,
+      showTester: document.getElementById('tt-showtester')?.checked ?? false,
     };
   },
 
@@ -807,7 +811,7 @@ window.BromarAdmin.testtag = {
             ${brandHTML}
             <div class="tt-rpt-org"><strong>${this._ttORG.hdrName}</strong><span>${this._ttORG.hdrAddr}</span><span>PH: 9335 5344 \u00b7 REC: 30340</span><span>WEB: ${this._ttORG.web}</span></div>
           </div>
-          <div class="tt-rpt-meta">Cert no. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${(f.showTester !== false && f.tester) ? '<br>Tested by ' + f.tester : ''}</div>
+          <div class="tt-rpt-meta">Cert no. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
         </div>
         <div class="tt-rpt-title">Site Equipment Test Report</div>
         <div class="tt-cust">
@@ -818,7 +822,7 @@ window.BromarAdmin.testtag = {
           <div><div class="k">Job Number</div><div class="v">${f.job || '\u2014'}</div></div>
           <div><div class="k">Date Range</div><div class="v">${f.range || '\u2014'}</div></div>
         </div>
-        ${(f.showTester !== false && (f.instrument || f.instrSerial || f.instrCal)) ? '<div class="tt-instr-line"><strong>Test instrument:</strong> ' + this._ttEsc([f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : '', f.instrCal ? 'Calibration due ' + f.instrCal : ''].filter(Boolean).join('  \u00b7  ')) + '</div>' : ''}
+        ${(f.showTester && (f.instrument || f.instrSerial || f.instrCal)) ? '<div class="tt-instr-line"><strong>Test instrument:</strong> ' + this._ttEsc([f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : '', f.instrCal ? 'Calibration due ' + f.instrCal : ''].filter(Boolean).join('  \u00b7  ')) + '</div>' : ''}
         ${f.summary ? this._ttStandardsHTML() + this._ttReqHTML(f.instType) : ''}
         <h2 class="tt-sec">Results Summary</h2>
         <div class="tt-cards">
@@ -948,14 +952,10 @@ window.BromarAdmin.testtag = {
     y = pairRow([['Customer', f.customer], ['Site name', f.site]], y);
     y = pairRow([['Site address', f.address], ['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')]], y);
     y = pairRow([['Job number', f.job], ['Date range', f.range]], y);
-    if (f.showTester !== false) {
-      y = pairRow([['Cert no.', f.cert], ['Tested by', f.tester || '\u2014']], y);
-      if (f.instrument || f.instrSerial || f.instrCal) {
-        const instr = [f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : ''].filter(Boolean).join('  \u00b7  ') || '\u2014';
-        y = pairRow([['Test instrument', instr], ['Calibration due', f.instrCal || '\u2014']], y);
-      }
-    } else {
-      y = pairRow([['Cert no.', f.cert], ['', '']], y);
+    y = pairRow([['Cert no.', f.cert], ['Tested by', f.tester || '\u2014']], y);
+    if (f.showTester && (f.instrument || f.instrSerial || f.instrCal)) {
+      const instr = [f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : ''].filter(Boolean).join('  \u00b7  ') || '\u2014';
+      y = pairRow([['Test instrument', instr], ['Calibration due', f.instrCal || '\u2014']], y);
     }
     y += 2;
 
@@ -1172,7 +1172,10 @@ window.BromarAdmin.testtag = {
       didDrawPage: stamp,
     });
 
-    const fnameBase = (f.cert || f.customer || 'report').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    const clean = s => String(s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    let fnameBase = clean(f.cert || f.customer || 'report');
+    const siteTok = clean(f.site);
+    if (siteTok && !fnameBase.toLowerCase().includes(siteTok.toLowerCase())) fnameBase += '_' + siteTok;
     doc.save(fnameBase + '_Site_Equipment_Test_Report.pdf');
     await this._ttSaveToRegister(true);
   },
@@ -1377,6 +1380,10 @@ window.BromarAdmin.testtag = {
 
     container.addEventListener('change', (e) => {
       if (e.target.matches('#tt-insttype')) this._ttRenderReport(this._host);
+      if (e.target.matches('#tt-showtester')) {
+        const iw = document.getElementById('tt-instrument-wrap');
+        if (iw) iw.style.display = e.target.checked ? '' : 'none';
+      }
     });
 
     container.addEventListener('input', (e) => {
