@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.18',
+  version: 'V1.19',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -181,10 +181,59 @@ window.BromarAdmin.testtag = {
   _ttEsc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   },
+  /* ── Report scope: split one export into per-location or per-date reports ── */
+  _ttScope: { mode: 'all', value: '' },
+  _ttScopedAssets() {
+    const list = (this._ttModel && this._ttModel.assets) || [];
+    const s = this._ttScope || { mode: 'all' };
+    if (s.mode === 'location') return list.filter(a => (a.location || '') === s.value);
+    if (s.mode === 'date') return list.filter(a => (a.tested || '') === s.value);
+    return list;
+  },
+  _ttScopeToken() {
+    const s = this._ttScope || { mode: 'all' };
+    return (s.mode !== 'all' && s.value) ? String(s.value).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') : '';
+  },
+  _ttEffectiveCert(f) {
+    const tok = this._ttScopeToken();
+    return (f.cert || '') + (tok ? '-' + tok : '');
+  },
+  _ttScopedRange(f) {
+    if ((this._ttScope || {}).mode === 'all') return f.range || '\u2014';
+    const parse = s => { const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const valid = this._ttScopedAssets().map(a => ({ s: a.tested, d: parse(a.tested || '') })).filter(x => x.d);
+    if (!valid.length) return f.range || '\u2014';
+    valid.sort((a, b) => a.d - b.d);
+    const lo = valid[0].s, hi = valid[valid.length - 1].s;
+    return lo === hi ? lo : lo + ' to ' + hi;
+  },
+  _ttOverdue(assets) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return assets.filter(a => {
+      if (a.state !== 'pass' || !a.due) return false;
+      const m = a.due.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      return m && new Date(+m[3], +m[2] - 1, +m[1]) < today;
+    }).length;
+  },
+  _ttPopulateScope() {
+    const sel = document.getElementById('tt-scope');
+    if (!sel || !this._ttModel) return;
+    this._ttScope = { mode: 'all', value: '' };
+    const assets = this._ttModel.assets;
+    const locs = [...new Set(assets.map(a => a.location).filter(Boolean))];
+    const parse = s => { const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const dates = [...new Set(assets.map(a => a.tested).filter(Boolean))].sort((a, b) => { const da = parse(a), db = parse(b); return (da && db) ? da - db : 0; });
+    const attr = s => this._ttEsc(s).replace(/"/g, '&quot;');
+    let html = '<option value="all|">Whole report (all locations)</option>';
+    if (locs.length > 1) html += '<optgroup label="By location">' + locs.map(l => '<option value="location|' + attr(l) + '">Location: ' + this._ttEsc(l) + '</option>').join('') + '</optgroup>';
+    if (dates.length > 1) html += '<optgroup label="By test date">' + dates.map(d => '<option value="date|' + attr(d) + '">Test date: ' + this._ttEsc(d) + '</option>').join('') + '</optgroup>';
+    sel.innerHTML = html;
+    sel.value = 'all|';
+  },
   _ttEarliestDue() {
     if (!this._ttModel) return null;
     let best = null;
-    for (const a of this._ttModel.assets) {
+    for (const a of this._ttScopedAssets()) {
       if (a.state !== 'pass' || !a.due) continue;
       const mx = a.due.match(/(\d{2})\/(\d{2})\/(\d{4})/);
       if (!mx) continue;
@@ -195,7 +244,7 @@ window.BromarAdmin.testtag = {
   },
   _ttExceptions() {
     if (!this._ttModel) return [];
-    return this._ttModel.assets
+    return this._ttScopedAssets()
       .filter(a => a.state === 'oos' || a.state === 'fail')
       .sort((a, b) => (a.location || '').localeCompare(b.location || '') ||
         (a.barcode || '').localeCompare(b.barcode || '', undefined, { numeric: true }));
@@ -303,6 +352,15 @@ window.BromarAdmin.testtag = {
               <div class="tt-form-row"><label>Instrument Serial</label><input type="text" id="tt-instr-serial" placeholder="Serial number"></div>
               <div class="tt-form-row"><label>Calibration Due</label><input type="text" id="tt-instr-cal" placeholder="e.g. 03/2027"></div>
             </div>
+
+            <div class="section-label" style="margin-top:1.25rem">Report Scope</div>
+            <div class="tt-form-row">
+              <label>Include in this report</label>
+              <select id="tt-scope" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem">
+                <option value="all|">Whole report (all locations)</option>
+              </select>
+            </div>
+            <div style="font-size:0.72rem;color:var(--text-secondary);margin:-0.4rem 0 0.2rem">Split one WinPATS export into separate reports by location or test date. Each scope exports with its own cert &amp; filename.</div>
 
             <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
             <div class="tt-form-row">
@@ -466,10 +524,11 @@ window.BromarAdmin.testtag = {
     if (!this._ttModel) return;
     const f = this._ttReadForm();
     if (!f.cert) { if (showNote) this._ttFlash('Add a certificate number first.', 'error'); return; }
-    const assets = this._ttModel.assets;
+    const effCert = this._ttEffectiveCert(f);
+    const assets = this._ttScopedAssets();
     const boards = this._ttGroupBoards(assets);
     const payload = {
-      cert_no: f.cert,
+      cert_no: effCert,
       job_number: f.job || null,
       customer: f.customer || null,
       site_name: f.site || null,
@@ -477,7 +536,7 @@ window.BromarAdmin.testtag = {
       contact: f.contact || null,
       contact_email: f.email || null,
       phone: f.phone || null,
-      date_range: f.range || null,
+      date_range: this._ttScopedRange(f),
       installation_type: f.instType,
       tested_by: f.tester || null,
       generated_date: this._ttModel.head.generated || new Date().toLocaleDateString('en-GB'),
@@ -486,9 +545,9 @@ window.BromarAdmin.testtag = {
       fail: assets.filter(a => a.state === 'fail').length,
       oos: assets.filter(a => a.state === 'oos').length,
       boards: boards.length,
-      overdue: parseInt(this._ttModel.stats['Overdue'] || '0', 10) || 0,
+      overdue: (this._ttScope || {}).mode === 'all' ? (parseInt(this._ttModel.stats['Overdue'] || '0', 10) || 0) : this._ttOverdue(assets),
       note: f.note || null,
-      report_data: { head: this._ttModel.head, stats: this._ttModel.stats, assets, form: f },
+      report_data: { head: this._ttModel.head, stats: this._ttModel.stats, assets, form: f, scope: this._ttScope },
       updated_at: new Date().toISOString(),
     };
     const headers = { ...this._sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' };
@@ -585,6 +644,7 @@ window.BromarAdmin.testtag = {
     if (!rec || !rec.report_data) { alert('This report has no stored data to re-open.'); return; }
     const rd = rec.report_data;
     this._ttModel = { head: rd.head || {}, stats: rd.stats || {}, assets: rd.assets || [] };
+    this._ttScope = { mode: 'all', value: '' };
     this._ttForm = rd.form || null;
     this._ttView = 'build';
     this._ttRenderTestTag(target);
@@ -639,6 +699,7 @@ window.BromarAdmin.testtag = {
       loaded.classList.add('show');
       loaded.textContent = '\u2713 ' + this._ttModel.assets.length + ' assets \u00b7 ' + this._ttGroupBoards(this._ttModel.assets).length + ' locations loaded';
     }
+    this._ttPopulateScope();
     this._ttRenderReport(sectionTarget);
   },
 
@@ -762,13 +823,15 @@ window.BromarAdmin.testtag = {
     if (!this._ttModel) return;
     const f = this._ttReadForm();
     this._ttForm = f;
-    const boards = this._ttGroupBoards(this._ttModel.assets);
-    const total = this._ttModel.assets.length;
-    const pass = this._ttModel.assets.filter(a => a.state === 'pass').length;
-    const fail = this._ttModel.assets.filter(a => a.state === 'fail').length;
-    const oos = this._ttModel.assets.filter(a => a.state === 'oos').length;
+    const boards = this._ttGroupBoards(this._ttScopedAssets());
+    const assets = this._ttScopedAssets();
+    const total = assets.length;
+    const pass = assets.filter(a => a.state === 'pass').length;
+    const fail = assets.filter(a => a.state === 'fail').length;
+    const oos = assets.filter(a => a.state === 'oos').length;
     const locs = boards.length;
-    const overdue = this._ttModel.stats['Overdue'] || '0';
+    const overdue = (this._ttScope || {}).mode === 'all' ? (this._ttModel.stats['Overdue'] || '0') : String(this._ttOverdue(assets));
+    const effCert = this._ttEffectiveCert(f);
 
     const pill = a => '<span class="tt-pill ' + (a.state === 'na' ? '' : a.state) + '">' + a.status + '</span>';
 
@@ -811,7 +874,7 @@ window.BromarAdmin.testtag = {
             ${brandHTML}
             <div class="tt-rpt-org"><strong>${this._ttORG.hdrName}</strong><span>${this._ttORG.hdrAddr}</span><span>PH: 9335 5344 \u00b7 REC: 30340</span><span>WEB: ${this._ttORG.web}</span></div>
           </div>
-          <div class="tt-rpt-meta">Cert no. ${f.cert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
+          <div class="tt-rpt-meta">Cert no. ${effCert || '\u2014'}<br>Generated ${this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')}${f.tester ? '<br>Tested by ' + f.tester : ''}</div>
         </div>
         <div class="tt-rpt-title">Site Equipment Test Report</div>
         <div class="tt-cust">
@@ -820,7 +883,7 @@ window.BromarAdmin.testtag = {
           <div><div class="k">Site Address</div><div class="v">${f.address || '\u2014'}</div></div>
           <div><div class="k">Contact</div><div class="v">${f.contact || '\u2014'}${f.email ? ' \u00b7 ' + f.email : ''}</div></div>
           <div><div class="k">Job Number</div><div class="v">${f.job || '\u2014'}</div></div>
-          <div><div class="k">Date Range</div><div class="v">${f.range || '\u2014'}</div></div>
+          <div><div class="k">Date Range</div><div class="v">${this._ttScopedRange(f)}</div></div>
         </div>
         ${(f.showTester && (f.instrument || f.instrSerial || f.instrCal)) ? '<div class="tt-instr-line"><strong>Test instrument:</strong> ' + this._ttEsc([f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : '', f.instrCal ? 'Calibration due ' + f.instrCal : ''].filter(Boolean).join('  \u00b7  ')) + '</div>' : ''}
         ${f.summary ? this._ttStandardsHTML() + this._ttReqHTML(f.instType) : ''}
@@ -886,12 +949,14 @@ window.BromarAdmin.testtag = {
     const logoUrl = await this._ttGetLogoDataUrl();
     const { jsPDF } = window.jspdf;
     const f = this._ttReadForm();
-    const boards = this._ttGroupBoards(this._ttModel.assets);
-    const total = this._ttModel.assets.length;
-    const pass = this._ttModel.assets.filter(a => a.state === 'pass').length;
-    const fail = this._ttModel.assets.filter(a => a.state === 'fail').length;
-    const oos = this._ttModel.assets.filter(a => a.state === 'oos').length;
-    const overdue = this._ttModel.stats['Overdue'] || '0';
+    const boards = this._ttGroupBoards(this._ttScopedAssets());
+    const assets = this._ttScopedAssets();
+    const total = assets.length;
+    const pass = assets.filter(a => a.state === 'pass').length;
+    const fail = assets.filter(a => a.state === 'fail').length;
+    const oos = assets.filter(a => a.state === 'oos').length;
+    const overdue = (this._ttScope || {}).mode === 'all' ? (this._ttModel.stats['Overdue'] || '0') : String(this._ttOverdue(assets));
+    const effCert = this._ttEffectiveCert(f);
     const navy = [36, 59, 107], orange = [234, 88, 12], muted = [107, 114, 128];
     const doc = new jsPDF('p', 'mm', 'a4');
     const W = doc.internal.pageSize.getWidth(), M = 14;
@@ -920,7 +985,7 @@ window.BromarAdmin.testtag = {
       /* Footer: generated (left) \u00b7 title (centre) \u00b7 page (right) */
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
       doc.text('Generated ' + (this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')), M, 290);
-      doc.text('Site Equipment Test Report' + (f.cert ? '   \u00b7   ' + f.cert : ''), W / 2, 290, { align: 'center' });
+      doc.text('Site Equipment Test Report' + (effCert ? '   \u00b7   ' + effCert : ''), W / 2, 290, { align: 'center' });
       doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 290, { align: 'right' });
     };
 
@@ -951,8 +1016,8 @@ window.BromarAdmin.testtag = {
     };
     y = pairRow([['Customer', f.customer], ['Site name', f.site]], y);
     y = pairRow([['Site address', f.address], ['Contact', (f.contact || '') + (f.email ? ' \u00b7 ' + f.email : '')]], y);
-    y = pairRow([['Job number', f.job], ['Date range', f.range]], y);
-    y = pairRow([['Cert no.', f.cert], ['Tested by', f.tester || '\u2014']], y);
+    y = pairRow([['Job number', f.job], ['Date range', this._ttScopedRange(f)]], y);
+    y = pairRow([['Cert no.', effCert], ['Tested by', f.tester || '\u2014']], y);
     if (f.showTester && (f.instrument || f.instrSerial || f.instrCal)) {
       const instr = [f.instrument, f.instrSerial ? 'S/N ' + f.instrSerial : ''].filter(Boolean).join('  \u00b7  ') || '\u2014';
       y = pairRow([['Test instrument', instr], ['Calibration due', f.instrCal || '\u2014']], y);
@@ -1173,7 +1238,7 @@ window.BromarAdmin.testtag = {
     });
 
     const clean = s => String(s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
-    let fnameBase = clean(f.cert || f.customer || 'report');
+    let fnameBase = clean(effCert || f.customer || 'report');
     const siteTok = clean(f.site);
     if (siteTok && !fnameBase.toLowerCase().includes(siteTok.toLowerCase())) fnameBase += '_' + siteTok;
     doc.save(fnameBase + '_Site_Equipment_Test_Report.pdf');
@@ -1380,6 +1445,11 @@ window.BromarAdmin.testtag = {
 
     container.addEventListener('change', (e) => {
       if (e.target.matches('#tt-insttype')) this._ttRenderReport(this._host);
+      if (e.target.matches('#tt-scope')) {
+        const v = e.target.value, i = v.indexOf('|');
+        this._ttScope = { mode: v.slice(0, i), value: v.slice(i + 1) };
+        this._ttRenderReport(this._host);
+      }
       if (e.target.matches('#tt-showtester')) {
         const iw = document.getElementById('tt-instrument-wrap');
         if (iw) iw.style.display = e.target.checked ? '' : 'none';
