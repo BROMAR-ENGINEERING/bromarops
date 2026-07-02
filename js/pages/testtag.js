@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.19',
+  version: 'V1.20',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -780,7 +780,13 @@ window.BromarAdmin.testtag = {
       a.sublocation = a['Sublocation'] || '';
       a.barcode = a['Barcode'] || '';
       a.description = a['Description'] || '';
-      a.tested = a['Tested On'] || a['Test Date'] || '';
+      a.tested = a['Tested On'] || a['Test Date'] || a['Tested'] || a['Tested Date'] || a['Date Tested'] || a['Test Date/Time'] || '';
+      if (!a.tested) {
+        const k = Object.keys(a).find(k => /test/i.test(k) && /(date|on)/i.test(k) && !/(performed|type|result|status|next|due|retest)/i.test(k));
+        if (k) a.tested = a[k];
+      }
+      const dm = String(a.tested).match(/\d{1,2}\/\d{1,2}\/\d{2,4}/);
+      a.tested = this._ttCleanDate(dm ? dm[0] : a.tested);
       a.due = this._ttCleanDate(a['Due']);
       a.testPerformed = a['Test Performed'] || '';
       let st = (a['Final Status'] || '').trim();
