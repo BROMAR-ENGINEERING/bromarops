@@ -12,7 +12,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.17',
+  version: 'V1.18',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -247,7 +247,7 @@ window.BromarAdmin.testtag = {
     target.innerHTML = `
       <div class="card admin-section-panel">
         <div class="admin-section-header">
-          <h2>Test & Tag Reports</h2>
+          <h2>Test &amp; Tag Reports <span style="font-size:0.6rem;font-weight:500;color:var(--text-secondary);opacity:0.55;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;margin-left:0.4rem;vertical-align:middle">${this.version}</span></h2>
           <div class="co-toolbar">
             <button class="btn-secondary ${this._ttView !== 'register' ? 'active' : ''}" data-tt-view="build">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New Report
