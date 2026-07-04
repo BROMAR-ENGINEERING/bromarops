@@ -9,7 +9,7 @@ const BromarOps = (() => {
   /* ── VERSION ──
      Bumped manually when files are updated.
      Format: V<major>.<minor>  (minor is two digits, e.g. V1.07) */
-  const APP_VERSION = 'V1.09';
+  const APP_VERSION = 'V1.12';
 
   function renderVersion(pageVersion, pageId) {
     const coreEl = document.getElementById('core-version');
@@ -51,6 +51,7 @@ const BromarOps = (() => {
     { id: 'scheduling', label: 'Scheduling',              icon: 'M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2z' },
     { id: 'timesheets', label: 'Timesheets',              icon: 'M12 2a10 10 0 100 20 10 10 0 000-20zm.5-15H11v6l5 3 .75-1.23-4.25-2.52z' },
     { id: 'employees',  label: 'Employees',               icon: 'M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z' },
+    { id: 'safety',     label: 'Safety',                  icon: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
     { id: 'fleet',      label: 'Fleet Management',        icon: 'M20 8h-3V4H3a2 2 0 00-2 2v11h2a3 3 0 006 0h6a3 3 0 006 0h2v-5l-3-4zM6 18.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm12 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z' },
     { id: 'equipment',  label: 'Equipment',               icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
     { id: 'clients',    label: 'Clients',                 icon: 'M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z' },
@@ -75,8 +76,8 @@ const BromarOps = (() => {
     return `
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-          <img class="light-logo" src="assets/Bromar-Primary-Logo-Full-Colour.png" alt="Bromar">
-          <img class="dark-logo"  src="assets/Bromar-Primary-Logo-Reverse-White.png" alt="Bromar">
+          <img class="light-logo" src="assets/logo/bromar-logo-colour.png" alt="Bromar">
+          <img class="dark-logo"  src="assets/logo/bromar-logo-white.png" alt="Bromar">
           <span class="brand-text">OPS</span>
         </div>
         <nav class="sidebar-nav">${items}</nav>
