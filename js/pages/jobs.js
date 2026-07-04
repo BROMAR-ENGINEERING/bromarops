@@ -6,10 +6,28 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.00',
+  version: 'V1.01',
 
   render(container) {
-    const sb = window.supabaseClient || window.sb || null;
+    /* ── supabase (self-initialising) ── */
+    const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+    let sb = null;
+
+    async function ensureSupabase() {
+      if (window.supabaseClient) return (sb = window.supabaseClient);
+      if (window.sb) return (sb = window.sb);
+      if (!window.supabase) {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+          s.onload = res; s.onerror = () => rej(new Error('Failed to load Supabase library'));
+          document.head.appendChild(s);
+        });
+      }
+      window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return (sb = window.supabaseClient);
+    }
 
     /* ── job type map (prefix → label list), mirrors Hub ── */
     const JOB_TYPES = {
@@ -19,6 +37,7 @@ window.BromarPages.jobs = {
       BA: { group: 'Automation',    types: ['Programming', 'CAD Drawings'] },
       BE: { group: 'Electrical',    types: ['General Electrical'] }
     };
+    const PREFIX_ORDER = ['BM', 'BS', 'BC', 'BA', 'BE'];
     const STATUSES = ['active', 'completed', 'on_hold', 'cancelled'];
     const STATUS_META = {
       active:    { label: 'Active',    bg: 'rgba(37,99,235,0.12)',  fg: '#2563eb' },
@@ -30,6 +49,7 @@ window.BromarPages.jobs = {
     /* ── state ── */
     let jobs = [];
     let editing = null;
+    let activePrefix = '';
     const docListeners = [];
     const addDocListener = (type, fn) => { document.addEventListener(type, fn); docListeners.push([type, fn]); };
     this._docListeners = docListeners;
@@ -43,6 +63,16 @@ window.BromarPages.jobs = {
         .jobs-stat { background:var(--bg-secondary); border:1px solid var(--border); border-radius:14px; padding:1.1rem 1.25rem; box-shadow:0 4px 12px var(--shadow); }
         .jobs-stat .n { font-size:1.9rem; font-weight:700; letter-spacing:-0.03em; line-height:1; }
         .jobs-stat .l { font-size:0.8rem; color:var(--text-secondary); margin-top:0.35rem; font-weight:500; }
+
+        .prefix-tiles { display:grid; grid-template-columns:repeat(6,1fr); gap:0.75rem; margin-bottom:1.5rem; }
+        .prefix-tile { background:var(--bg-secondary); border:1px solid var(--border); border-radius:14px; padding:0.9rem 1rem;
+          cursor:pointer; transition:all 0.18s ease; text-align:center; box-shadow:0 3px 10px var(--shadow); }
+        .prefix-tile:hover { border-color:var(--accent); transform:translateY(-2px); }
+        .prefix-tile.active { border-color:var(--accent); background:var(--card-hover); box-shadow:0 6px 16px rgba(234,88,12,0.15); }
+        .prefix-tile .code { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:1.15rem; color:var(--accent); }
+        .prefix-tile .grp { font-size:0.72rem; color:var(--text-secondary); margin-top:2px; }
+        .prefix-tile .cnt { font-size:0.72rem; font-weight:600; margin-top:4px; }
+
         .jobs-toolbar { display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1.25rem; }
         .jobs-toolbar input[type=text], .jobs-toolbar select {
           font-family:'Outfit',sans-serif; font-size:0.9rem; padding:0.65rem 0.9rem; border-radius:var(--radius-sm);
@@ -104,6 +134,7 @@ window.BromarPages.jobs = {
 
         @media (max-width:900px){
           .jobs-stats { grid-template-columns:repeat(2,1fr); }
+          .prefix-tiles { grid-template-columns:repeat(3,1fr); }
           .jobs-toolbar .btn-primary { margin-left:0; width:100%; }
           .job-drawer { width:100vw; }
           .job-card .jn { min-width:76px; font-size:0.9rem; }
@@ -117,6 +148,8 @@ window.BromarPages.jobs = {
 
       <div class="jobs-stats" id="jobsStats"></div>
 
+      <div class="prefix-tiles" id="prefixTiles"></div>
+
       <div class="jobs-toolbar">
         <input type="text" id="jobSearch" placeholder="Search job number, client or site…">
         <select id="jobStatusFilter">
@@ -125,14 +158,6 @@ window.BromarPages.jobs = {
           <option value="completed">Completed</option>
           <option value="on_hold">On Hold</option>
           <option value="cancelled">Cancelled</option>
-        </select>
-        <select id="jobPrefixFilter">
-          <option value="">All types</option>
-          <option value="BM">BM · Maintenance</option>
-          <option value="BS">BS · Service</option>
-          <option value="BC">BC · Construction</option>
-          <option value="BA">BA · Automation</option>
-          <option value="BE">BE · Electrical</option>
         </select>
         <button class="btn-primary" id="newJobBtn">+ New Job</button>
       </div>
@@ -173,14 +198,28 @@ window.BromarPages.jobs = {
         <div class="jobs-stat"><div class="n" style="color:#b45309">${c.on_hold}</div><div class="l">On Hold</div></div>`;
     }
 
+    /* ── prefix filter tiles ── */
+    function renderPrefixTiles() {
+      const counts = {};
+      PREFIX_ORDER.forEach(p => counts[p] = 0);
+      jobs.forEach(j => { if (counts[j.prefix] != null) counts[j.prefix]++; });
+      const tile = (code, grp, cnt, active, allTile) =>
+        `<div class="prefix-tile ${active ? 'active' : ''}" data-prefix="${code}">
+          <div class="code"${allTile ? ' style="color:var(--text-primary)"' : ''}>${code || 'ALL'}</div>
+          <div class="grp">${grp}</div><div class="cnt">${cnt} job${cnt === 1 ? '' : 's'}</div>
+        </div>`;
+      $('prefixTiles').innerHTML =
+        tile('', 'All Jobs', jobs.length, activePrefix === '', true) +
+        PREFIX_ORDER.map(p => tile(p, JOB_TYPES[p].group, counts[p], activePrefix === p, false)).join('');
+    }
+
     /* ── list ── */
     function renderList() {
       const q = $('jobSearch').value.trim().toLowerCase();
       const sf = $('jobStatusFilter').value;
-      const pf = $('jobPrefixFilter').value;
       const rows = jobs.filter(j => {
         if (sf && j.status !== sf) return false;
-        if (pf && j.prefix !== pf) return false;
+        if (activePrefix && j.prefix !== activePrefix) return false;
         if (q) {
           const hay = `${j.job_number} ${j.client_name || ''} ${j.site_name || ''} ${j.site_address || ''} ${j.job_type || ''}`.toLowerCase();
           if (!hay.includes(q)) return false;
@@ -282,11 +321,10 @@ window.BromarPages.jobs = {
 
       const saveBtn = $('ed_save'); saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
       try {
-        if (!sb) throw new Error('No database connection');
         const { error } = await sb.from('job_number_register').update(patch).eq('id', editing.id);
         if (error) throw error;
         Object.assign(editing, patch);
-        renderStats(); renderList();
+        renderStats(); renderPrefixTiles(); renderList();
         toast('Job updated'); closeDrawer();
       } catch (err) {
         toast('Save failed: ' + err.message);
@@ -357,7 +395,6 @@ window.BromarPages.jobs = {
         const results = $('nj_results');
         if (q.length < 2) { results.classList.remove('show'); return; }
         t = setTimeout(async () => {
-          if (!sb) return;
           const [clientRes, siteRes] = await Promise.all([
             sb.from('clients').select('id, name, is_active').ilike('name', `%${q}%`).order('name').limit(8),
             sb.from('sites').select('id, name, address, client_id, is_active').ilike('name', `%${q}%`).order('name').limit(6)
@@ -409,7 +446,6 @@ window.BromarPages.jobs = {
       }
 
       async function loadSites(clientId) {
-        if (!sb) return;
         const { data } = await sb.from('sites').select('id, name, address, is_active').eq('client_id', clientId).order('name');
         const sites = (data || []).filter(s => s.is_active !== false);
         if (!sites.length) { $('nj_site_wrap').style.display = 'none'; return; }
@@ -439,7 +475,6 @@ window.BromarPages.jobs = {
         if (!prefix || (!sel.clientId && !sel.siteId)) return;
         this.disabled = true; this.textContent = 'Creating…';
         try {
-          if (!sb) throw new Error('No database connection');
           const { data: newJobNum, error } = await sb.rpc('create_new_job', {
             p_prefix: prefix, p_client_id: sel.clientId || null, p_site_id: sel.siteId || null,
             p_job_type: jobLabel || null, p_contact_person: null, p_contact_phone: null, p_contact_role: null
@@ -462,28 +497,30 @@ window.BromarPages.jobs = {
 
     /* ── data ── */
     async function loadJobs() {
-      if (!sb) {
-        jobs = [
-          { id: 'mock1', job_number: 'BS0042', prefix: 'BS', sequence_number: 42, client_name: 'Sample Client Pty Ltd', site_name: 'Head Office', site_address: '12 Example St, Melbourne', job_type: 'Breakdown', status: 'active', created_at: new Date().toISOString(), created_by: 'Dev' },
-          { id: 'mock2', job_number: 'BC0108', prefix: 'BC', sequence_number: 108, client_name: 'Demo Constructions', site_name: 'Lot 7', job_type: 'General Construction', status: 'completed', completed_at: new Date().toISOString(), created_at: new Date().toISOString() }
-        ];
-        renderStats(); renderList();
-        toast('Offline preview — database not connected');
-        return;
+      try {
+        if (!sb) await ensureSupabase();
+        const { data, error } = await sb.from('job_number_register').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        jobs = data || [];
+        renderStats(); renderPrefixTiles(); renderList();
+      } catch (err) {
+        $('jobsList').innerHTML = `<div class="jobs-empty">Could not load jobs: ${esc(err.message)}</div>`;
       }
-      const { data, error } = await sb.from('job_number_register').select('*').order('created_at', { ascending: false });
-      if (error) { $('jobsList').innerHTML = `<div class="jobs-empty">Could not load jobs: ${esc(error.message)}</div>`; return; }
-      jobs = data || [];
-      renderStats(); renderList();
     }
 
     /* ── wiring ── */
     $('jobSearch').addEventListener('input', renderList);
     $('jobStatusFilter').addEventListener('change', renderList);
-    $('jobPrefixFilter').addEventListener('change', renderList);
     $('newJobBtn').addEventListener('click', openNewJob);
     $('drawerClose').addEventListener('click', closeDrawer);
     $('jobOverlay').addEventListener('click', closeDrawer);
+
+    $('prefixTiles').addEventListener('click', (e) => {
+      const tile = e.target.closest('.prefix-tile');
+      if (!tile) return;
+      activePrefix = tile.dataset.prefix;
+      renderPrefixTiles(); renderList();
+    });
 
     $('jobsList').addEventListener('click', (e) => {
       const card = e.target.closest('.job-card');
