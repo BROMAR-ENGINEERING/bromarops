@@ -6,7 +6,7 @@
    ============================================================ */
 (function () {
   const PAGE_ID  = 'clients';
-  const VERSION  = 'V1.02';
+  const VERSION  = 'V1.03';
 
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
@@ -16,11 +16,20 @@
   function loadSupabaseLib() {
     return new Promise((resolve, reject) => {
       if (window.supabase && window.supabase.createClient) return resolve();
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.3/supabase.min.js';
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('Could not load the Supabase library from CDN.'));
-      document.head.appendChild(s);
+      const urls = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+        'https://unpkg.com/@supabase/supabase-js@2'
+      ];
+      let i = 0;
+      const tryNext = () => {
+        if (i >= urls.length) return reject(new Error('Could not load the Supabase library from CDN.'));
+        const s = document.createElement('script');
+        s.src = urls[i++];
+        s.onload = () => (window.supabase && window.supabase.createClient) ? resolve() : tryNext();
+        s.onerror = tryNext;
+        document.head.appendChild(s);
+      };
+      tryNext();
     });
   }
 
