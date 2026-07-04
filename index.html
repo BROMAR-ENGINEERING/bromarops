@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Bromar Ops</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ea580c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bromar Ops">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -12,9 +22,11 @@
   <!-- Page modules: each registers itself onto window.BromarPages -->
   <script src="js/pages/dashboard.js"></script>
   <script src="js/pages/jobs.js"></script>
+  <script src="js/pages/quotes.js"></script>
   <script src="js/pages/scheduling.js"></script>
   <script src="js/pages/timesheets.js"></script>
   <script src="js/pages/employees.js"></script>
+  <script src="js/pages/safety.js"></script>
   <script src="js/pages/fleet.js"></script>
   <script src="js/pages/equipment.js"></script>
   <script src="js/pages/clients.js"></script>
@@ -28,5 +40,14 @@
 
   <!-- Core last: initialises the SPA after pages have registered -->
   <script src="js/core.js"></script>
+
+  <!-- PWA service worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
