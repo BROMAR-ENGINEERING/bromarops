@@ -6,8 +6,31 @@
    ============================================================ */
 (function () {
   const PAGE_ID  = 'clients';
-  const VERSION  = 'V1.01';
-  const db = () => window.supabaseClient;   // resolve lazily (client inits after page scripts)
+  const VERSION  = 'V1.02';
+
+  const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+
+  const db = () => window.supabaseClient;
+
+  function loadSupabaseLib() {
+    return new Promise((resolve, reject) => {
+      if (window.supabase && window.supabase.createClient) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.3/supabase.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Could not load the Supabase library from CDN.'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensureClient() {
+    if (window.supabaseClient) return window.supabaseClient;   // reuse if a page already made one
+    await loadSupabaseLib();
+    if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase library unavailable.');
+    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    return window.supabaseClient;
+  }
 
   /* ── STATE ── */
   const state = {
@@ -45,10 +68,12 @@
     state.error = null;
     renderBody();
 
-    const sb = db();
-    if (!sb) {
+    let sb;
+    try {
+      sb = await ensureClient();
+    } catch (e) {
       state.loading = false;
-      state.error = 'Supabase client not initialised (window.supabaseClient is undefined). Check core.js / index.html init order.';
+      state.error = e.message || String(e);
       renderBody();
       return;
     }
