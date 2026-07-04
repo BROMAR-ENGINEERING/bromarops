@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.01
+   V1.02
    Supabase: employees table + employee_cert_history table
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.01',
+  version: 'V1.02',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -366,7 +366,7 @@ window.BromarPages.employees = {
     container.innerHTML = `
       <div class="page-title-wrapper">
         <h1>Employees</h1>
-        <div class="subtitle">Contact details &amp; certification register</div>
+        <div class="subtitle">Contact Details and Training Register</div>
       </div>
       <div class="emp-toolbar">
         <input class="emp-search" id="emp-search" type="text" placeholder="Search name, email or phone…">
