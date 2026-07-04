@@ -6,8 +6,8 @@
    ============================================================ */
 (function () {
   const PAGE_ID  = 'clients';
-  const VERSION  = 'V1.00';
-  const sb = window.supabaseClient;
+  const VERSION  = 'V1.01';
+  const db = () => window.supabaseClient;   // resolve lazily (client inits after page scripts)
 
   /* ── STATE ── */
   const state = {
@@ -42,14 +42,26 @@
   /* ── DATA ── */
   async function loadData() {
     state.loading = true;
+    state.error = null;
     renderBody();
-    if (!sb) { state.loading = false; renderBody(); toast('Supabase client not found', 'err'); return; }
+
+    const sb = db();
+    if (!sb) {
+      state.loading = false;
+      state.error = 'Supabase client not initialised (window.supabaseClient is undefined). Check core.js / index.html init order.';
+      renderBody();
+      return;
+    }
 
     try {
       const { data, error } = await sb.from('clients').select('*').order('name', { ascending: true });
       if (error) throw error;
       state.clients = data || [];
-    } catch (e) { console.warn('clients load', e); state.clients = []; toast('Could not load clients', 'err'); }
+    } catch (e) {
+      console.warn('clients load', e);
+      state.clients = [];
+      state.error = 'clients: ' + (e.message || e);
+    }
 
     try {
       const { data, error } = await sb.from('client_sites').select('*').order('site_name', { ascending: true });
@@ -123,6 +135,11 @@
     `;
 
     if (state.loading) { bodyEl.innerHTML = `<div class="cl-empty">Loading…</div>`; return; }
+
+    if (state.error) {
+      bodyEl.innerHTML = `<div class="cl-empty cl-err-box">${esc(state.error)}</div>`;
+      return;
+    }
 
     const list = filtered();
     if (!list.length) {
@@ -294,6 +311,7 @@
       notes: nz(byId('cf-notes').value),
       is_active: byId('cf-active').checked
     };
+    const sb = db();
     try {
       if (id) {
         const { error } = await sb.from('clients').update(payload).eq('id', id);
@@ -315,7 +333,7 @@
   async function deleteClient(id) {
     if (!confirm('Delete this client and all its sites? This cannot be undone.')) return;
     try {
-      const { error } = await sb.from('clients').delete().eq('id', id);
+      const { error } = await db().from('clients').delete().eq('id', id);
       if (error) throw error;
       closePanel();
       toast('Client deleted');
@@ -375,6 +393,7 @@
       notes: nz(byId('sf-notes').value),
       is_active: byId('sf-active').checked
     };
+    const sb = db();
     try {
       if (sid) {
         const { error } = await sb.from('client_sites').update(payload).eq('id', sid);
@@ -392,7 +411,7 @@
   async function deleteSite(sid) {
     if (!confirm('Delete this site?')) return;
     try {
-      const { error } = await sb.from('client_sites').delete().eq('id', sid);
+      const { error } = await db().from('client_sites').delete().eq('id', sid);
       if (error) throw error;
       toast('Site deleted');
       await loadData();
@@ -476,6 +495,8 @@
 
     .cl-empty{text-align:center;color:var(--text-secondary);padding:3rem 1rem;font-size:.95rem}
     .cl-empty.sm{padding:1rem}
+    .cl-err-box{color:var(--error);background:var(--error-bg);border:1px solid var(--error);
+      border-radius:var(--radius-sm);max-width:640px;margin:0 auto;font-size:.85rem;word-break:break-word}
 
     .cl-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;display:none}
     .cl-overlay.show{display:block}
