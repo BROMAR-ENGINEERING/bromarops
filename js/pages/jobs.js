@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.02',
+  version: 'V1.03',
 
   render(container) {
     /* ── supabase (self-initialising) ── */
@@ -106,7 +106,7 @@ window.BromarPages.jobs = {
         .job-close:hover { border-color:var(--accent); color:var(--accent); }
 
         .jf { margin-bottom:1rem; }
-        .jf label { display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); margin-bottom:0.35rem; }
+        .jf label { display:flex; align-items:center; gap:8px; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); margin-bottom:0.35rem; }
         .jf input, .jf select, .jf textarea { width:100%; font-family:'Outfit',sans-serif; font-size:0.9rem; padding:0.65rem 0.8rem;
           border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary); }
         .jf textarea { resize:vertical; min-height:70px; }
@@ -116,10 +116,9 @@ window.BromarPages.jobs = {
         .drawer-actions { display:flex; gap:0.75rem; margin-top:1.5rem; padding-top:1.25rem; border-top:1px solid var(--border); }
         .drawer-actions .btn-primary, .drawer-actions .btn-secondary { flex:1; }
 
-        .link-box { border:1px solid var(--border); border-radius:var(--radius-sm); padding:0.85rem 1rem; margin-bottom:1rem; background:var(--bg-main); }
-        .link-status { font-size:0.85rem; font-weight:600; margin-bottom:0.6rem; }
-        .link-status.ok  { color:var(--success); }
-        .link-status.bad { color:#b45309; }
+        .link-chip { font-size:0.66rem; font-weight:700; text-transform:none; letter-spacing:0; padding:2px 9px; border-radius:20px; }
+        .link-chip.ok  { background:var(--success-bg); color:var(--success); }
+        .link-chip.bad { background:rgba(217,119,6,0.14); color:#b45309; }
 
         .ac-wrap { position:relative; }
         .ac-results { position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border);
@@ -129,6 +128,7 @@ window.BromarPages.jobs = {
         .ac-item:hover { background:var(--card-hover); }
         .ac-head { padding:4px 12px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); background:var(--bg-main); }
         .ac-sub { font-size:0.76rem; color:var(--text-secondary); margin-top:1px; }
+        .ac-hint { font-size:0.72rem; color:var(--text-secondary); margin-top:0.35rem; }
 
         .jt-notice { display:none; margin-top:0.75rem; padding:0.75rem 1rem; background:var(--card-hover); border:1px solid var(--accent);
           border-radius:var(--radius-sm); font-size:0.85rem; }
@@ -204,6 +204,8 @@ window.BromarPages.jobs = {
         sb.from('clients').select('id, name, is_active').ilike('name', `%${q}%`).order('name').limit(8),
         sb.from('sites').select('id, name, address, client_id, is_active').ilike('name', `%${q}%`).order('name').limit(6)
       ]);
+      if (clientRes.error) throw clientRes.error;
+      if (siteRes.error) throw siteRes.error;
       const clients = (clientRes.data || []).filter(c => c.is_active !== false);
       const sites = (siteRes.data || []).filter(s => s.is_active !== false);
       if (sites.length) {
@@ -227,7 +229,7 @@ window.BromarPages.jobs = {
         html += `<div class="ac-head">Sites</div>` + sites.map(s =>
           `<div class="ac-item" data-type="site" data-id="${s.id}" data-name="${esc(s.name)}" data-address="${esc(s.address || '')}" data-client-id="${s.client_id || ''}" data-client-name="${esc(s.clientName || '')}">📍 ${esc(s.name)}<div class="ac-sub">${esc(s.clientName || '')}${s.address ? ' · ' + esc(s.address) : ''}</div></div>`).join('');
       }
-      if (!html) html = `<div class="ac-item" style="color:var(--text-secondary)">No clients or sites found</div>`;
+      if (!html) html = `<div class="ac-item" style="color:var(--text-secondary)">No clients or sites found — free text is kept as-is</div>`;
       resultsEl.innerHTML = html;
       resultsEl.querySelectorAll('.ac-item[data-type="client"]').forEach(item =>
         item.addEventListener('click', () => onClient(item.dataset)));
@@ -243,7 +245,12 @@ window.BromarPages.jobs = {
         const q = this.value.trim();
         if (q.length < 2) { resultsEl.classList.remove('show'); return; }
         t = setTimeout(async () => {
-          try { renderAcResults(resultsEl, await searchClientsSites(q), onClient, onSite); } catch {}
+          try {
+            renderAcResults(resultsEl, await searchClientsSites(q), onClient, onSite);
+          } catch (err) {
+            resultsEl.innerHTML = `<div class="ac-item" style="color:var(--error)">Search error: ${esc(err.message)}</div>`;
+            resultsEl.classList.add('show');
+          }
         }, 300);
       });
     }
@@ -312,8 +319,7 @@ window.BromarPages.jobs = {
     /* ── drawer / edit ── */
     function openDrawer(job) {
       editing = job;
-      // pending reassignment (null = unchanged)
-      let reassign = null;
+      let reassign = null; // {client_id, site_id} when a lookup result is chosen
 
       $('drawerTitle').textContent = job.job_number;
       const typeOpts = (JOB_TYPES[job.prefix]?.types || []);
@@ -331,17 +337,12 @@ window.BromarPages.jobs = {
           </div>
         </div>
 
-        <div class="link-box">
-          <div id="ed_link_status" class="link-status ${linked ? 'ok' : 'bad'}">
-            ${linked ? '🔗 Linked to client record' : '⚠️ Not linked to a client (legacy) — reassign below'}
-          </div>
-          <div class="ac-wrap" id="ed_reassign_wrap">
-            <input type="text" id="ed_reassign" placeholder="Search client or site to (re)assign…" autocomplete="off">
-            <div class="ac-results" id="ed_reassign_results"></div>
-          </div>
+        <div class="jf ac-wrap" id="ed_client_wrap">
+          <label>Client <span id="ed_link_chip" class="link-chip ${linked ? 'ok' : 'bad'}">${linked ? '🔗 Linked' : '⚠️ Unlinked'}</span></label>
+          <input type="text" id="ed_client_name" value="${esc(job.client_name || '')}" placeholder="Search client / site to link, or type a name…" autocomplete="off">
+          <div class="ac-results" id="ed_client_results"></div>
+          <div class="ac-hint">Start typing to search client &amp; site records — pick one to link this job.</div>
         </div>
-
-        <div class="jf"><label>Client Name</label><input type="text" id="ed_client_name" value="${esc(job.client_name || '')}"></div>
 
         <div class="jf-row">
           <div class="jf"><label>Job Type</label>${typeSelect}</div>
@@ -369,26 +370,24 @@ window.BromarPages.jobs = {
           <button class="btn-primary" id="ed_save">Save Changes</button>
         </div>`;
 
-      // reassign lookup handlers
+      const chip = $('ed_link_chip');
+      const setChip = (txt) => { chip.className = 'link-chip ok'; chip.textContent = txt; };
+
       const applyClient = (d) => {
         reassign = { client_id: d.id, site_id: null };
         $('ed_client_name').value = d.name || '';
-        $('ed_reassign').value = '';
-        $('ed_reassign_results').classList.remove('show');
-        $('ed_link_status').className = 'link-status ok';
-        $('ed_link_status').textContent = `🔗 Will link to client: ${d.name}`;
+        $('ed_client_results').classList.remove('show');
+        setChip('🔗 ' + (d.name || 'Client'));
       };
       const applySite = (d) => {
         reassign = { client_id: d.clientId || null, site_id: d.id };
         if (d.clientName) $('ed_client_name').value = d.clientName;
         $('ed_site_name').value = d.name || '';
         $('ed_site_address').value = d.address || '';
-        $('ed_reassign').value = '';
-        $('ed_reassign_results').classList.remove('show');
-        $('ed_link_status').className = 'link-status ok';
-        $('ed_link_status').textContent = `🔗 Will link to site: ${d.name}${d.clientName ? ' (' + d.clientName + ')' : ''}`;
+        $('ed_client_results').classList.remove('show');
+        setChip('🔗 ' + (d.clientName || d.name));
       };
-      wireSearch($('ed_reassign'), $('ed_reassign_results'), applyClient, applySite);
+      wireSearch($('ed_client_name'), $('ed_client_results'), applyClient, applySite);
 
       $('ed_cancel').addEventListener('click', closeDrawer);
       $('ed_save').addEventListener('click', () => saveJob(reassign));
@@ -428,7 +427,7 @@ window.BromarPages.jobs = {
         if (error) throw error;
         Object.assign(editing, patch);
         renderStats(); renderPrefixTiles(); renderList();
-        toast(reassign ? 'Job updated & reassigned' : 'Job updated'); closeDrawer();
+        toast(reassign ? 'Job updated & linked' : 'Job updated'); closeDrawer();
       } catch (err) {
         toast('Save failed: ' + err.message);
         saveBtn.disabled = false; saveBtn.textContent = 'Save Changes';
