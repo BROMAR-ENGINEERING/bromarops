@@ -1,6 +1,5 @@
 /* ============================================================
    BROMAR OPS — SHARED STYLESHEET
-   Design language matched to Bromar Hub
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -44,14 +43,30 @@
 /* ── RESET ── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
 body {
   font-family: 'Outfit', sans-serif;
   background: var(--bg-main);
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
+  min-height: 100dvh;
   transition: background 0.4s ease, color 0.4s ease;
-  overflow-x: hidden;
+}
+
+/* Prevent iOS auto-zoom on input focus (needs 16px minimum) */
+input, select, textarea, button {
+  font-size: 16px;
+  font-family: inherit;
 }
 
 /* ── APP LAYOUT ── */
@@ -59,6 +74,7 @@ body {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ── SIDEBAR ── */
@@ -68,7 +84,9 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   z-index: 50;
@@ -144,6 +162,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
+  min-width: 0;
 }
 
 /* ── HEADER ── */
@@ -186,6 +206,7 @@ body {
   color: var(--text-primary);
   text-decoration: none;
   flex-shrink: 0;
+  font-size: 16px;
 }
 .control-btn:hover {
   background: var(--card-hover);
@@ -210,10 +231,11 @@ body {
 /* ── PAGE CONTENT ── */
 .page-content {
   flex: 1;
-  padding: 2rem 1.5rem 4rem;
+  padding: 2rem 1.5rem calc(4rem + env(safe-area-inset-bottom));
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 .page-title-wrapper { margin-bottom: 1.5rem; }
 .page-title-wrapper h1 {
@@ -322,7 +344,7 @@ body {
   .sidebar-overlay.show { display: block; }
   .mobile-menu-btn { display: flex; }
   .header { padding-left: 1rem; padding-right: 1rem; }
-  .page-content { padding: 1.5rem 1rem 4rem; }
+  .page-content { padding: 1.5rem 1rem calc(4rem + env(safe-area-inset-bottom)); }
   .page-title-wrapper h1 { font-size: 1.5rem; }
   .card { padding: 1.25rem; }
 }
