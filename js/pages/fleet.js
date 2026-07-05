@@ -1,10 +1,10 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.05)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.06)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.05';
+  const PAGE_VERSION = 'V1.06';
 
   /* ── SUPABASE ── */
   const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -41,6 +41,12 @@ window.BromarPages.fleet = (() => {
     return null;
   }
 
+  /* ── CONSTANTS ── */
+  const PLANT_TYPES = ['Van', 'Ute', 'Car', 'Truck', 'Forklift', 'Trailer'];
+  const STATUS_OPTS = ['active', 'out_of_service', 'retired', 'sold'];
+  const YEAR_START = 1990;
+  const YEAR_END = new Date().getFullYear() + 1;
+
   /* ── STATE ── */
   let vehicles = [];
   let employees = [];
@@ -64,6 +70,14 @@ window.BromarPages.fleet = (() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
     meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+  }
+
+  function yearOptions(selected) {
+    let html = '<option value="">— N/A —</option>';
+    for (let y = YEAR_END; y >= YEAR_START; y--) {
+      html += `<option value="${y}" ${selected === y ? 'selected' : ''}>${y}</option>`;
+    }
+    return html;
   }
 
   /* ── DATA ── */
@@ -115,18 +129,21 @@ window.BromarPages.fleet = (() => {
   async function saveVehicle(data, editId) {
     const c = await ensureClient();
     if (!c) { alert('Database connection unavailable.'); return; }
+
+    console.log('Fleet: saving vehicle', editId ? 'UPDATE' : 'INSERT', JSON.stringify(data));
+
     try {
       let result;
       if (editId) { result = await c.from('vehicles').update(data).eq('id', editId); }
       else { result = await c.from('vehicles').insert([data]); }
+
       if (result.error) {
-        const msg = result.error.message || '';
-        console.error('Fleet: saveVehicle', result.error);
-        if (msg.includes('duplicate') || msg.includes('unique')) alert('A vehicle with that Plant Number already exists.');
-        else if (msg.includes('foreign') || msg.includes('violates')) alert('Assigned To must match an existing employee name, or be left blank.');
-        else alert('Save failed: ' + msg);
+        console.error('Fleet: saveVehicle error', result.error);
+        alert('Save failed:\n' + (result.error.message || result.error.details || JSON.stringify(result.error)));
         return;
       }
+
+      console.log('Fleet: save success');
       await loadVehicles();
       if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
       closeModal();
@@ -140,7 +157,7 @@ window.BromarPages.fleet = (() => {
   async function deleteVehicle(id) {
     const c = await ensureClient(); if (!c) return;
     const { error } = await c.from('vehicles').delete().eq('id', id);
-    if (error) { alert('Cannot delete — vehicle may have linked audits.'); return; }
+    if (error) { alert('Cannot delete — vehicle may have linked audits.\n' + error.message); return; }
     vehicles = vehicles.filter(v => v.id !== id);
     selectedVehicle = null; refresh();
   }
@@ -219,6 +236,7 @@ window.BromarPages.fleet = (() => {
 .fleet-actions .btn-primary,.fleet-actions .btn-secondary{padding:.6rem 1.1rem;font-size:.85rem;white-space:nowrap}
 .fleet-loading{text-align:center;padding:3rem;color:var(--text-secondary);font-size:.95rem}
 .fleet-empty{text-align:center;padding:2rem;color:var(--text-secondary);font-size:.9rem}
+.fleet-rego-input{text-transform:uppercase}
 @media(max-width:700px){
   .fleet-toolbar{flex-direction:column;align-items:stretch}
   .fleet-search-wrap{min-width:0;width:100%}
@@ -279,7 +297,7 @@ window.BromarPages.fleet = (() => {
       </div>
       <div class="fleet-filters">
         <button class="fleet-fbtn ${filterStatus==='ALL'?'active':''}" data-fs="ALL">All Status</button>
-        ${['active','out_of_service','retired','sold'].map(s => `<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}
+        ${STATUS_OPTS.map(s => `<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}
       </div>
       <div class="fleet-actions">
         <button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button>
@@ -324,7 +342,6 @@ window.BromarPages.fleet = (() => {
         tabContent = audits.map(a => {
           const expanded = expandedAuditId === a.id;
           const checks = auditChecks[a.id] || [];
-
           let expandHtml = '';
           if (expanded && checks.length) {
             expandHtml = `<div class="fleet-audit-expand">
@@ -345,13 +362,9 @@ window.BromarPages.fleet = (() => {
           } else if (expanded) {
             expandHtml = '<div class="fleet-audit-expand fleet-loading">Loading checks…</div>';
           }
-
           return `<div class="fleet-audit-card" data-audit-id="${a.id}">
             <div class="fleet-audit-top">
-              <div>
-                <strong>${a.audit_type_id}</strong>
-                <span style="margin-left:.5rem">${faultBadge(a.fault_count)}</span>
-              </div>
+              <div><strong>${a.audit_type_id}</strong><span style="margin-left:.5rem">${faultBadge(a.fault_count)}</span></div>
               <span style="font-size:.78rem;color:var(--text-secondary)">${new Date(a.submitted_at).toLocaleDateString()}</span>
             </div>
             <div class="fleet-audit-meta">
@@ -389,36 +402,55 @@ window.BromarPages.fleet = (() => {
       `<option value="${e.full_name}" ${(isEdit && v.assigned_to === e.full_name) ? 'selected' : ''}>${e.full_name}</option>`
     ).join('');
 
+    const typeOpts = PLANT_TYPES.map(t =>
+      `<option value="${t}" ${(isEdit && v.plant_type === t) ? 'selected' : ''}>${t}</option>`
+    ).join('');
+
     return `<div class="fleet-modal-overlay" id="fleet-modal-overlay">
       <div class="fleet-modal">
         <h2>${isEdit ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
+
         <label>Plant Number</label>
         <input id="fm-plantno" value="${isEdit ? v.plant_no : ''}" placeholder="e.g. P-001" ${isEdit ? 'readonly style="opacity:.6;cursor:not-allowed"' : ''}>
+
         <label>Plant Name</label>
         <input id="fm-plantname" value="${isEdit ? v.plant_name : ''}" placeholder="e.g. Toyota HiLux #1">
+
         <label>Plant Type</label>
-        <input id="fm-planttype" value="${isEdit ? (v.plant_type || '') : ''}" placeholder="e.g. Ute, Truck, Van">
-        <label>Registration</label>
-        <input id="fm-rego" value="${isEdit ? (v.rego_no || '') : ''}" placeholder="e.g. ABC-123">
+        <select id="fm-planttype">
+          <option value="">— Select —</option>
+          ${typeOpts}
+        </select>
+
+        <label>Registration (max 6 characters)</label>
+        <input id="fm-rego" class="fleet-rego-input" value="${isEdit ? (v.rego_no || '') : ''}" placeholder="e.g. ABC123" maxlength="6" autocapitalize="characters">
+
         <label>Make</label>
         <input id="fm-make" value="${isEdit ? (v.make || '') : ''}" placeholder="e.g. Toyota">
+
         <label>Model</label>
         <input id="fm-model" value="${isEdit ? (v.model || '') : ''}" placeholder="e.g. HiLux SR5">
+
         <label>Year</label>
-        <input id="fm-year" type="number" value="${isEdit ? (v.year || '') : ''}" min="1990" max="2035">
+        <select id="fm-year">${yearOptions(isEdit ? v.year : null)}</select>
+
         <label>VIN</label>
         <input id="fm-vin" value="${isEdit ? (v.vin || '') : ''}" placeholder="Vehicle Identification Number">
+
         <label>Assigned To</label>
         <select id="fm-assigned">
           <option value="">— Unassigned —</option>
           ${empOpts}
         </select>
+
         <label>Status</label>
         <select id="fm-status">
-          ${['active', 'out_of_service', 'retired', 'sold'].map(s => `<option value="${s}" ${(isEdit && v.status === s) ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
+          ${STATUS_OPTS.map(s => `<option value="${s}" ${(isEdit && v.status === s) ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
         </select>
+
         <label>Notes</label>
         <textarea id="fm-notes" placeholder="Optional notes…">${isEdit ? (v.notes || '') : ''}</textarea>
+
         <div class="fleet-modal-actions">
           <button class="btn-secondary" id="fm-cancel">Cancel</button>
           <button class="btn-primary" id="fm-save" data-edit-id="${isEdit ? v.id : ''}" style="padding:.7rem 1.5rem">${isEdit ? 'Update' : 'Add Vehicle'}</button>
@@ -465,6 +497,11 @@ window.BromarPages.fleet = (() => {
 
     root.addEventListener('input', e => {
       if (e.target.id === 'fleet-search') { searchTerm = e.target.value.toLowerCase(); refresh(); }
+      /* force rego uppercase and strip non-alphanumeric */
+      if (e.target.id === 'fm-rego') {
+        const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
+        if (e.target.value !== cleaned) e.target.value = cleaned;
+      }
     });
 
     root.addEventListener('click', async (e) => {
@@ -544,17 +581,20 @@ window.BromarPages.fleet = (() => {
       const plantName = overlay.querySelector('#fm-plantname').value.trim();
       if (!plantNo || !plantName) { alert('Plant Number and Plant Name are required.'); return; }
 
+      const regoRaw = overlay.querySelector('#fm-rego').value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
       const yearVal = overlay.querySelector('#fm-year').value;
+      const assignedVal = overlay.querySelector('#fm-assigned').value;
+
       const data = {
         plant_no: plantNo,
         plant_name: plantName,
-        plant_type: overlay.querySelector('#fm-planttype').value.trim() || null,
-        rego_no: overlay.querySelector('#fm-rego').value.trim() || null,
+        plant_type: overlay.querySelector('#fm-planttype').value || null,
+        rego_no: regoRaw || null,
         make: overlay.querySelector('#fm-make').value.trim() || null,
         model: overlay.querySelector('#fm-model').value.trim() || null,
         year: yearVal ? parseInt(yearVal, 10) : null,
         vin: overlay.querySelector('#fm-vin').value.trim() || null,
-        assigned_to: overlay.querySelector('#fm-assigned').value || null,
+        assigned_to: assignedVal || null,
         status: overlay.querySelector('#fm-status').value,
         notes: overlay.querySelector('#fm-notes').value.trim() || null
       };
