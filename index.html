@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Bromar Ops</title>
 
   <!-- Favicons -->
@@ -23,13 +23,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Bromar Ops">
+  <meta name="format-detection" content="telephone=no">
 
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <div id="app"></div>
 
-  <!-- Page modules: each registers itself onto window.BromarPages -->
+  <!-- Page modules -->
   <script src="js/pages/dashboard.js"></script>
   <script src="js/pages/jobs.js"></script>
   <script src="js/pages/quotes.js"></script>
@@ -44,19 +45,21 @@
   <script src="js/pages/materials.js"></script>
   <script src="js/pages/admin.js"></script>
 
-  <!-- Sub-modules: render inside another page rather than as their own sidebar entry -->
+  <!-- Sub-modules -->
   <script src="js/pages/testtag.js"></script>
 
-  <!-- Core last: initialises the SPA after pages have registered -->
+  <!-- Core last -->
   <script src="js/core.js"></script>
 
-  <!-- PWA service worker registration -->
+  <!-- PWA service worker registration + iOS gesture block -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(() => {});
       });
     }
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    document.addEventListener('gesturechange', e => e.preventDefault());
   </script>
 </body>
 </html>
