@@ -1,44 +1,23 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.06)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.07)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.06';
+  const PAGE_VERSION = 'V1.07';
 
-  /* ── SUPABASE ── */
-  const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUwMjYwMzYsImV4cCI6MjA2MDYwMjAzNn0.aTMfWNGOf1s5mZJDDipltI9cHSs4e-MN3JGeNxoFmEc';
-  let sb = null;
-
-  const CDN_URLS = [
-    'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/umd/supabase.min.js',
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js',
-    'https://unpkg.com/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js'
-  ];
-
-  function loadScript(url) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = url; s.onload = resolve; s.onerror = reject;
-      document.head.appendChild(s);
-    });
+  /* ── SUPABASE — use the app-wide client ── */
+  function getClient() {
+    return window.supabaseClient || null;
   }
 
-  async function ensureClient() {
-    if (sb) return sb;
-    if (window.supabaseClient) { sb = window.supabaseClient; return sb; }
-    if (window.supabase?.createClient) { sb = window.supabase.createClient(SB_URL, SB_KEY); window.supabaseClient = sb; return sb; }
-    for (const url of CDN_URLS) {
-      try { await loadScript(url); } catch { continue; }
-      if (window.supabase?.createClient) {
-        sb = window.supabase.createClient(SB_URL, SB_KEY);
-        window.supabaseClient = sb;
-        return sb;
-      }
+  async function waitForClient(maxWait) {
+    const deadline = Date.now() + (maxWait || 3000);
+    while (!window.supabaseClient && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
     }
-    console.error('Fleet: all Supabase CDN sources failed');
-    return null;
+    if (!window.supabaseClient) console.error('Fleet: supabaseClient not found on window');
+    return window.supabaseClient || null;
   }
 
   /* ── CONSTANTS ── */
@@ -59,6 +38,7 @@ window.BromarPages.fleet = (() => {
   let expandedAuditId = null;
   let auditChecks = {};
   let root = null;
+  let sb = null;
 
   /* ── HELPERS ── */
   const today = () => new Date().toISOString().split('T')[0];
@@ -82,43 +62,43 @@ window.BromarPages.fleet = (() => {
 
   /* ── DATA ── */
   async function loadVehicles() {
-    const c = await ensureClient(); if (!c) return;
-    const { data, error } = await c.from('vehicles').select('*').order('plant_no');
+    if (!sb) return;
+    const { data, error } = await sb.from('vehicles').select('*').order('plant_no');
     if (error) { console.error('Fleet: loadVehicles', error.message); return; }
     if (data) vehicles = data;
   }
 
   async function loadEmployees() {
-    const c = await ensureClient(); if (!c) return;
+    if (!sb) return;
     try {
-      const { data, error } = await c.from('employees').select('full_name, is_active').order('full_name');
+      const { data, error } = await sb.from('employees').select('full_name, is_active').order('full_name');
       if (error) { console.error('Fleet: loadEmployees', error.message); return; }
       if (data) employees = data.filter(e => e.is_active !== false);
     } catch (err) { console.error('Fleet: loadEmployees exception', err); }
   }
 
   async function loadAudits(vehicleId) {
-    const c = await ensureClient(); if (!c) return [];
-    const { data, error } = await c.from('vehicle_audits').select('*').eq('vehicle_id', vehicleId).order('submitted_at', { ascending: false }).limit(20);
+    if (!sb) return [];
+    const { data, error } = await sb.from('vehicle_audits').select('*').eq('vehicle_id', vehicleId).order('submitted_at', { ascending: false }).limit(20);
     if (error) { console.error('Fleet: loadAudits', error.message); return []; }
     return data || [];
   }
 
   async function loadChecks(auditId) {
     if (auditChecks[auditId]) return auditChecks[auditId];
-    const c = await ensureClient(); if (!c) return [];
-    const { data, error } = await c.from('vehicle_audit_checks').select('*').eq('audit_id', auditId).order('sort_order');
+    if (!sb) return [];
+    const { data, error } = await sb.from('vehicle_audit_checks').select('*').eq('audit_id', auditId).order('sort_order');
     if (error) { console.error('Fleet: loadChecks', error.message); return []; }
     if (data) { auditChecks[auditId] = data; return data; }
     return [];
   }
 
   async function actionAudit(auditId) {
-    const c = await ensureClient(); if (!c) return;
+    if (!sb) return;
     const user = prompt('Your name (actioned by):');
     if (!user) return;
     const notes = prompt('Action notes (optional):') || '';
-    const { error } = await c.from('vehicle_audits').update({
+    const { error } = await sb.from('vehicle_audits').update({
       actioned: true, actioned_by: user,
       actioned_at: new Date().toISOString(), action_notes: notes
     }).eq('id', auditId);
@@ -127,23 +107,17 @@ window.BromarPages.fleet = (() => {
   }
 
   async function saveVehicle(data, editId) {
-    const c = await ensureClient();
-    if (!c) { alert('Database connection unavailable.'); return; }
-
-    console.log('Fleet: saving vehicle', editId ? 'UPDATE' : 'INSERT', JSON.stringify(data));
-
+    if (!sb) { alert('Database connection unavailable.'); return; }
+    console.log('Fleet: saving', editId ? 'UPDATE' : 'INSERT', JSON.stringify(data));
     try {
       let result;
-      if (editId) { result = await c.from('vehicles').update(data).eq('id', editId); }
-      else { result = await c.from('vehicles').insert([data]); }
-
+      if (editId) { result = await sb.from('vehicles').update(data).eq('id', editId); }
+      else { result = await sb.from('vehicles').insert([data]); }
       if (result.error) {
-        console.error('Fleet: saveVehicle error', result.error);
-        alert('Save failed:\n' + (result.error.message || result.error.details || JSON.stringify(result.error)));
+        console.error('Fleet: saveVehicle', result.error);
+        alert('Save failed:\n' + (result.error.message || JSON.stringify(result.error)));
         return;
       }
-
-      console.log('Fleet: save success');
       await loadVehicles();
       if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
       closeModal();
@@ -155,8 +129,8 @@ window.BromarPages.fleet = (() => {
   }
 
   async function deleteVehicle(id) {
-    const c = await ensureClient(); if (!c) return;
-    const { error } = await c.from('vehicles').delete().eq('id', id);
+    if (!sb) return;
+    const { error } = await sb.from('vehicles').delete().eq('id', id);
     if (error) { alert('Cannot delete — vehicle may have linked audits.\n' + error.message); return; }
     vehicles = vehicles.filter(v => v.id !== id);
     selectedVehicle = null; refresh();
@@ -316,7 +290,6 @@ window.BromarPages.fleet = (() => {
   /* ── DETAIL ── */
   function renderDetail(v) {
     let tabContent = '';
-
     if (activeTab === 'details') {
       tabContent = `<div class="fleet-info-grid">
         <div class="fleet-info-item"><label>Plant #</label><span>${v.plant_no}</span></div>
@@ -347,10 +320,7 @@ window.BromarPages.fleet = (() => {
             expandHtml = `<div class="fleet-audit-expand">
               ${checks.map(ck => {
                 const cls = ck.status === 'FAULT' ? 'fleet-check-fault' : ck.status === 'NA' ? 'fleet-check-na' : 'fleet-check-ok';
-                return `<div class="fleet-check-row">
-                  <span>${ck.item_text}</span>
-                  <span><span class="${cls}">${ck.status}</span>${ck.comment ? `<span class="fleet-check-comment">${ck.comment}</span>` : ''}</span>
-                </div>`;
+                return `<div class="fleet-check-row"><span>${ck.item_text}</span><span><span class="${cls}">${ck.status}</span>${ck.comment ? `<span class="fleet-check-comment">${ck.comment}</span>` : ''}</span></div>`;
               }).join('')}
               ${a.defect_details ? `<div class="fleet-defect-box"><strong>Defect:</strong> ${a.defect_details}${a.defect_reported_by ? ` — reported by ${a.defect_reported_by}` : ''}${a.defect_date ? ` (${a.defect_date})` : ''}</div>` : ''}
               <div class="fleet-action-row ${a.actioned?'done':''}">
@@ -367,11 +337,7 @@ window.BromarPages.fleet = (() => {
               <div><strong>${a.audit_type_id}</strong><span style="margin-left:.5rem">${faultBadge(a.fault_count)}</span></div>
               <span style="font-size:.78rem;color:var(--text-secondary)">${new Date(a.submitted_at).toLocaleDateString()}</span>
             </div>
-            <div class="fleet-audit-meta">
-              Operator: ${a.operator_name} · Week: ${a.week_commencing}
-              ${a.current_km_hours ? ` · ${Number(a.current_km_hours).toLocaleString()} km/hrs` : ''}
-              · Checks: ${a.ok_count} OK / ${a.fault_count} Fault / ${a.na_count} N/A
-            </div>
+            <div class="fleet-audit-meta">Operator: ${a.operator_name} · Week: ${a.week_commencing}${a.current_km_hours ? ` · ${Number(a.current_km_hours).toLocaleString()} km/hrs` : ''} · Checks: ${a.ok_count} OK / ${a.fault_count} Fault / ${a.na_count} N/A</div>
             ${a.notes ? `<div style="margin-top:.4rem;font-size:.82rem;color:var(--text-secondary);font-style:italic">${a.notes}</div>` : ''}
             ${expandHtml}
           </div>`;
@@ -401,7 +367,6 @@ window.BromarPages.fleet = (() => {
     const empOpts = employees.map(e =>
       `<option value="${e.full_name}" ${(isEdit && v.assigned_to === e.full_name) ? 'selected' : ''}>${e.full_name}</option>`
     ).join('');
-
     const typeOpts = PLANT_TYPES.map(t =>
       `<option value="${t}" ${(isEdit && v.plant_type === t) ? 'selected' : ''}>${t}</option>`
     ).join('');
@@ -409,48 +374,28 @@ window.BromarPages.fleet = (() => {
     return `<div class="fleet-modal-overlay" id="fleet-modal-overlay">
       <div class="fleet-modal">
         <h2>${isEdit ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
-
         <label>Plant Number</label>
         <input id="fm-plantno" value="${isEdit ? v.plant_no : ''}" placeholder="e.g. P-001" ${isEdit ? 'readonly style="opacity:.6;cursor:not-allowed"' : ''}>
-
         <label>Plant Name</label>
         <input id="fm-plantname" value="${isEdit ? v.plant_name : ''}" placeholder="e.g. Toyota HiLux #1">
-
         <label>Plant Type</label>
-        <select id="fm-planttype">
-          <option value="">— Select —</option>
-          ${typeOpts}
-        </select>
-
+        <select id="fm-planttype"><option value="">— Select —</option>${typeOpts}</select>
         <label>Registration (max 6 characters)</label>
         <input id="fm-rego" class="fleet-rego-input" value="${isEdit ? (v.rego_no || '') : ''}" placeholder="e.g. ABC123" maxlength="6" autocapitalize="characters">
-
         <label>Make</label>
         <input id="fm-make" value="${isEdit ? (v.make || '') : ''}" placeholder="e.g. Toyota">
-
         <label>Model</label>
         <input id="fm-model" value="${isEdit ? (v.model || '') : ''}" placeholder="e.g. HiLux SR5">
-
         <label>Year</label>
         <select id="fm-year">${yearOptions(isEdit ? v.year : null)}</select>
-
         <label>VIN</label>
         <input id="fm-vin" value="${isEdit ? (v.vin || '') : ''}" placeholder="Vehicle Identification Number">
-
         <label>Assigned To</label>
-        <select id="fm-assigned">
-          <option value="">— Unassigned —</option>
-          ${empOpts}
-        </select>
-
+        <select id="fm-assigned"><option value="">— Unassigned —</option>${empOpts}</select>
         <label>Status</label>
-        <select id="fm-status">
-          ${STATUS_OPTS.map(s => `<option value="${s}" ${(isEdit && v.status === s) ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
-        </select>
-
+        <select id="fm-status">${STATUS_OPTS.map(s => `<option value="${s}" ${(isEdit && v.status === s) ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}</select>
         <label>Notes</label>
         <textarea id="fm-notes" placeholder="Optional notes…">${isEdit ? (v.notes || '') : ''}</textarea>
-
         <div class="fleet-modal-actions">
           <button class="btn-secondary" id="fm-cancel">Cancel</button>
           <button class="btn-primary" id="fm-save" data-edit-id="${isEdit ? v.id : ''}" style="padding:.7rem 1.5rem">${isEdit ? 'Update' : 'Add Vehicle'}</button>
@@ -464,6 +409,8 @@ window.BromarPages.fleet = (() => {
     root = container;
     lockViewport();
     root.innerHTML = STYLES + '<div class="fleet-loading">Loading fleet…</div>';
+    sb = await waitForClient(5000);
+    if (!sb) { root.innerHTML = STYLES + '<div class="fleet-loading" style="color:var(--error)">Database connection unavailable. Check that Supabase is configured in the main app.</div>'; return; }
     await Promise.all([loadVehicles(), loadEmployees()]);
     drawPage();
   }
@@ -485,106 +432,57 @@ window.BromarPages.fleet = (() => {
   }
 
   function refresh() { drawPage(); }
+  function closeModal() { const a = root?.querySelector('#fleet-modal-area'); if (a) a.innerHTML = ''; }
 
-  function closeModal() {
-    const area = root?.querySelector('#fleet-modal-area');
-    if (area) area.innerHTML = '';
-  }
-
-  /* ── EVENTS (container-level delegation) ── */
+  /* ── EVENTS ── */
   function bind() {
     if (!root) return;
-
     root.addEventListener('input', e => {
       if (e.target.id === 'fleet-search') { searchTerm = e.target.value.toLowerCase(); refresh(); }
-      /* force rego uppercase and strip non-alphanumeric */
       if (e.target.id === 'fm-rego') {
         const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
         if (e.target.value !== cleaned) e.target.value = cleaned;
       }
     });
-
     root.addEventListener('click', async (e) => {
       const target = e.target;
-
       const ftBtn = target.closest('[data-ft]');
       if (ftBtn) { filterType = ftBtn.dataset.ft; refresh(); return; }
       const fsBtn = target.closest('[data-fs]');
       if (fsBtn) { filterStatus = fsBtn.dataset.fs; refresh(); return; }
-
       const row = target.closest('.fleet-table tr[data-id]');
       if (row) {
         const v = vehicles.find(x => x.id === row.dataset.id);
-        if (v) {
-          selectedVehicle = v; activeTab = 'details'; expandedAuditId = null;
-          audits = await loadAudits(v.id);
-          refresh();
-          root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+        if (v) { selectedVehicle = v; activeTab = 'details'; expandedAuditId = null; audits = await loadAudits(v.id); refresh(); root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior:'smooth', block:'start' }); }
         return;
       }
-
-      if (target.closest('#fleet-close-detail')) {
-        selectedVehicle = null; audits = []; expandedAuditId = null; refresh(); return;
-      }
-
+      if (target.closest('#fleet-close-detail')) { selectedVehicle = null; audits = []; expandedAuditId = null; refresh(); return; }
       const tab = target.closest('.fleet-tab');
       if (tab) { activeTab = tab.dataset.tab; refresh(); return; }
-
-      if (target.closest('#fleet-add-btn')) {
-        root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null);
-        bindModal();
-        return;
-      }
-
+      if (target.closest('#fleet-add-btn')) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null); bindModal(); return; }
       const editBtn = target.closest('.fleet-edit-vehicle');
-      if (editBtn) {
-        const v = vehicles.find(x => x.id === editBtn.dataset.id);
-        if (v) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(v); bindModal(); }
-        return;
-      }
-
+      if (editBtn) { const v = vehicles.find(x => x.id === editBtn.dataset.id); if (v) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(v); bindModal(); } return; }
       const delBtn = target.closest('.fleet-delete-vehicle');
-      if (delBtn) {
-        const v = vehicles.find(x => x.id === delBtn.dataset.id);
-        if (v && confirm(`Delete ${v.plant_no} — ${v.plant_name}?`)) deleteVehicle(v.id);
-        return;
-      }
-
+      if (delBtn) { const v = vehicles.find(x => x.id === delBtn.dataset.id); if (v && confirm(`Delete ${v.plant_no} — ${v.plant_name}?`)) deleteVehicle(v.id); return; }
       const actBtn = target.closest('.fleet-action-btn');
       if (actBtn) { e.stopPropagation(); actionAudit(actBtn.dataset.audit); return; }
-
       const auditCard = target.closest('.fleet-audit-card[data-audit-id]');
-      if (auditCard && !target.closest('.fleet-action-btn')) {
-        const aid = auditCard.dataset.auditId;
-        if (expandedAuditId === aid) { expandedAuditId = null; }
-        else { expandedAuditId = aid; await loadChecks(aid); }
-        refresh();
-        return;
-      }
+      if (auditCard && !target.closest('.fleet-action-btn')) { const aid = auditCard.dataset.auditId; if (expandedAuditId === aid) expandedAuditId = null; else { expandedAuditId = aid; await loadChecks(aid); } refresh(); return; }
     });
   }
 
   function bindModal() {
     const overlay = root.querySelector('#fleet-modal-overlay');
     if (!overlay) return;
-
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay || e.target.closest('#fm-cancel')) closeModal();
-    });
-
+    overlay.addEventListener('click', e => { if (e.target === overlay || e.target.closest('#fm-cancel')) closeModal(); });
     const saveBtn = overlay.querySelector('#fm-save');
     if (!saveBtn) return;
-
     saveBtn.addEventListener('click', async () => {
       const plantNo = overlay.querySelector('#fm-plantno').value.trim();
       const plantName = overlay.querySelector('#fm-plantname').value.trim();
       if (!plantNo || !plantName) { alert('Plant Number and Plant Name are required.'); return; }
-
       const regoRaw = overlay.querySelector('#fm-rego').value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
       const yearVal = overlay.querySelector('#fm-year').value;
-      const assignedVal = overlay.querySelector('#fm-assigned').value;
-
       const data = {
         plant_no: plantNo,
         plant_name: plantName,
@@ -594,11 +492,10 @@ window.BromarPages.fleet = (() => {
         model: overlay.querySelector('#fm-model').value.trim() || null,
         year: yearVal ? parseInt(yearVal, 10) : null,
         vin: overlay.querySelector('#fm-vin').value.trim() || null,
-        assigned_to: assignedVal || null,
+        assigned_to: overlay.querySelector('#fm-assigned').value || null,
         status: overlay.querySelector('#fm-status').value,
         notes: overlay.querySelector('#fm-notes').value.trim() || null
       };
-
       const editId = saveBtn.dataset.editId;
       await saveVehicle(data, editId || null);
     });
@@ -608,8 +505,7 @@ window.BromarPages.fleet = (() => {
   function destroy() {
     selectedVehicle = null; activeTab = 'details'; filterType = 'ALL'; filterStatus = 'ALL';
     searchTerm = ''; audits = []; expandedAuditId = null; auditChecks = {};
-    const s = document.getElementById('fleet-page-styles');
-    if (s) s.remove();
+    const s = document.getElementById('fleet-page-styles'); if (s) s.remove();
     root = null;
   }
 
