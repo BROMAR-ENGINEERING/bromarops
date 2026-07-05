@@ -1,20 +1,43 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.04)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.05)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.04';
+  const PAGE_VERSION = 'V1.05';
 
   /* ── SUPABASE ── */
   const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
   const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUwMjYwMzYsImV4cCI6MjA2MDYwMjAzNn0.aTMfWNGOf1s5mZJDDipltI9cHSs4e-MN3JGeNxoFmEc';
   let sb = null;
-  function getClient() {
+
+  const CDN_URLS = [
+    'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/umd/supabase.min.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js',
+    'https://unpkg.com/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js'
+  ];
+
+  function loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensureClient() {
     if (sb) return sb;
     if (window.supabaseClient) { sb = window.supabaseClient; return sb; }
-    if (window.supabase?.createClient) { sb = window.supabase.createClient(SB_URL, SB_KEY); return sb; }
-    console.error('Fleet: Supabase client not available');
+    if (window.supabase?.createClient) { sb = window.supabase.createClient(SB_URL, SB_KEY); window.supabaseClient = sb; return sb; }
+    for (const url of CDN_URLS) {
+      try { await loadScript(url); } catch { continue; }
+      if (window.supabase?.createClient) {
+        sb = window.supabase.createClient(SB_URL, SB_KEY);
+        window.supabaseClient = sb;
+        return sb;
+      }
+    }
+    console.error('Fleet: all Supabase CDN sources failed');
     return null;
   }
 
@@ -45,44 +68,39 @@ window.BromarPages.fleet = (() => {
 
   /* ── DATA ── */
   async function loadVehicles() {
-    const c = getClient(); if (!c) return;
+    const c = await ensureClient(); if (!c) return;
     const { data, error } = await c.from('vehicles').select('*').order('plant_no');
-    if (error) { console.error('Fleet: loadVehicles', error); return; }
+    if (error) { console.error('Fleet: loadVehicles', error.message); return; }
     if (data) vehicles = data;
   }
 
   async function loadEmployees() {
-    const c = getClient(); if (!c) return;
+    const c = await ensureClient(); if (!c) return;
     try {
       const { data, error } = await c.from('employees').select('full_name, is_active').order('full_name');
-      if (error) { console.error('Fleet: loadEmployees error', error.message); return; }
-      if (data) {
-        employees = data.filter(e => e.is_active !== false);
-        console.log('Fleet: loaded', employees.length, 'active employees');
-      }
-    } catch (err) {
-      console.error('Fleet: loadEmployees exception', err);
-    }
+      if (error) { console.error('Fleet: loadEmployees', error.message); return; }
+      if (data) employees = data.filter(e => e.is_active !== false);
+    } catch (err) { console.error('Fleet: loadEmployees exception', err); }
   }
 
   async function loadAudits(vehicleId) {
-    const c = getClient(); if (!c) return [];
+    const c = await ensureClient(); if (!c) return [];
     const { data, error } = await c.from('vehicle_audits').select('*').eq('vehicle_id', vehicleId).order('submitted_at', { ascending: false }).limit(20);
-    if (error) { console.error('Fleet: loadAudits', error); return []; }
+    if (error) { console.error('Fleet: loadAudits', error.message); return []; }
     return data || [];
   }
 
   async function loadChecks(auditId) {
     if (auditChecks[auditId]) return auditChecks[auditId];
-    const c = getClient(); if (!c) return [];
+    const c = await ensureClient(); if (!c) return [];
     const { data, error } = await c.from('vehicle_audit_checks').select('*').eq('audit_id', auditId).order('sort_order');
-    if (error) { console.error('Fleet: loadChecks', error); return []; }
+    if (error) { console.error('Fleet: loadChecks', error.message); return []; }
     if (data) { auditChecks[auditId] = data; return data; }
     return [];
   }
 
   async function actionAudit(auditId) {
-    const c = getClient(); if (!c) return;
+    const c = await ensureClient(); if (!c) return;
     const user = prompt('Your name (actioned by):');
     if (!user) return;
     const notes = prompt('Action notes (optional):') || '';
@@ -95,21 +113,18 @@ window.BromarPages.fleet = (() => {
   }
 
   async function saveVehicle(data, editId) {
-    const c = getClient();
+    const c = await ensureClient();
     if (!c) { alert('Database connection unavailable.'); return; }
     try {
       let result;
-      if (editId) {
-        result = await c.from('vehicles').update(data).eq('id', editId);
-      } else {
-        result = await c.from('vehicles').insert([data]);
-      }
+      if (editId) { result = await c.from('vehicles').update(data).eq('id', editId); }
+      else { result = await c.from('vehicles').insert([data]); }
       if (result.error) {
         const msg = result.error.message || '';
-        console.error('Fleet: saveVehicle error', result.error);
-        if (msg.includes('duplicate') || msg.includes('unique')) { alert('A vehicle with that Plant Number already exists.'); }
-        else if (msg.includes('foreign') || msg.includes('violates')) { alert('Assigned To must match an existing employee name, or be left blank.'); }
-        else { alert('Save failed: ' + msg); }
+        console.error('Fleet: saveVehicle', result.error);
+        if (msg.includes('duplicate') || msg.includes('unique')) alert('A vehicle with that Plant Number already exists.');
+        else if (msg.includes('foreign') || msg.includes('violates')) alert('Assigned To must match an existing employee name, or be left blank.');
+        else alert('Save failed: ' + msg);
         return;
       }
       await loadVehicles();
@@ -123,7 +138,7 @@ window.BromarPages.fleet = (() => {
   }
 
   async function deleteVehicle(id) {
-    const c = getClient(); if (!c) return;
+    const c = await ensureClient(); if (!c) return;
     const { error } = await c.from('vehicles').delete().eq('id', id);
     if (error) { alert('Cannot delete — vehicle may have linked audits.'); return; }
     vehicles = vehicles.filter(v => v.id !== id);
@@ -455,13 +470,11 @@ window.BromarPages.fleet = (() => {
     root.addEventListener('click', async (e) => {
       const target = e.target;
 
-      /* filter buttons */
       const ftBtn = target.closest('[data-ft]');
       if (ftBtn) { filterType = ftBtn.dataset.ft; refresh(); return; }
       const fsBtn = target.closest('[data-fs]');
       if (fsBtn) { filterStatus = fsBtn.dataset.fs; refresh(); return; }
 
-      /* table row */
       const row = target.closest('.fleet-table tr[data-id]');
       if (row) {
         const v = vehicles.find(x => x.id === row.dataset.id);
@@ -474,23 +487,19 @@ window.BromarPages.fleet = (() => {
         return;
       }
 
-      /* close detail */
       if (target.closest('#fleet-close-detail')) {
         selectedVehicle = null; audits = []; expandedAuditId = null; refresh(); return;
       }
 
-      /* tabs */
       const tab = target.closest('.fleet-tab');
       if (tab) { activeTab = tab.dataset.tab; refresh(); return; }
 
-      /* add vehicle */
       if (target.closest('#fleet-add-btn')) {
         root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null);
         bindModal();
         return;
       }
 
-      /* edit vehicle */
       const editBtn = target.closest('.fleet-edit-vehicle');
       if (editBtn) {
         const v = vehicles.find(x => x.id === editBtn.dataset.id);
@@ -498,7 +507,6 @@ window.BromarPages.fleet = (() => {
         return;
       }
 
-      /* delete vehicle */
       const delBtn = target.closest('.fleet-delete-vehicle');
       if (delBtn) {
         const v = vehicles.find(x => x.id === delBtn.dataset.id);
@@ -506,11 +514,9 @@ window.BromarPages.fleet = (() => {
         return;
       }
 
-      /* action audit */
       const actBtn = target.closest('.fleet-action-btn');
       if (actBtn) { e.stopPropagation(); actionAudit(actBtn.dataset.audit); return; }
 
-      /* expand audit card */
       const auditCard = target.closest('.fleet-audit-card[data-audit-id]');
       if (auditCard && !target.closest('.fleet-action-btn')) {
         const aid = auditCard.dataset.auditId;
@@ -524,25 +530,21 @@ window.BromarPages.fleet = (() => {
 
   function bindModal() {
     const overlay = root.querySelector('#fleet-modal-overlay');
-    if (!overlay) { console.error('Fleet: modal overlay not found'); return; }
+    if (!overlay) return;
 
-    /* close on cancel or overlay click */
     overlay.addEventListener('click', e => {
-      if (e.target === overlay || e.target.closest('#fm-cancel')) { closeModal(); }
+      if (e.target === overlay || e.target.closest('#fm-cancel')) closeModal();
     });
 
-    /* save */
     const saveBtn = overlay.querySelector('#fm-save');
-    if (!saveBtn) { console.error('Fleet: save button not found'); return; }
+    if (!saveBtn) return;
 
     saveBtn.addEventListener('click', async () => {
       const plantNo = overlay.querySelector('#fm-plantno').value.trim();
       const plantName = overlay.querySelector('#fm-plantname').value.trim();
       if (!plantNo || !plantName) { alert('Plant Number and Plant Name are required.'); return; }
 
-      const assignedVal = overlay.querySelector('#fm-assigned').value;
       const yearVal = overlay.querySelector('#fm-year').value;
-
       const data = {
         plant_no: plantNo,
         plant_name: plantName,
@@ -552,7 +554,7 @@ window.BromarPages.fleet = (() => {
         model: overlay.querySelector('#fm-model').value.trim() || null,
         year: yearVal ? parseInt(yearVal, 10) : null,
         vin: overlay.querySelector('#fm-vin').value.trim() || null,
-        assigned_to: assignedVal || null,
+        assigned_to: overlay.querySelector('#fm-assigned').value || null,
         status: overlay.querySelector('#fm-status').value,
         notes: overlay.querySelector('#fm-notes').value.trim() || null
       };
