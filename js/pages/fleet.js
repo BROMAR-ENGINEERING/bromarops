@@ -1,10 +1,10 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.00)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.01)
    Vehicle registry, maintenance audits, requests, assignments.
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.00';
+  const PAGE_VERSION = 'V1.01';
 
   /* ── MOCK DATA ── */
   let vehicles = [
@@ -53,25 +53,32 @@ window.BromarPages.fleet = (() => {
   const auditResult = v => v === 'Fail' ? 'fleet-audit-fail' : 'fleet-audit-pass';
   const filtered = () => vehicles.filter(v => (filterType === 'ALL' || v.type === filterType) && (!searchTerm || v.rego.toLowerCase().includes(searchTerm) || v.make.toLowerCase().includes(searchTerm) || v.model.toLowerCase().includes(searchTerm) || v.assignedTo.toLowerCase().includes(searchTerm)));
 
+  /* ── VIEWPORT LOCK (PWA zoom prevention) ── */
+  function lockViewport() {
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
+    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+  }
+
   /* ── SCOPED STYLES ── */
   const STYLES = `
 <style id="fleet-page-styles">
 /* toolbar */
 .fleet-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1.25rem}
-.fleet-search-wrap{position:relative;flex:1;min-width:200px}
-.fleet-search-wrap svg{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);width:16px;height:16px;stroke:var(--text-secondary);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fleet-search{width:100%;padding:.65rem 1rem .65rem 2.5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:.9rem;outline:none;transition:border .2s}
+.fleet-search-wrap{position:relative;flex:1;min-width:180px}
+.fleet-search-wrap svg{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);width:16px;height:16px;stroke:var(--text-secondary);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.fleet-search{width:100%;padding:.65rem 1rem .65rem 2.5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:.9rem;outline:none;transition:border .2s;-webkit-appearance:none}
 .fleet-search:focus{border-color:var(--accent)}
 .fleet-filters{display:flex;gap:.35rem;flex-wrap:wrap}
-.fleet-fbtn{padding:.45rem .9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:500;cursor:pointer;transition:all .2s}
+.fleet-fbtn{padding:.45rem .9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:500;cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent}
 .fleet-fbtn:hover{border-color:var(--accent);color:var(--text-primary)}
 .fleet-fbtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* table */
-.fleet-table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+.fleet-table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);-webkit-overflow-scrolling:touch}
 .fleet-table{width:100%;border-collapse:collapse;font-size:.88rem}
 .fleet-table th{text-align:left;padding:.7rem .85rem;background:var(--bg-main);color:var(--text-secondary);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
-.fleet-table td{padding:.7rem .85rem;border-bottom:1px solid var(--border);vertical-align:middle}
+.fleet-table td{padding:.7rem .85rem;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
 .fleet-table tr:last-child td{border-bottom:none}
 .fleet-table tr:hover{background:var(--card-hover);cursor:pointer}
 
@@ -101,8 +108,8 @@ window.BromarPages.fleet = (() => {
 .fleet-detail-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem}
 .fleet-detail-title{font-size:1.3rem;font-weight:700;letter-spacing:-.02em}
 .fleet-detail-sub{color:var(--text-secondary);font-size:.9rem;font-weight:300}
-.fleet-tabs{display:flex;gap:.35rem;margin-bottom:1.25rem;border-bottom:1px solid var(--border);padding-bottom:0}
-.fleet-tab{padding:.55rem 1.1rem;border:none;background:transparent;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:.88rem;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;margin-bottom:-1px}
+.fleet-tabs{display:flex;gap:.35rem;margin-bottom:1.25rem;border-bottom:1px solid var(--border);padding-bottom:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fleet-tab{padding:.55rem 1.1rem;border:none;background:transparent;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:.88rem;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;margin-bottom:-1px;white-space:nowrap;-webkit-tap-highlight-color:transparent}
 .fleet-tab:hover{color:var(--text-primary)}
 .fleet-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 .fleet-tab-content{animation:fadeIn .25s ease}
@@ -115,22 +122,22 @@ window.BromarPages.fleet = (() => {
 /* req list inside detail */
 .fleet-req-card{padding:.85rem 1rem;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:.6rem;background:var(--bg-main);transition:border .2s}
 .fleet-req-card:hover{border-color:var(--accent)}
-.fleet-req-top{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem}
+.fleet-req-top{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap}
 .fleet-req-desc{font-size:.88rem;color:var(--text-primary)}
 .fleet-req-date{font-size:.75rem;color:var(--text-secondary)}
 
 /* audit table */
 .fleet-audit-tbl{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:.5rem}
 .fleet-audit-tbl th,.fleet-audit-tbl td{padding:.5rem .6rem;border-bottom:1px solid var(--border);text-align:center}
-.fleet-audit-tbl th{background:var(--bg-main);color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.03em}
+.fleet-audit-tbl th{background:var(--bg-main);color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.03em;white-space:nowrap}
 .fleet-audit-tbl td:first-child,.fleet-audit-tbl th:first-child{text-align:left}
 
 /* modal */
-.fleet-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease}
-.fleet-modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;width:95%;max-width:600px;max-height:90vh;overflow-y:auto;padding:2rem;box-shadow:0 20px 60px var(--shadow)}
+.fleet-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease;padding:1rem}
+.fleet-modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;width:100%;max-width:600px;max-height:90vh;max-height:90dvh;overflow-y:auto;padding:2rem;box-shadow:0 20px 60px var(--shadow);-webkit-overflow-scrolling:touch}
 .fleet-modal h2{font-size:1.2rem;font-weight:700;margin-bottom:1.25rem;letter-spacing:-.02em}
 .fleet-modal label{display:block;font-size:.82rem;font-weight:600;color:var(--text-secondary);margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.03em}
-.fleet-modal input,.fleet-modal select,.fleet-modal textarea{width:100%;padding:.6rem .85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:.9rem;margin-bottom:1rem;outline:none;transition:border .2s}
+.fleet-modal input,.fleet-modal select,.fleet-modal textarea{width:100%;padding:.6rem .85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:16px;margin-bottom:1rem;outline:none;transition:border .2s;-webkit-appearance:none}
 .fleet-modal input:focus,.fleet-modal select:focus,.fleet-modal textarea:focus{border-color:var(--accent)}
 .fleet-modal textarea{resize:vertical;min-height:70px}
 .fleet-modal-actions{display:flex;gap:.75rem;justify-content:flex-end;margin-top:.5rem}
@@ -140,20 +147,39 @@ window.BromarPages.fleet = (() => {
 .fleet-audit-grid .full{grid-column:1/-1}
 
 /* summary row */
-.fleet-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;margin-bottom:1.5rem}
+.fleet-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
 .fleet-summary-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem;display:flex;flex-direction:column;gap:.25rem}
 .fleet-summary-card .val{font-size:1.6rem;font-weight:700;letter-spacing:-.03em}
 .fleet-summary-card .lbl{font-size:.78rem;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:.03em}
 .fleet-summary-card.warn .val{color:var(--error)}
 
-/* page version */
-.fleet-page-version{text-align:right;margin-top:2.5rem;font-size:.72rem;color:var(--text-secondary);opacity:.45;font-family:'JetBrains Mono',monospace}
+/* action buttons row */
+.fleet-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+.fleet-actions .btn-primary,.fleet-actions .btn-secondary{padding:.6rem 1.1rem;font-size:.85rem;white-space:nowrap}
 
+/* ── MOBILE ── */
 @media(max-width:700px){
-  .fleet-info-grid{grid-template-columns:1fr}
+  .fleet-toolbar{flex-direction:column;align-items:stretch}
+  .fleet-search-wrap{min-width:0;width:100%}
+  .fleet-filters{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;padding-bottom:.25rem}
+  .fleet-actions{width:100%}
+  .fleet-actions .btn-primary,.fleet-actions .btn-secondary{flex:1;text-align:center;min-width:0;padding:.7rem .5rem;font-size:.8rem}
+  .fleet-info-grid{grid-template-columns:1fr 1fr}
   .fleet-audit-grid{grid-template-columns:1fr}
   .fleet-summary{grid-template-columns:1fr 1fr}
   .fleet-detail-header{flex-direction:column;align-items:flex-start}
+  .fleet-detail-title{font-size:1.1rem}
+  .fleet-modal{padding:1.25rem;border-radius:12px;max-height:85dvh}
+  .fleet-modal h2{font-size:1.05rem}
+  .fleet-tab{padding:.5rem .75rem;font-size:.82rem}
+  .fleet-table{font-size:.8rem}
+  .fleet-table th,.fleet-table td{padding:.55rem .6rem}
+}
+@media(max-width:400px){
+  .fleet-info-grid{grid-template-columns:1fr}
+  .fleet-summary{grid-template-columns:1fr}
+  .fleet-summary-card{flex-direction:row;align-items:center;justify-content:space-between}
+  .fleet-summary-card .val{font-size:1.3rem}
 }
 </style>`;
 
@@ -204,9 +230,11 @@ window.BromarPages.fleet = (() => {
         <button class="fleet-fbtn ${filterType==='ALL'?'active':''}" data-f="ALL">All</button>
         ${types.map(t => `<button class="fleet-fbtn ${filterType===t?'active':''}" data-f="${t}">${t}</button>`).join('')}
       </div>
-      <button class="btn-primary" id="fleet-add-btn" style="padding:.6rem 1.2rem;font-size:.88rem">+ Add Vehicle</button>
-      <button class="btn-secondary" id="fleet-req-btn" style="padding:.6rem 1.2rem;font-size:.85rem">+ Maintenance Request</button>
-      <button class="btn-secondary" id="fleet-audit-btn" style="padding:.6rem 1.2rem;font-size:.85rem">+ Audit</button>
+      <div class="fleet-actions">
+        <button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button>
+        <button class="btn-secondary" id="fleet-req-btn">+ Maint. Request</button>
+        <button class="btn-secondary" id="fleet-audit-btn">+ Audit</button>
+      </div>
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div class="fleet-table-wrap">
@@ -225,7 +253,7 @@ window.BromarPages.fleet = (() => {
     const reqs = maintenanceRequests.filter(r => r.vehicleId === v.id);
     const audits = auditLogs.filter(a => a.vehicleId === v.id).sort((a,b) => b.date.localeCompare(a.date));
     const checks = ['tyres','brakes','lights','fluids','body','fire','firstAid'];
-    const checkLabels = { tyres:'Tyres', brakes:'Brakes', lights:'Lights', fluids:'Fluids', body:'Body/Exterior', fire:'Fire Extinguisher', firstAid:'First Aid Kit' };
+    const checkLabels = { tyres:'Tyres', brakes:'Brakes', lights:'Lights', fluids:'Fluids', body:'Body/Exterior', fire:'Fire Ext.', firstAid:'First Aid' };
 
     let tabContent = '';
     if (activeTab === 'details') {
@@ -378,6 +406,7 @@ window.BromarPages.fleet = (() => {
   /* ── FULL RENDER ── */
   function render(container) {
     root = container;
+    lockViewport();
     root.innerHTML = STYLES + `
       <div class="page-title-wrapper">
         <h1>Fleet Management</h1>
@@ -388,7 +417,6 @@ window.BromarPages.fleet = (() => {
       <div id="fleet-table-area">${renderTable()}</div>
       <div id="fleet-detail-area">${selectedVehicle ? renderDetail(selectedVehicle) : ''}</div>
       <div id="fleet-modal-area"></div>
-      <div class="fleet-page-version">${PAGE_VERSION}</div>
     `;
     bind();
   }
@@ -399,7 +427,6 @@ window.BromarPages.fleet = (() => {
     if (tbl) tbl.innerHTML = renderTable();
     const det = root.querySelector('#fleet-detail-area');
     if (det) det.innerHTML = selectedVehicle ? renderDetail(selectedVehicle) : '';
-    // re-render summary
     const sum = root.querySelector('.fleet-summary');
     if (sum) { const tmp = document.createElement('div'); tmp.innerHTML = renderSummary(); sum.replaceWith(tmp.firstElementChild); }
     bind();
@@ -412,37 +439,29 @@ window.BromarPages.fleet = (() => {
 
   /* ── EVENT BINDING ── */
   function bind() {
-    // search
     const si = root.querySelector('#fleet-search');
     if (si) si.oninput = e => { searchTerm = e.target.value.toLowerCase(); refresh(); };
 
-    // filter buttons
     root.querySelectorAll('.fleet-fbtn').forEach(b => b.onclick = () => { filterType = b.dataset.f; refresh(); });
 
-    // row click
     root.querySelectorAll('.fleet-table tr[data-id]').forEach(tr => tr.onclick = () => {
       const v = vehicles.find(x => x.id === +tr.dataset.id);
       if (v) { selectedVehicle = v; activeTab = 'details'; refresh(); root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior:'smooth', block:'start' }); }
     });
 
-    // close detail
     const cb = root.querySelector('#fleet-close-detail');
     if (cb) cb.onclick = () => { selectedVehicle = null; refresh(); };
 
-    // tabs
     root.querySelectorAll('.fleet-tab').forEach(t => t.onclick = () => { activeTab = t.dataset.tab; refresh(); });
 
-    // add vehicle
     const addBtn = root.querySelector('#fleet-add-btn');
     if (addBtn) addBtn.onclick = () => { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null); bindModal(); };
 
-    // edit vehicle
     root.querySelectorAll('.fleet-edit-vehicle').forEach(b => b.onclick = () => {
       const v = vehicles.find(x => x.id === +b.dataset.id);
       if (v) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(v); bindModal(); }
     });
 
-    // delete vehicle
     root.querySelectorAll('.fleet-delete-vehicle').forEach(b => b.onclick = () => {
       const v = vehicles.find(x => x.id === +b.dataset.id);
       if (v && confirm(`Delete ${v.rego} — ${v.make} ${v.model}?`)) {
@@ -454,11 +473,9 @@ window.BromarPages.fleet = (() => {
       }
     });
 
-    // maintenance request btn
     const reqBtn = root.querySelector('#fleet-req-btn');
     if (reqBtn) reqBtn.onclick = () => { root.querySelector('#fleet-modal-area').innerHTML = requestModal(); bindModal(); };
 
-    // audit btn
     const auditBtn = root.querySelector('#fleet-audit-btn');
     if (auditBtn) auditBtn.onclick = () => { root.querySelector('#fleet-modal-area').innerHTML = auditModal(); bindModal(); };
   }
@@ -467,12 +484,10 @@ window.BromarPages.fleet = (() => {
     const overlay = root.querySelector('#fleet-modal-overlay');
     if (!overlay) return;
 
-    // cancel / close
     const cancel = overlay.querySelector('#fm-cancel');
     if (cancel) cancel.onclick = closeModal;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
 
-    // save vehicle
     const savev = overlay.querySelector('#fm-save');
     if (savev) savev.onclick = () => {
       const rego = overlay.querySelector('#fm-rego').value.trim();
@@ -500,7 +515,6 @@ window.BromarPages.fleet = (() => {
       closeModal(); refresh();
     };
 
-    // save maintenance request
     const saver = overlay.querySelector('#fr-save');
     if (saver) saver.onclick = () => {
       const desc = overlay.querySelector('#fr-desc').value.trim();
@@ -516,7 +530,6 @@ window.BromarPages.fleet = (() => {
       closeModal(); refresh();
     };
 
-    // save audit
     const savea = overlay.querySelector('#fa-save');
     if (savea) savea.onclick = () => {
       const auditor = overlay.querySelector('#fa-auditor').value.trim();
@@ -546,5 +559,5 @@ window.BromarPages.fleet = (() => {
     root = null;
   }
 
-  return { title: 'Fleet Management', render, destroy };
+  return { title: 'Fleet Management', version: PAGE_VERSION, render, destroy };
 })();
