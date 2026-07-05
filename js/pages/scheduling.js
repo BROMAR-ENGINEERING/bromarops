@@ -1,15 +1,16 @@
 /* ============================================================
    SCHEDULING PAGE — Bromar Ops
-   Employee job scheduling with Supabase integration,
+   Employee job scheduling with Supabase persistence,
    drag-drop (desktop), mobile day-view with swipe,
    notification queue. Assignment types: one-off, duration,
-   indefinite.
-   V1.06
+   indefinite. Linked to schedule_assignments, client_sites,
+   clients, and jobs tables.
+   V1.07
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.06';
+  const PAGE_VERSION = 'V1.07';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -25,8 +26,8 @@ window.BromarPages.scheduling = (() => {
   /* ── STATE ── */
   let employees = [];
   let jobs = [];
-  let assignments = []; // { id, employeeId, jobId?, type:'job'|'site', siteName?, schedule:'oneoff'|'duration'|'indefinite', startDate, endDate?, skipDates:[], overrides:{}, recentlyChanged, updatedAt }
-  let knownSites = [];
+  let sites = [];          // from client_sites + clients join
+  let assignments = [];    // from schedule_assignments table
   let notificationQueue = [];
   let currentWeekStart = null;
   let mobileSelectedDate = null;
@@ -35,8 +36,6 @@ window.BromarPages.scheduling = (() => {
   let filterRole = 'all';
   let searchTerm = '';
   let activeModal = null;
-  let supabaseLoaded = false;
-  let loadError = null;
   let hiddenEmployees = new Set();
   let mobileExpandedEmp = null;
   let mobileShowFilters = false;
@@ -50,50 +49,179 @@ window.BromarPages.scheduling = (() => {
   const DB = {
     async init() {
       if (!window.supabase && !window.supabaseClient) {
-        await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'; s.onload = res; s.onerror = () => rej(new Error('Failed to load Supabase SDK')); document.head.appendChild(s); });
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+          s.onload = res;
+          s.onerror = () => rej(new Error('Failed to load Supabase SDK'));
+          document.head.appendChild(s);
+        });
       }
-      const sb = getSupabase(); if (!sb) throw new Error('Supabase unavailable'); return sb;
+      const sb = getSupabase();
+      if (!sb) throw new Error('Supabase unavailable');
+      return sb;
     },
+
     async fetchEmployees() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('employees').select('full_name, first_name, last_name, role, a_grade').order('full_name');
+        const { data, error } = await sb.from('employees').select('id, full_name, first_name, last_name, role, a_grade, is_active').eq('is_active', true).order('full_name');
         if (error) throw error;
-        supabaseLoaded = true; loadError = null;
-        return (data || []).map((e, i) => ({ id: 'emp-' + i, name: e.full_name || `${e.first_name || ''} ${e.last_name || ''}`.trim(), firstName: e.first_name || '', lastName: e.last_name || '', role: e.role || 'unassigned', aGrade: !!e.a_grade, avatar: ((e.first_name || '?')[0] + (e.last_name || '?')[0]).toUpperCase(), dbName: e.full_name }));
-      } catch (err) { console.error('Supabase fetch failed:', err); loadError = err.message; supabaseLoaded = false; return getFallbackEmployees(); }
+        return (data || []).map(e => ({
+          id: e.id,
+          name: e.full_name || `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+          firstName: e.first_name || '',
+          lastName: e.last_name || '',
+          role: e.role || 'unassigned',
+          aGrade: !!e.a_grade,
+          avatar: ((e.first_name || '?')[0] + (e.last_name || '?')[0]).toUpperCase()
+        }));
+      } catch (err) {
+        console.error('Employee fetch failed:', err);
+        return [];
+      }
     },
-    async searchJobs(query) {
-      const all = [
-        { id: 'j1', number: 'JOB-2401', client: 'Westfield Group', site: '123 Collins St', status: 'active', priority: 'high' },
-        { id: 'j2', number: 'JOB-2402', client: 'Lendlease', site: '45 Queen St', status: 'active', priority: 'medium' },
-        { id: 'j3', number: 'JOB-2403', client: 'Mirvac', site: '78 Bourke St', status: 'active', priority: 'low' },
-        { id: 'j4', number: 'JOB-2404', client: 'Dexus', site: '200 George St', status: 'active', priority: 'high' },
-        { id: 'j5', number: 'JOB-2405', client: 'GPT Group', site: '55 Market St', status: 'active', priority: 'medium' },
-        { id: 'j6', number: 'JOB-2406', client: 'Stockland', site: '12 Pitt St', status: 'pending', priority: 'low' },
-        { id: 'j7', number: 'JOB-2407', client: 'Charter Hall', site: '330 Spencer St', status: 'active', priority: 'high' },
-        { id: 'j8', number: 'JOB-2408', client: 'Vicinity Centres', site: '88 Exhibition St', status: 'active', priority: 'medium' }
-      ];
-      if (!query) return all; const q = query.toLowerCase();
-      return all.filter(j => j.number.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.site.toLowerCase().includes(q));
+
+    async fetchJobs() {
+      try {
+        const sb = await this.init();
+        const { data, error } = await sb.from('jobs').select('*').order('job_number', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(j => ({
+          id: j.id,
+          number: j.job_number || j.number || '?',
+          client: j.client_name || j.client || '',
+          site: j.site_name || j.site_address || j.site || '',
+          status: j.status || 'active',
+          priority: j.priority || 'medium',
+          clientId: j.client_id || null,
+          siteId: j.site_id || null
+        }));
+      } catch (err) {
+        console.warn('Jobs fetch failed:', err.message);
+        return [];
+      }
     },
-    saveAssignment(a) { const idx = assignments.findIndex(x => x.id === a.id); if (idx >= 0) assignments[idx] = a; else assignments.push(a); return a; },
-    deleteAssignment(id) { assignments = assignments.filter(a => a.id !== id); }
+
+    async fetchSites() {
+      try {
+        const sb = await this.init();
+        const { data, error } = await sb.from('client_sites').select('id, site_name, address, city, client_id, is_active, clients(name)').eq('is_active', true).order('site_name');
+        if (error) throw error;
+        return (data || []).map(s => ({
+          id: s.id,
+          name: s.site_name,
+          address: s.address || '',
+          city: s.city || '',
+          clientId: s.client_id,
+          clientName: s.clients?.name || ''
+        }));
+      } catch (err) {
+        console.warn('Sites fetch failed:', err.message);
+        return [];
+      }
+    },
+
+    async fetchAssignments() {
+      try {
+        const sb = await this.init();
+        const { data, error } = await sb.from('schedule_assignments').select('*').eq('is_active', true);
+        if (error) throw error;
+        return (data || []).map(a => ({
+          id: a.id,
+          employeeName: a.employee_name,
+          type: a.type || 'job',
+          jobNumber: a.job_number || null,
+          siteId: a.site_id || null,
+          siteName: a.site_name || null,
+          clientName: a.client_name || null,
+          schedule: a.schedule || 'oneoff',
+          startDate: a.start_date,
+          endDate: a.end_date || null,
+          skipDates: parseJsonb(a.skip_dates, []),
+          notes: a.notes || '',
+          recentlyChanged: false
+        }));
+      } catch (err) {
+        console.warn('Assignments fetch failed:', err.message);
+        return [];
+      }
+    },
+
+    async saveAssignment(a) {
+      try {
+        const sb = await this.init();
+        const row = {
+          employee_name: a.employeeName,
+          type: a.type,
+          job_number: a.jobNumber || null,
+          site_id: a.siteId || null,
+          site_name: a.siteName || null,
+          client_name: a.clientName || null,
+          schedule: a.schedule,
+          start_date: a.startDate,
+          end_date: a.endDate || null,
+          skip_dates: JSON.stringify(a.skipDates || []),
+          notes: a.notes || null,
+          is_active: true
+        };
+        if (a.id && !a.id.startsWith('local-')) {
+          const { data, error } = await sb.from('schedule_assignments').update(row).eq('id', a.id).select();
+          if (error) throw error;
+          return data?.[0] || null;
+        } else {
+          const { data, error } = await sb.from('schedule_assignments').insert(row).select();
+          if (error) throw error;
+          if (data?.[0]) a.id = data[0].id;
+          return data?.[0] || null;
+        }
+      } catch (err) {
+        console.error('Save assignment failed:', err);
+        if (!a.id) a.id = 'local-' + uid();
+        return null;
+      }
+    },
+
+    async deleteAssignment(id) {
+      if (id.startsWith('local-')) { assignments = assignments.filter(a => a.id !== id); return true; }
+      try {
+        const sb = await this.init();
+        const { error } = await sb.from('schedule_assignments').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        assignments = assignments.filter(a => a.id !== id);
+        return true;
+      } catch (err) {
+        console.error('Delete assignment failed:', err);
+        assignments = assignments.filter(a => a.id !== id);
+        return false;
+      }
+    },
+
+    async updateSkipDates(id, skipDates) {
+      if (id.startsWith('local-')) return;
+      try {
+        const sb = await this.init();
+        await sb.from('schedule_assignments').update({ skip_dates: JSON.stringify(skipDates) }).eq('id', id);
+      } catch (err) { console.error('Update skip dates failed:', err); }
+    },
+
+    async endAssignment(id, endDate) {
+      if (id.startsWith('local-')) return;
+      try {
+        const sb = await this.init();
+        await sb.from('schedule_assignments').update({ end_date: endDate }).eq('id', id);
+      } catch (err) { console.error('End assignment failed:', err); }
+    }
   };
 
-  function getFallbackEmployees() {
-    return [
-      { id: 'e1', name: 'James Carter', firstName: 'James', lastName: 'Carter', role: 'electrician', aGrade: true, avatar: 'JC', dbName: 'James Carter' },
-      { id: 'e2', name: 'Sarah Mitchell', firstName: 'Sarah', lastName: 'Mitchell', role: 'senior_electrician', aGrade: true, avatar: 'SM', dbName: 'Sarah Mitchell' },
-      { id: 'e3', name: 'Tom Nguyen', firstName: 'Tom', lastName: 'Nguyen', role: 'apprentice', aGrade: false, avatar: 'TN', dbName: 'Tom Nguyen' },
-      { id: 'e4', name: 'Lisa Park', firstName: 'Lisa', lastName: 'Park', role: 'electrician', aGrade: true, avatar: 'LP', dbName: 'Lisa Park' },
-      { id: 'e5', name: 'Dave Robinson', firstName: 'Dave', lastName: 'Robinson', role: 'engineer', aGrade: false, avatar: 'DR', dbName: 'Dave Robinson' },
-      { id: 'e6', name: 'Amy Chen', firstName: 'Amy', lastName: 'Chen', role: 'apprentice', aGrade: false, avatar: 'AC', dbName: 'Amy Chen' }
-    ];
+  function parseJsonb(val, fallback) {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') { try { return JSON.parse(val); } catch { return fallback; } }
+    return fallback;
   }
 
   /* ── HELPERS ── */
-  function uid() { return 'a' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
   function getMonday(d) { const dt = new Date(d); const day = dt.getDay(); dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1)); dt.setHours(0, 0, 0, 0); return dt; }
   function formatDate(d) { const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${d.getDate()} ${m[d.getMonth()]}`; }
   function formatDateFull(d) { const m = ['January','February','March','April','May','June','July','August','September','October','November','December']; const dn = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']; return `${dn[d.getDay()]}, ${d.getDate()} ${m[d.getMonth()]}`; }
@@ -104,10 +232,9 @@ window.BromarPages.scheduling = (() => {
   function isWeekday(dk) { const d = parseDateKey(dk); const day = d.getDay(); return day >= 1 && day <= 5; }
   function priorityColor(p) { return p === 'high' ? 'var(--error)' : p === 'medium' ? 'var(--accent)' : 'var(--success)'; }
   function timeSince(ts) { const s = Math.floor((Date.now() - ts) / 1000); if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s/60)}m ago`; if (s < 86400) return `${Math.floor(s/3600)}h ago`; return `${Math.floor(s/86400)}d ago`; }
-  function queueNotification(empId, message) { const emp = employees.find(e => e.id === empId); if (!emp) return; notificationQueue.push({ id: uid(), employeeId: empId, employeeName: emp.name, message, timestamp: Date.now(), sent: false }); }
+  function queueNotification(empName, message) { notificationQueue.push({ id: uid(), employeeName: empName, message, timestamp: Date.now(), sent: false }); }
   function roleLabel(r) { return { electrician: 'Electrician', senior_electrician: 'Senior Electrician', apprentice: 'Apprentice', engineer: 'Engineer', unassigned: 'Unassigned' }[r] || r; }
   function roleColor(r) { return { electrician: 'var(--accent)', senior_electrician: '#8b5cf6', apprentice: '#0ea5e9', engineer: '#10b981', unassigned: 'var(--text-secondary)' }[r] || 'var(--text-secondary)'; }
-  function buildKnownSites() { const s = new Set(); assignments.forEach(a => { if (a.siteName) s.add(a.siteName); }); knownSites = [...s].sort(); }
   function getFilteredEmployees() {
     let f = filterRole === 'all' ? [...employees] : employees.filter(e => e.role === filterRole);
     if (searchTerm) { const q = searchTerm.toLowerCase(); f = f.filter(e => e.name.toLowerCase().includes(q)); }
@@ -117,11 +244,13 @@ window.BromarPages.scheduling = (() => {
   function getMobileDateKey() { return mobileSelectedDate ? formatDateKey(mobileSelectedDate) : formatDateKey(new Date()); }
   function unsent() { return notificationQueue.filter(n => !n.sent).length; }
 
+  function findEmpByName(name) { return employees.find(e => e.name === name); }
+
   /* ── ASSIGNMENT RESOLUTION ── */
-  function getEffectiveAssignments(empId, dateKey) {
+  function getEffectiveAssignments(empName, dateKey) {
     const results = [];
     for (const a of assignments) {
-      if (a.employeeId !== empId) continue;
+      if (a.employeeName !== empName) continue;
       if (a.schedule === 'oneoff') {
         if (a.startDate === dateKey) results.push({ ...a, effective: true, linked: false });
         continue;
@@ -134,11 +263,42 @@ window.BromarPages.scheduling = (() => {
     }
     return results;
   }
-  function getAssignmentLabel(a) { if (a.type === 'site') return a.siteName || '?'; const j = jobs.find(x => x.id === a.jobId); return j?.number || '?'; }
-  function getAssignmentSub(a) { if (a.type === 'site') return 'Site Maintenance'; const j = jobs.find(x => x.id === a.jobId); return j?.client || ''; }
-  function getAssignmentBorderColor(a) { if (a.type === 'site') return '#0ea5e9'; const j = jobs.find(x => x.id === a.jobId); return priorityColor(j?.priority || 'low'); }
+
+  function getAssignmentLabel(a) {
+    if (a.type === 'site') return a.siteName || '?';
+    return a.jobNumber || '?';
+  }
+
+  function getAssignmentSub(a) {
+    if (a.type === 'site') return a.clientName || 'Site Maintenance';
+    const job = jobs.find(j => j.number === a.jobNumber);
+    return job?.client || a.clientName || '';
+  }
+
+  function getAssignmentBorderColor(a) {
+    if (a.type === 'site') return '#0ea5e9';
+    const job = jobs.find(j => j.number === a.jobNumber);
+    return priorityColor(job?.priority || 'medium');
+  }
+
   function scheduleLabel(s) { return { oneoff: 'One-off', duration: 'Duration', indefinite: 'Indefinite' }[s] || s; }
-  function getUnassignedJobs() { const s = new Set(assignments.map(a => a.jobId).filter(Boolean)); return jobs.filter(j => !s.has(j.id)); }
+
+  function getUnassignedJobs() {
+    const assigned = new Set(assignments.filter(a => a.type === 'job').map(a => a.jobNumber));
+    return jobs.filter(j => !assigned.has(j.number) && (j.status === 'active' || j.status === 'in_progress'));
+  }
+
+  function searchJobs(query) {
+    if (!query) return jobs.filter(j => j.status === 'active' || j.status === 'in_progress').slice(0, 12);
+    const q = query.toLowerCase();
+    return jobs.filter(j => j.number.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.site.toLowerCase().includes(q));
+  }
+
+  function searchSites(query) {
+    if (!query) return sites.slice(0, 12);
+    const q = query.toLowerCase();
+    return sites.filter(s => s.name.toLowerCase().includes(q) || s.clientName.toLowerCase().includes(q) || s.address.toLowerCase().includes(q));
+  }
 
   /* ── CHAIN ICON SVG ── */
   const CHAIN_ICON = `<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 9.5a3 3 0 004 .5l1.5-1.5a3 3 0 00-4.25-4.25L6.75 5.25"/><path d="M9.5 6.5a3 3 0 00-4-.5L4 7.5a3 3 0 004.25 4.25L9.25 10.75"/></svg>`;
@@ -164,12 +324,18 @@ window.BromarPages.scheduling = (() => {
       .sched-modal-close:hover{color:var(--text-primary)}
       .sched-modal label{display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem;margin-top:0.75rem}
       .sched-modal .sched-input,.sched-modal .sched-select{width:100%}
-      .sched-job-results{max-height:140px;overflow-y:auto;margin-top:0.4rem;display:flex;flex-direction:column;gap:0.3rem}
+      .sched-job-results{max-height:180px;overflow-y:auto;margin-top:0.4rem;display:flex;flex-direction:column;gap:0.3rem}
       .sched-job-result{padding:0.5rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-main);cursor:pointer;transition:border-color 0.15s;display:flex;justify-content:space-between;align-items:center}
       .sched-job-result:hover{border-color:var(--accent)}
       .sched-job-result.selected{border-color:var(--accent);background:var(--card-hover)}
       .sched-job-result .jr-num{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:0.8rem}
       .sched-job-result .jr-client{font-size:0.75rem;color:var(--text-secondary)}
+      .sched-site-result{padding:0.5rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-main);cursor:pointer;transition:border-color 0.15s;display:flex;flex-direction:column;gap:2px}
+      .sched-site-result:hover{border-color:#0ea5e9}
+      .sched-site-result.selected{border-color:#0ea5e9;background:rgba(14,165,233,0.06)}
+      .sched-site-result .sr-name{font-weight:700;font-size:0.8rem}
+      .sched-site-result .sr-client{font-size:0.7rem;color:var(--text-secondary)}
+      .sched-site-result .sr-addr{font-size:0.65rem;color:var(--text-secondary);font-style:italic}
       .sched-modal-actions{display:flex;gap:0.5rem;margin-top:1.25rem;justify-content:flex-end}
       .sched-modal-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1rem}
       .sched-modal-tab{padding:0.5rem 1rem;font-size:0.85rem;font-weight:600;color:var(--text-secondary);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.2s;font-family:'Outfit',sans-serif}
@@ -237,7 +403,7 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .job-type-tag{font-size:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:0.02rem 0.25rem;border-radius:3px;align-self:flex-start}
       .sched-job-card .job-actions{position:absolute;top:2px;right:3px;display:flex;gap:2px;opacity:0;transition:opacity 0.15s}
       .sched-job-card:hover .job-actions{opacity:1}
-      .sched-job-card .ja-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.7rem;line-height:1;padding:1px}
+      .sched-job-card .ja-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.7rem;line-height:1;padding:1px;pointer-events:auto}
       .sched-job-card .ja-btn:hover{color:var(--error)}
       .sched-job-card .ja-btn.end-btn:hover{color:var(--accent)}
 
@@ -329,13 +495,31 @@ window.BromarPages.scheduling = (() => {
     injectStyles(); containerRef = container;
     if (!currentWeekStart) currentWeekStart = getMonday(new Date());
     if (!mobileSelectedDate) mobileSelectedDate = new Date();
-    container.innerHTML = `<div class="page-title-wrapper"><h1>Scheduling</h1></div><div class="card"><div class="sched-empty">Loading…</div></div>`;
-    employees = await DB.fetchEmployees();
-    jobs = await DB.searchJobs('');
-    buildKnownSites();
+    container.innerHTML = `<div class="card"><div class="sched-empty">Loading…</div></div>`;
+
+    const [emps, jbs, sts, asgn] = await Promise.all([
+      DB.fetchEmployees(),
+      DB.fetchJobs(),
+      DB.fetchSites(),
+      DB.fetchAssignments()
+    ]);
+    employees = emps;
+    jobs = jbs;
+    sites = sts;
+    assignments = asgn;
+
     container.innerHTML = `<div class="sched-desktop">${buildDesktop()}</div><div class="sched-mobile">${buildMobile()}</div>`;
-    bindDesktop(container); bindMobile(container);
-    const vEl = document.getElementById('app-version'); if (vEl) vEl.textContent = `scheduling ${PAGE_VERSION}`;
+    bindDesktop(container);
+    bindMobile(container);
+    const vEl = document.getElementById('app-version');
+    if (vEl) vEl.textContent = `scheduling ${PAGE_VERSION}`;
+  }
+
+  /* Re-render without refetching all data (used after local mutations) */
+  function rerender(container) {
+    container.innerHTML = `<div class="sched-desktop">${buildDesktop()}</div><div class="sched-mobile">${buildMobile()}</div>`;
+    bindDesktop(container);
+    bindMobile(container);
   }
 
   /* ═══════════════════════════════════════
@@ -358,74 +542,73 @@ window.BromarPages.scheduling = (() => {
         </div>
         <div class="sched-toolbar-group">
           <input class="sched-input" id="dt-search" type="text" placeholder="Search employees…" value="${searchTerm}" style="width:160px;">
-          <select class="sched-select" id="dt-role"><option value="all">All roles</option>${roles.map(r => `<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
+          <select class="sched-select" id="dt-role"><option value="all">All roles</option>${roles.map(r=>`<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
           <label class="sched-toggle"><input type="checkbox" id="dt-weekends" ${showWeekends?'checked':''}> Weekends</label>
         </div>
       </div>
-      ${hiddenEmps.length ? `<div class="sched-hidden-bar"><span class="hidden-label">Hidden (${hiddenEmps.length}):</span>${hiddenEmps.map(e=>`<span class="sched-hidden-chip" data-show-emp="${e.id}">${e.name} <span class="chip-x">×</span></span>`).join('')}<button class="sched-show-all-btn" id="dt-show-all">Show all</button></div>` : ''}
+      ${hiddenEmps.length?`<div class="sched-hidden-bar"><span class="hidden-label">Hidden (${hiddenEmps.length}):</span>${hiddenEmps.map(e=>`<span class="sched-hidden-chip" data-show-emp="${e.id}">${e.name} <span class="chip-x">×</span></span>`).join('')}<button class="sched-show-all-btn" id="dt-show-all">Show all</button></div>`:''}
       <div class="sched-grid-wrap"><div class="sched-grid" style="grid-template-columns:200px repeat(${days.length},1fr);">
         <div class="sched-col-head" style="position:sticky;left:0;z-index:3;">Employee</div>
-        ${days.map(d => `<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
-        ${filtered.map(emp => {
+        ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
+        ${filtered.map(emp=>{
       return `<div class="sched-emp-cell">
             <div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
             <div class="sched-emp-info"><span class="sched-emp-name">${emp.name}</span>
               <div class="sched-emp-meta"><span class="sched-emp-role" style="background:${roleColor(emp.role)}18;color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div>
             </div><button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
-          ${days.map(d => { const dk = formatDateKey(d); const ea = getEffectiveAssignments(emp.id, dk); return `
-            <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.id}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${ea.map(a => { const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
-                return `<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
+          ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
+            <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
+                return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
                   ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}
                   <div class="job-top">${isLinked?`<span class="job-chain ${isSite?'is-site-chain':''}" title="${scheduleLabel(a.schedule)}">${CHAIN_ICON}</span>`:''}<span class="job-num">${lbl}</span></div>
                   <span class="job-client">${sub}</span>
                   <div class="job-actions">${isLinked?`<button class="ja-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip this day">⊘</button>`:''}${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}${!isLinked?`<button class="ja-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div>
-                </div>`; }).join('')}
-              <button class="cell-add" data-cell-emp="${emp.id}" data-cell-date="${dk}" title="Assign">+</button>
-            </div>`; }).join('')}`;
-    }).join('')}
+                </div>`;}).join('')}
+              <button class="cell-add" data-cell-emp="${emp.name}" data-cell-date="${dk}" title="Assign">+</button>
+            </div>`;}).join('')}`;}).join('')}
         ${filtered.length===0?'<div class="sched-empty" style="grid-column:1/-1;">No employees match your filter.</div>':''}
       </div></div>
       <div class="sched-panels">
         <div class="card"><div class="sched-panel-title">Unassigned Jobs ${unassigned.length?`<span class="sched-badge">${unassigned.length}</span>`:''}</div>
-          <div class="sched-list-scroll">${unassigned.length===0?'<div class="sched-empty">All jobs assigned</div>':''}
-            ${unassigned.map(j => `<div class="sched-unassigned-item" draggable="true" data-job-id="${j.id}"><div class="uaj-left"><span class="uaj-num">${j.number}</span><span class="uaj-client">${j.client} · ${j.site}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}
+          <div class="sched-list-scroll">${unassigned.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs loaded — check jobs table':'All jobs assigned'}</div>`:''}
+            ${unassigned.map(j=>`<div class="sched-unassigned-item" draggable="true" data-job-num="${j.number}"><div class="uaj-left"><span class="uaj-num">${j.number}</span><span class="uaj-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}
           </div></div>
         <div class="card"><div class="sched-panel-title">Notifications ${unsent()?`<span class="sched-badge">${unsent()}</span>`:''}</div>
           <div class="sched-list-scroll">${notificationQueue.length===0?'<div class="sched-empty">No pending notifications</div>':''}
-            ${notificationQueue.map(n => `<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span><span class="notif-time">${timeSince(n.timestamp)}</span>${n.sent?'<span class="notif-sent">✓ Sent</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
+            ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span><span class="notif-time">${timeSince(n.timestamp)}</span>${n.sent?'<span class="notif-sent">✓ Sent</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
           </div></div>
       </div>`;
   }
 
   function bindDesktop(container) {
     const dt = container.querySelector('.sched-desktop'); if (!dt) return;
-    dt.querySelector('#dt-prev')?.addEventListener('click', () => { currentWeekStart.setDate(currentWeekStart.getDate()-7); render(container); });
-    dt.querySelector('#dt-next')?.addEventListener('click', () => { currentWeekStart.setDate(currentWeekStart.getDate()+7); render(container); });
-    dt.querySelector('#dt-today')?.addEventListener('click', () => { currentWeekStart = getMonday(new Date()); render(container); });
-    dt.querySelector('#dt-search')?.addEventListener('input', e => { searchTerm = e.target.value; render(container); });
-    dt.querySelector('#dt-role')?.addEventListener('change', e => { filterRole = e.target.value; render(container); });
-    dt.querySelector('#dt-weekends')?.addEventListener('change', e => { showWeekends = e.target.checked; render(container); });
+    dt.querySelector('#dt-prev')?.addEventListener('click',()=>{currentWeekStart.setDate(currentWeekStart.getDate()-7);rerender(container);});
+    dt.querySelector('#dt-next')?.addEventListener('click',()=>{currentWeekStart.setDate(currentWeekStart.getDate()+7);rerender(container);});
+    dt.querySelector('#dt-today')?.addEventListener('click',()=>{currentWeekStart=getMonday(new Date());rerender(container);});
+    dt.querySelector('#dt-search')?.addEventListener('input',e=>{searchTerm=e.target.value;rerender(container);});
+    dt.querySelector('#dt-role')?.addEventListener('change',e=>{filterRole=e.target.value;rerender(container);});
+    dt.querySelector('#dt-weekends')?.addEventListener('change',e=>{showWeekends=e.target.checked;rerender(container);});
 
-    dt.querySelectorAll('.sched-emp-hide').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); hiddenEmployees.add(b.dataset.hideEmp); render(container); }));
-    dt.querySelectorAll('.sched-hidden-chip').forEach(c => c.addEventListener('click', () => { hiddenEmployees.delete(c.dataset.showEmp); render(container); }));
-    dt.querySelector('#dt-show-all')?.addEventListener('click', () => { hiddenEmployees.clear(); render(container); });
+    dt.querySelectorAll('.sched-emp-hide').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();hiddenEmployees.add(b.dataset.hideEmp);rerender(container);}));
+    dt.querySelectorAll('.sched-hidden-chip').forEach(c=>c.addEventListener('click',()=>{hiddenEmployees.delete(c.dataset.showEmp);rerender(container);}));
+    dt.querySelector('#dt-show-all')?.addEventListener('click',()=>{hiddenEmployees.clear();rerender(container);});
 
-    dt.querySelectorAll('.cell-add').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openAssignModal(container, b.dataset.cellEmp, b.dataset.cellDate); }));
-    bindCardActions(dt, container);
+    dt.querySelectorAll('.cell-add').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAssignModal(container,b.dataset.cellEmp,b.dataset.cellDate);}));
+    bindCardActions(dt,container);
 
-    dt.querySelectorAll('.sched-job-card[draggable="true"]').forEach(c => {
-      c.addEventListener('dragstart', e => { const a = assignments.find(x => x.id === c.dataset.assignId); if (!a || a.schedule !== 'oneoff') { e.preventDefault(); return; } dragData = { type: 'reassign', assignId: c.dataset.assignId }; e.dataTransfer.effectAllowed = 'move'; c.style.opacity = '0.5'; });
-      c.addEventListener('dragend', () => { c.style.opacity = '1'; dragData = null; dt.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over')); });
+    dt.querySelectorAll('.sched-job-card[draggable="true"]').forEach(c=>{
+      c.addEventListener('dragstart',e=>{const a=assignments.find(x=>x.id===c.dataset.assignId);if(!a||a.schedule!=='oneoff'){e.preventDefault();return;}dragData={type:'reassign',assignId:c.dataset.assignId};e.dataTransfer.effectAllowed='move';c.style.opacity='0.5';});
+      c.addEventListener('dragend',()=>{c.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
     });
-    dt.querySelectorAll('.sched-unassigned-item[draggable]').forEach(item => {
-      item.addEventListener('dragstart', e => { dragData = { type: 'assign', jobId: item.dataset.jobId }; e.dataTransfer.effectAllowed = 'copy'; item.style.opacity = '0.5'; });
-      item.addEventListener('dragend', () => { item.style.opacity = '1'; dragData = null; dt.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over')); });
+    dt.querySelectorAll('.sched-unassigned-item[draggable]').forEach(item=>{
+      item.addEventListener('dragstart',e=>{dragData={type:'assign',jobNumber:item.dataset.jobNum};e.dataTransfer.effectAllowed='copy';item.style.opacity='0.5';});
+      item.addEventListener('dragend',()=>{item.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
     });
-    dt.querySelectorAll('.sched-day-cell').forEach(cell => {
-      cell.addEventListener('drop', e => { e.preventDefault(); cell.classList.remove('drag-over'); if (!dragData) return; handleDrop(container, cell.dataset.emp, cell.dataset.date); });
+    dt.querySelectorAll('.sched-day-cell').forEach(cell=>{
+      cell.addEventListener('drop',e=>{e.preventDefault();cell.classList.remove('drag-over');if(!dragData)return;handleDrop(container,cell.dataset.emp,cell.dataset.date);});
     });
-    dt.querySelectorAll('.notif-send').forEach(b => b.addEventListener('click', () => { markNotifSent(container, b.dataset.notifId); }));
+    dt.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',()=>{markNotifSent(container,b.dataset.notifId);}));
   }
 
   /* ═══════════════════════════════════════
@@ -434,7 +617,7 @@ window.BromarPages.scheduling = (() => {
   function buildMobile() {
     const days = getDaysOfWeek(); const dayAbbr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const dk = getMobileDateKey(); const filtered = getFilteredEmployees();
-    const roles = [...new Set(employees.map(e => e.role))].sort();
+    const roles = [...new Set(employees.map(e=>e.role))].sort();
     return `
       <div class="sm-header">
         <div class="sm-date-nav"><button class="sm-nav-btn" id="sm-prev">‹</button><span class="sm-date-label">${formatDateFull(mobileSelectedDate)}</span><button class="sm-nav-btn" id="sm-next">›</button></div>
@@ -444,19 +627,19 @@ window.BromarPages.scheduling = (() => {
         </div>
       </div>
       <div class="sm-day-dots" id="sm-day-dots">
-        ${days.map(d => { const active = formatDateKey(d) === dk; const today = isToday(d); return `<div class="sm-day-dot ${active?'active':''} ${today&&!active?'today':''}" data-date="${formatDateKey(d)}"><span class="dot-day">${dayAbbr[d.getDay()]}</span><span class="dot-num">${d.getDate()}</span></div>`; }).join('')}
+        ${days.map(d=>{const active=formatDateKey(d)===dk;const today=isToday(d);return`<div class="sm-day-dot ${active?'active':''} ${today&&!active?'today':''}" data-date="${formatDateKey(d)}"><span class="dot-day">${dayAbbr[d.getDay()]}</span><span class="dot-num">${d.getDate()}</span></div>`;}).join('')}
       </div>
       <div class="sm-filters ${mobileShowFilters?'open':''}"><div class="sm-filters-inner">
         <input class="sched-input" id="sm-search" type="text" placeholder="Search employees…" value="${searchTerm}">
-        <select class="sched-select" id="sm-role"><option value="all">All roles</option>${roles.map(r => `<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
+        <select class="sched-select" id="sm-role"><option value="all">All roles</option>${roles.map(r=>`<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
         <label class="sched-toggle"><input type="checkbox" id="sm-weekends" ${showWeekends?'checked':''}> Show weekends</label>
       </div></div>
       <div class="sm-emp-list sm-swipe-area" id="sm-emp-list">
         ${filtered.length===0?'<div class="sched-empty">No employees match your filter.</div>':''}
-        ${filtered.map(emp => {
-      const ea = getEffectiveAssignments(emp.id, dk);
-      const expanded = mobileExpandedEmp === emp.id;
-      return `<div class="sm-emp-card ${expanded?'expanded':''} ${ea.length?'has-items':''}" data-emp-id="${emp.id}">
+        ${filtered.map(emp=>{
+      const ea=getEffectiveAssignments(emp.name,dk);
+      const expanded=mobileExpandedEmp===emp.id;
+      return`<div class="sm-emp-card ${expanded?'expanded':''} ${ea.length?'has-items':''}" data-emp-id="${emp.id}">
             <div class="sm-emp-head" data-emp-toggle="${emp.id}">
               <div class="sm-emp-head-left">
                 <div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
@@ -465,8 +648,8 @@ window.BromarPages.scheduling = (() => {
               <div class="sm-emp-head-right">${ea.length?`<span class="sm-emp-count">${ea.length}</span>`:''}<span class="sm-emp-chevron">›</span></div>
             </div>
             <div class="sm-emp-body"><div class="sm-emp-body-inner">
-              ${ea.map(a => { const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
-                return `<div class="sm-assign-card ${isSite?'is-site':'is-job'}">
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
+                return`<div class="sm-assign-card ${isSite?'is-site':'is-job'}">
                   <div class="sm-assign-left">
                     ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
                     <span class="a-label">${lbl}</span><span class="a-sub">${sub}</span>
@@ -477,114 +660,118 @@ window.BromarPages.scheduling = (() => {
                     ${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}
                     ${!isLinked?`<button class="sm-assign-btn" data-remove="${a.id}" title="Remove">×</button>`:''}
                   </div>
-                </div>`; }).join('')}
-              <button class="sm-add-btn" data-add-emp="${emp.id}" data-add-date="${dk}">+ Assign job or site</button>
-            </div></div></div>`;
-    }).join('')}
+                </div>`;}).join('')}
+              <button class="sm-add-btn" data-add-emp="${emp.name}" data-add-date="${dk}">+ Assign job or site</button>
+            </div></div></div>`;}).join('')}
       </div>
       <button class="sm-fab" id="sm-fab">+</button>`;
   }
 
   function bindMobile(container) {
     const mb = container.querySelector('.sched-mobile'); if (!mb) return;
-    mb.querySelector('#sm-prev')?.addEventListener('click', () => { mobileSelectedDate.setDate(mobileSelectedDate.getDate()-1); currentWeekStart = getMonday(mobileSelectedDate); render(container); });
-    mb.querySelector('#sm-next')?.addEventListener('click', () => { mobileSelectedDate.setDate(mobileSelectedDate.getDate()+1); currentWeekStart = getMonday(mobileSelectedDate); render(container); });
-    mb.querySelectorAll('.sm-day-dot').forEach(dot => { dot.addEventListener('click', () => { const p = dot.dataset.date.split('-'); mobileSelectedDate = new Date(+p[0], +p[1]-1, +p[2]); render(container); }); });
+    mb.querySelector('#sm-prev')?.addEventListener('click',()=>{mobileSelectedDate.setDate(mobileSelectedDate.getDate()-1);currentWeekStart=getMonday(mobileSelectedDate);rerender(container);});
+    mb.querySelector('#sm-next')?.addEventListener('click',()=>{mobileSelectedDate.setDate(mobileSelectedDate.getDate()+1);currentWeekStart=getMonday(mobileSelectedDate);rerender(container);});
+    mb.querySelectorAll('.sm-day-dot').forEach(dot=>{dot.addEventListener('click',()=>{const p=dot.dataset.date.split('-');mobileSelectedDate=new Date(+p[0],+p[1]-1,+p[2]);rerender(container);});});
     const swipeArea = mb.querySelector('#sm-emp-list');
     if (swipeArea) {
-      swipeArea.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
-      swipeArea.addEventListener('touchend', e => { const dx = e.changedTouches[0].clientX - touchStartX; const dy = e.changedTouches[0].clientY - touchStartY; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { mobileSelectedDate.setDate(mobileSelectedDate.getDate() + (dx < 0 ? 1 : -1)); currentWeekStart = getMonday(mobileSelectedDate); render(container); } }, { passive: true });
+      swipeArea.addEventListener('touchstart',e=>{touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;},{passive:true});
+      swipeArea.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-touchStartX;const dy=e.changedTouches[0].clientY-touchStartY;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){mobileSelectedDate.setDate(mobileSelectedDate.getDate()+(dx<0?1:-1));currentWeekStart=getMonday(mobileSelectedDate);rerender(container);}},{passive:true});
     }
-    mb.querySelector('#sm-filter-toggle')?.addEventListener('click', () => { mobileShowFilters = !mobileShowFilters; mb.querySelector('.sm-filters')?.classList.toggle('open', mobileShowFilters); });
-    mb.querySelector('#sm-search')?.addEventListener('input', e => { searchTerm = e.target.value; render(container); });
-    mb.querySelector('#sm-role')?.addEventListener('change', e => { filterRole = e.target.value; render(container); });
-    mb.querySelector('#sm-weekends')?.addEventListener('change', e => { showWeekends = e.target.checked; currentWeekStart = getMonday(mobileSelectedDate); render(container); });
-    mb.querySelectorAll('[data-emp-toggle]').forEach(h => { h.addEventListener('click', () => { mobileExpandedEmp = mobileExpandedEmp === h.dataset.empToggle ? null : h.dataset.empToggle; render(container); }); });
-    mb.querySelectorAll('.sm-add-btn').forEach(b => { b.addEventListener('click', e => { e.stopPropagation(); openAssignModal(container, b.dataset.addEmp, b.dataset.addDate); }); });
-    bindCardActions(mb, container);
-    mb.querySelector('#sm-fab')?.addEventListener('click', () => { openQuickAssignModal(container); });
-    mb.querySelector('#sm-notif-toggle')?.addEventListener('click', () => { openNotifSheet(container); });
+    mb.querySelector('#sm-filter-toggle')?.addEventListener('click',()=>{mobileShowFilters=!mobileShowFilters;mb.querySelector('.sm-filters')?.classList.toggle('open',mobileShowFilters);});
+    mb.querySelector('#sm-search')?.addEventListener('input',e=>{searchTerm=e.target.value;rerender(container);});
+    mb.querySelector('#sm-role')?.addEventListener('change',e=>{filterRole=e.target.value;rerender(container);});
+    mb.querySelector('#sm-weekends')?.addEventListener('change',e=>{showWeekends=e.target.checked;currentWeekStart=getMonday(mobileSelectedDate);rerender(container);});
+    mb.querySelectorAll('[data-emp-toggle]').forEach(h=>{h.addEventListener('click',()=>{mobileExpandedEmp=mobileExpandedEmp===h.dataset.empToggle?null:h.dataset.empToggle;rerender(container);});});
+    mb.querySelectorAll('.sm-add-btn').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();openAssignModal(container,b.dataset.addEmp,b.dataset.addDate);});});
+    bindCardActions(mb,container);
+    mb.querySelector('#sm-fab')?.addEventListener('click',()=>{openQuickAssignModal(container);});
+    mb.querySelector('#sm-notif-toggle')?.addEventListener('click',()=>{openNotifSheet(container);});
   }
 
   /* ═══════════════════════════════════════
      SHARED ACTIONS
      ═══════════════════════════════════════ */
   function bindCardActions(root, container) {
-    root.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); removeAssignment(container, b.dataset.remove); }));
-    root.querySelectorAll('[data-skip]').forEach(b => b.addEventListener('click', e => {
+    root.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();removeAssignment(container,b.dataset.remove);}));
+    root.querySelectorAll('[data-skip]').forEach(b=>b.addEventListener('click',e=>{
       e.stopPropagation();
-      const a = assignments.find(x => x.id === b.dataset.skip); if (!a) return;
-      if (!a.skipDates) a.skipDates = [];
+      const a = assignments.find(x=>x.id===b.dataset.skip); if(!a) return;
+      if(!a.skipDates) a.skipDates = [];
       a.skipDates.push(b.dataset.skipDate);
-      render(container);
+      DB.updateSkipDates(a.id, a.skipDates);
+      rerender(container);
     }));
-    root.querySelectorAll('[data-end]').forEach(b => b.addEventListener('click', e => {
+    root.querySelectorAll('[data-end]').forEach(b=>b.addEventListener('click',e=>{
       e.stopPropagation();
-      const a = assignments.find(x => x.id === b.dataset.end); if (!a) return;
-      const d = parseDateKey(b.dataset.endDate); d.setDate(d.getDate() - 1);
+      const a = assignments.find(x=>x.id===b.dataset.end); if(!a) return;
+      const d = parseDateKey(b.dataset.endDate); d.setDate(d.getDate()-1);
       a.endDate = formatDateKey(d);
-      const emp = employees.find(x => x.id === a.employeeId);
-      queueNotification(a.employeeId, `${getAssignmentLabel(a)} ends on ${a.endDate}`);
-      render(container);
+      DB.endAssignment(a.id, a.endDate);
+      queueNotification(a.employeeName, `${getAssignmentLabel(a)} ends on ${a.endDate}`);
+      rerender(container);
     }));
   }
 
-  function removeAssignment(container, aId) {
-    const a = assignments.find(x => x.id === aId); if (!a) return;
-    DB.deleteAssignment(aId);
-    render(container);
+  async function removeAssignment(container, aId) {
+    await DB.deleteAssignment(aId);
+    rerender(container);
   }
 
-  function handleDrop(container, empId, date) {
-    const emp = employees.find(x => x.id === empId);
+  async function handleDrop(container, empName, date) {
     if (dragData.type === 'assign') {
-      const job = jobs.find(j => j.id === dragData.jobId); if (!job) return;
-      DB.saveAssignment({ id: uid(), employeeId: empId, jobId: job.id, type: 'job', schedule: 'oneoff', startDate: date, skipDates: [], overrides: {}, recentlyChanged: true, updatedAt: Date.now() });
-      queueNotification(empId, `Assigned ${job.number} (${job.client}) on ${date}`);
+      const job = jobs.find(j=>j.number===dragData.jobNumber); if(!job) return;
+      const a = { employeeName:empName, type:'job', jobNumber:job.number, clientName:job.client, schedule:'oneoff', startDate:date, skipDates:[], recentlyChanged:true };
+      await DB.saveAssignment(a);
+      assignments.push(a);
+      queueNotification(empName, `Assigned ${job.number} on ${date}`);
     }
     if (dragData.type === 'reassign') {
-      const a = assignments.find(x => x.id === dragData.assignId); if (!a || (a.employeeId === empId && a.startDate === date)) return;
-      const oldEmp = employees.find(x => x.id === a.employeeId); const lbl = getAssignmentLabel(a);
-      a.employeeId = empId; a.startDate = date; a.recentlyChanged = true; a.updatedAt = Date.now();
-      DB.saveAssignment(a);
-      queueNotification(empId, `${lbl} reassigned to you on ${date}`);
-      if (oldEmp && oldEmp.id !== empId) queueNotification(oldEmp.id, `${lbl} removed from your schedule`);
+      const a = assignments.find(x=>x.id===dragData.assignId); if(!a||(a.employeeName===empName&&a.startDate===date)) return;
+      const oldName = a.employeeName; const lbl = getAssignmentLabel(a);
+      a.employeeName = empName; a.startDate = date; a.recentlyChanged = true;
+      await DB.saveAssignment(a);
+      queueNotification(empName, `${lbl} reassigned to you on ${date}`);
+      if(oldName!==empName) queueNotification(oldName, `${lbl} removed from your schedule`);
     }
-    dragData = null; render(container);
+    dragData = null; rerender(container);
   }
 
-  function markNotifSent(container, nId) { const n = notificationQueue.find(x => x.id === nId); if (n) { n.sent = true; render(container); } }
+  function markNotifSent(container, nId) { const n=notificationQueue.find(x=>x.id===nId); if(n){n.sent=true;rerender(container);} }
 
   /* ═══════════════════════════════════════
      ASSIGN MODAL
      ═══════════════════════════════════════ */
-  function openAssignModal(container, empId, date) {
-    const emp = employees.find(e => e.id === empId);
-    let activeTab = 'job', selectedJob = null, jobSearchResults = jobs.slice(0, 8), siteInput = '';
+  function openAssignModal(container, empName, date) {
+    const emp = findEmpByName(empName);
+    let activeTab = 'job', selectedJob = null, selectedSite = null, jobQuery = '', siteQuery = '';
     let schedType = 'oneoff', endDateVal = '';
     const overlay = document.createElement('div'); overlay.className = 'sched-modal-overlay';
 
     function rm() {
-      const existing = getEffectiveAssignments(empId, date);
-      const conflict = existing.length >= 3 ? `⚠ ${emp?.name} has ${existing.length} items on this date.` : '';
-      const canSubmit = activeTab === 'job' ? !!selectedJob : !!siteInput;
+      const existing = getEffectiveAssignments(empName, date);
+      const conflict = existing.length >= 3 ? `⚠ ${empName} has ${existing.length} items on this date.` : '';
+      const canSubmit = activeTab === 'job' ? !!selectedJob : !!selectedSite;
+      const filteredJobs = searchJobs(jobQuery);
+      const filteredSites = searchSites(siteQuery);
 
       overlay.innerHTML = `<div class="sched-modal">
         <button class="sched-modal-close" id="am-close">×</button>
         <h3>Assign to Schedule</h3>
-        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem;">${emp?.name || '—'} · starting ${date}</p>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem;">${empName} · starting ${date}</p>
         <div class="sched-modal-tabs">
           <button class="sched-modal-tab ${activeTab==='job'?'active':''}" data-tab="job">Job Number</button>
           <button class="sched-modal-tab ${activeTab==='site'?'active':''}" data-tab="site">Site Maintenance</button>
         </div>
-        ${activeTab === 'job' ? `
+        ${activeTab==='job'?`
           <label>Search Job</label>
-          <input class="sched-input" id="am-job-search" type="text" placeholder="e.g. JOB-2401" autofocus>
-          <div class="sched-job-results">${jobSearchResults.map(j => `<div class="sched-job-result ${selectedJob?.id===j.id?'selected':''}" data-jid="${j.id}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client} · ${j.site}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}</div>
-        ` : `
-          <label>Site Name</label>
-          <input class="sched-input" id="am-site-input" type="text" placeholder="e.g. Melbourne Water WTP" value="${siteInput}" list="am-site-list" autofocus>
-          <datalist id="am-site-list">${knownSites.map(s => `<option value="${s}">`).join('')}</datalist>
+          <input class="sched-input" id="am-job-search" type="text" placeholder="Search by job number, client or site…" value="${jobQuery}" autofocus>
+          <div class="sched-job-results">${filteredJobs.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs found in database':'No matching jobs'}</div>`:''}
+            ${filteredJobs.map(j=>`<div class="sched-job-result ${selectedJob?.number===j.number?'selected':''}" data-jnum="${j.number}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}</div>
+        `:`
+          <label>Search Site</label>
+          <input class="sched-input" id="am-site-search" type="text" placeholder="Search by site name, client or address…" value="${siteQuery}" autofocus>
+          <div class="sched-job-results">${filteredSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found in database':'No matching sites'}</div>`:''}
+            ${filteredSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span>${s.address?`<span class="sr-addr">${s.address}${s.city?', '+s.city:''}</span>`:''}</div>`).join('')}</div>
         `}
         <label>Schedule Type</label>
         <div class="sched-schedule-type">
@@ -593,7 +780,7 @@ window.BromarPages.scheduling = (() => {
           <button class="sched-stype-btn ${schedType==='indefinite'?'active':''}" data-stype="indefinite">Indefinite</button>
         </div>
         ${schedType==='duration'?`<div class="sched-date-row"><div style="flex:1"><label>End Date</label><input class="sched-input" id="am-end-date" type="date" value="${endDateVal}"></div></div>`:''}
-        ${schedType==='indefinite'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">Repeats Mon–Fri until manually ended. Skip individual days or end the assignment from any day on the grid.</p>':''}
+        ${schedType==='indefinite'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">Repeats Mon–Fri until manually ended. Skip individual days or end from the grid.</p>':''}
         ${schedType==='duration'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem;">Repeats Mon–Fri between start and end dates. Skip individual days from the grid.</p>':''}
         ${conflict?`<div class="sched-conflict">${conflict}</div>`:''}
         <div class="sched-modal-actions">
@@ -602,38 +789,46 @@ window.BromarPages.scheduling = (() => {
         </div>
       </div>`;
 
-      overlay.querySelector('#am-close')?.addEventListener('click', close);
-      overlay.querySelector('#am-cancel')?.addEventListener('click', close);
-      overlay.querySelectorAll('.sched-modal-tab').forEach(t => t.addEventListener('click', () => { activeTab = t.dataset.tab; selectedJob = null; siteInput = ''; rm(); }));
-      overlay.querySelectorAll('.sched-stype-btn').forEach(b => b.addEventListener('click', () => { schedType = b.dataset.stype; rm(); }));
+      overlay.querySelector('#am-close')?.addEventListener('click',close);
+      overlay.querySelector('#am-cancel')?.addEventListener('click',close);
+      overlay.querySelectorAll('.sched-modal-tab').forEach(t=>t.addEventListener('click',()=>{activeTab=t.dataset.tab;selectedJob=null;selectedSite=null;jobQuery='';siteQuery='';rm();}));
+      overlay.querySelectorAll('.sched-stype-btn').forEach(b=>b.addEventListener('click',()=>{schedType=b.dataset.stype;rm();}));
 
-      if (activeTab === 'job') {
-        overlay.querySelector('#am-job-search')?.addEventListener('input', async e => { jobSearchResults = await DB.searchJobs(e.target.value); selectedJob = null; const v = e.target.value; rm(); const i = overlay.querySelector('#am-job-search'); if (i) { i.value = v; i.focus(); } });
-        overlay.querySelectorAll('.sched-job-result').forEach(el => el.addEventListener('click', () => { selectedJob = jobs.find(j => j.id === el.dataset.jid); rm(); }));
+      if(activeTab==='job'){
+        const input = overlay.querySelector('#am-job-search');
+        input?.addEventListener('input',e=>{jobQuery=e.target.value;selectedJob=null;rm();const i=overlay.querySelector('#am-job-search');if(i){i.value=jobQuery;i.focus();}});
+        overlay.querySelectorAll('.sched-job-result').forEach(el=>el.addEventListener('click',()=>{selectedJob=jobs.find(j=>j.number===el.dataset.jnum);rm();}));
       } else {
-        overlay.querySelector('#am-site-input')?.addEventListener('input', e => { siteInput = e.target.value.trim(); const v = siteInput; rm(); const i = overlay.querySelector('#am-site-input'); if (i) { i.value = v; i.focus(); } });
+        const input = overlay.querySelector('#am-site-search');
+        input?.addEventListener('input',e=>{siteQuery=e.target.value;selectedSite=null;rm();const i=overlay.querySelector('#am-site-search');if(i){i.value=siteQuery;i.focus();}});
+        overlay.querySelectorAll('.sched-site-result').forEach(el=>el.addEventListener('click',()=>{selectedSite=sites.find(s=>s.id===el.dataset.sid);rm();}));
       }
-      overlay.querySelector('#am-end-date')?.addEventListener('change', e => { endDateVal = e.target.value; });
+      overlay.querySelector('#am-end-date')?.addEventListener('change',e=>{endDateVal=e.target.value;});
 
-      overlay.querySelector('#am-submit')?.addEventListener('click', () => {
-        const a = { id: uid(), employeeId: empId, startDate: date, schedule: schedType, endDate: schedType === 'duration' ? (endDateVal || null) : null, skipDates: [], overrides: {}, recentlyChanged: true, updatedAt: Date.now() };
-        if (activeTab === 'job') { if (!selectedJob) return; a.type = 'job'; a.jobId = selectedJob.id; }
-        else { if (!siteInput) return; a.type = 'site'; a.siteName = siteInput; if (!knownSites.includes(siteInput)) knownSites.push(siteInput); }
-        DB.saveAssignment(a);
-        const lbl = activeTab === 'job' ? selectedJob.number : siteInput;
-        const schedDesc = schedType === 'oneoff' ? date : schedType === 'indefinite' ? 'indefinitely from ' + date : `${date} to ${endDateVal || '?'}`;
-        queueNotification(empId, `Assigned ${lbl} ${schedDesc}`);
-        close(); render(container);
+      overlay.querySelector('#am-submit')?.addEventListener('click',async()=>{
+        const a = {employeeName:empName, schedule:schedType, startDate:date, endDate:schedType==='duration'?(endDateVal||null):null, skipDates:[], recentlyChanged:true};
+        if(activeTab==='job'){
+          if(!selectedJob) return;
+          a.type='job'; a.jobNumber=selectedJob.number; a.clientName=selectedJob.client;
+        } else {
+          if(!selectedSite) return;
+          a.type='site'; a.siteId=selectedSite.id; a.siteName=selectedSite.name; a.clientName=selectedSite.clientName;
+        }
+        await DB.saveAssignment(a);
+        assignments.push(a);
+        const lbl = activeTab==='job'?selectedJob.number:selectedSite.name;
+        const schedDesc = schedType==='oneoff'?date:schedType==='indefinite'?'indefinitely from '+date:`${date} to ${endDateVal||'?'}`;
+        queueNotification(empName, `Assigned ${lbl} ${schedDesc}`);
+        close(); rerender(container);
       });
     }
-
-    function close() { overlay.remove(); activeModal = null; }
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    rm(); document.body.appendChild(overlay); activeModal = overlay;
+    function close(){overlay.remove();activeModal=null;}
+    overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
+    rm();document.body.appendChild(overlay);activeModal=overlay;
   }
 
   function openQuickAssignModal(container) {
-    const dk = getMobileDateKey(); let selectedEmp = null;
+    const dk = getMobileDateKey(); let selectedEmpName = null;
     const overlay = document.createElement('div'); overlay.className = 'sched-modal-overlay';
     function rq() {
       const filtered = getFilteredEmployees();
@@ -641,17 +836,17 @@ window.BromarPages.scheduling = (() => {
         <button class="sched-modal-close" id="qm-close">×</button>
         <h3>Quick Assign — ${formatDateFull(mobileSelectedDate)}</h3>
         <label>Select Employee</label>
-        <select class="sched-select" id="qm-emp" style="width:100%"><option value="">Choose…</option>${filtered.map(e => `<option value="${e.id}" ${selectedEmp===e.id?'selected':''}>${e.name} (${roleLabel(e.role)})</option>`).join('')}</select>
-        <div class="sched-modal-actions"><button class="btn-secondary" id="qm-cancel">Cancel</button><button class="btn-primary" id="qm-next" ${!selectedEmp?'disabled style="opacity:0.5;pointer-events:none"':''}>Next</button></div>
+        <select class="sched-select" id="qm-emp" style="width:100%"><option value="">Choose…</option>${filtered.map(e=>`<option value="${e.name}" ${selectedEmpName===e.name?'selected':''}>${e.name} (${roleLabel(e.role)})</option>`).join('')}</select>
+        <div class="sched-modal-actions"><button class="btn-secondary" id="qm-cancel">Cancel</button><button class="btn-primary" id="qm-next" ${!selectedEmpName?'disabled style="opacity:0.5;pointer-events:none"':''}>Next</button></div>
       </div>`;
-      overlay.querySelector('#qm-close')?.addEventListener('click', close);
-      overlay.querySelector('#qm-cancel')?.addEventListener('click', close);
-      overlay.querySelector('#qm-emp')?.addEventListener('change', e => { selectedEmp = e.target.value; rq(); });
-      overlay.querySelector('#qm-next')?.addEventListener('click', () => { if (!selectedEmp) return; close(); openAssignModal(container, selectedEmp, dk); });
+      overlay.querySelector('#qm-close')?.addEventListener('click',close);
+      overlay.querySelector('#qm-cancel')?.addEventListener('click',close);
+      overlay.querySelector('#qm-emp')?.addEventListener('change',e=>{selectedEmpName=e.target.value;rq();});
+      overlay.querySelector('#qm-next')?.addEventListener('click',()=>{if(!selectedEmpName) return;close();openAssignModal(container,selectedEmpName,dk);});
     }
-    function close() { overlay.remove(); activeModal = null; }
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    rq(); document.body.appendChild(overlay); activeModal = overlay;
+    function close(){overlay.remove();activeModal=null;}
+    overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
+    rq();document.body.appendChild(overlay);activeModal=overlay;
   }
 
   function openNotifSheet(container) {
@@ -659,16 +854,16 @@ window.BromarPages.scheduling = (() => {
     function rs() {
       overlay.innerHTML = `<div class="sm-notif-sheet"><h3>Notifications ${unsent()?`(${unsent()} pending)`:''}</h3>
         <div style="display:flex;flex-direction:column;gap:0.4rem;">${notificationQueue.length===0?'<div class="sched-empty">No notifications</div>':''}
-          ${notificationQueue.map(n => `<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span>${n.sent?'<span class="notif-sent">✓</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
+          ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span>${n.sent?'<span class="notif-sent">✓</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
         </div></div>`;
-      overlay.querySelectorAll('.notif-send').forEach(b => b.addEventListener('click', () => { const n = notificationQueue.find(x => x.id === b.dataset.notifId); if (n) { n.sent = true; rs(); } }));
+      overlay.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',()=>{const n=notificationQueue.find(x=>x.id===b.dataset.notifId);if(n){n.sent=true;rs();}}));
     }
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    rs(); document.body.appendChild(overlay);
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+    rs();document.body.appendChild(overlay);
   }
 
   /* ── DESTROY ── */
-  function destroy() { if (activeModal) { activeModal.remove(); activeModal = null; } removeStyles(); containerRef = null; }
+  function destroy() { if(activeModal){activeModal.remove();activeModal=null;} removeStyles(); containerRef=null; }
 
-  return { title: 'Scheduling', version: PAGE_VERSION, render, destroy };
+  return { title:'Scheduling', version:PAGE_VERSION, render, destroy };
 })();
