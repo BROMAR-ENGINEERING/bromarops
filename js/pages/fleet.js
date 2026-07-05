@@ -1,10 +1,10 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.02)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.03)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.02';
+  const PAGE_VERSION = 'V1.03';
 
   /* ── SUPABASE ── */
   const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -19,6 +19,7 @@ window.BromarPages.fleet = (() => {
 
   /* ── STATE ── */
   let vehicles = [];
+  let employees = [];
   let audits = [];
   let filterType = 'ALL';
   let filterStatus = 'ALL';
@@ -45,20 +46,30 @@ window.BromarPages.fleet = (() => {
   async function loadVehicles() {
     const c = getClient(); if (!c) return;
     const { data, error } = await c.from('vehicles').select('*').order('plant_no');
-    if (!error && data) vehicles = data;
+    if (error) { console.error('Fleet: loadVehicles', error); return; }
+    if (data) vehicles = data;
+  }
+
+  async function loadEmployees() {
+    const c = getClient(); if (!c) return;
+    const { data, error } = await c.from('employees').select('full_name, is_active').order('full_name');
+    if (error) { console.error('Fleet: loadEmployees', error); return; }
+    if (data) employees = data.filter(e => e.is_active !== false);
   }
 
   async function loadAudits(vehicleId) {
     const c = getClient(); if (!c) return [];
     const { data, error } = await c.from('vehicle_audits').select('*').eq('vehicle_id', vehicleId).order('submitted_at', { ascending: false }).limit(20);
-    return (!error && data) ? data : [];
+    if (error) { console.error('Fleet: loadAudits', error); return []; }
+    return data || [];
   }
 
   async function loadChecks(auditId) {
     if (auditChecks[auditId]) return auditChecks[auditId];
     const c = getClient(); if (!c) return [];
     const { data, error } = await c.from('vehicle_audit_checks').select('*').eq('audit_id', auditId).order('sort_order');
-    if (!error && data) { auditChecks[auditId] = data; return data; }
+    if (error) { console.error('Fleet: loadChecks', error); return []; }
+    if (data) { auditChecks[auditId] = data; return data; }
     return [];
   }
 
@@ -67,17 +78,29 @@ window.BromarPages.fleet = (() => {
     const user = prompt('Your name (actioned by):');
     if (!user) return;
     const notes = prompt('Action notes (optional):') || '';
-    await c.from('vehicle_audits').update({
+    const { error } = await c.from('vehicle_audits').update({
       actioned: true, actioned_by: user,
       actioned_at: new Date().toISOString(), action_notes: notes
     }).eq('id', auditId);
+    if (error) { alert('Failed to action audit: ' + error.message); return; }
     if (selectedVehicle) { audits = await loadAudits(selectedVehicle.id); refresh(); }
   }
 
   async function saveVehicle(data, editId) {
     const c = getClient(); if (!c) return;
-    if (editId) { await c.from('vehicles').update(data).eq('id', editId); }
-    else { await c.from('vehicles').insert([data]); }
+    let result;
+    if (editId) {
+      result = await c.from('vehicles').update(data).eq('id', editId);
+    } else {
+      result = await c.from('vehicles').insert([data]);
+    }
+    if (result.error) {
+      const msg = result.error.message || '';
+      if (msg.includes('duplicate') || msg.includes('unique')) { alert('A vehicle with that Plant Number already exists.'); }
+      else if (msg.includes('foreign') || msg.includes('violates')) { alert('Assigned To must match an existing employee name, or be left blank.'); }
+      else { alert('Save failed: ' + msg); }
+      return;
+    }
     await loadVehicles();
     if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
     closeModal(); refresh();
@@ -331,36 +354,43 @@ window.BromarPages.fleet = (() => {
   /* ── VEHICLE MODAL ── */
   function vehicleModal(v) {
     const isEdit = !!v;
+    const empOpts = employees.map(e =>
+      `<option value="${e.full_name}" ${(isEdit && v.assigned_to === e.full_name) ? 'selected' : ''}>${e.full_name}</option>`
+    ).join('');
+
     return `<div class="fleet-modal-overlay" id="fleet-modal-overlay">
       <div class="fleet-modal">
         <h2>${isEdit ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
         <label>Plant Number</label>
-        <input id="fm-plantno" value="${isEdit?v.plant_no:''}" placeholder="e.g. P-001">
+        <input id="fm-plantno" value="${isEdit ? v.plant_no : ''}" placeholder="e.g. P-001" ${isEdit ? 'readonly style="opacity:.6;cursor:not-allowed"' : ''}>
         <label>Plant Name</label>
-        <input id="fm-plantname" value="${isEdit?v.plant_name:''}" placeholder="e.g. Toyota HiLux #1">
+        <input id="fm-plantname" value="${isEdit ? v.plant_name : ''}" placeholder="e.g. Toyota HiLux #1">
         <label>Plant Type</label>
-        <input id="fm-planttype" value="${isEdit?(v.plant_type||''):''}" placeholder="e.g. Ute, Truck, Van">
+        <input id="fm-planttype" value="${isEdit ? (v.plant_type || '') : ''}" placeholder="e.g. Ute, Truck, Van">
         <label>Registration</label>
-        <input id="fm-rego" value="${isEdit?(v.rego_no||''):''}" placeholder="e.g. ABC-123">
+        <input id="fm-rego" value="${isEdit ? (v.rego_no || '') : ''}" placeholder="e.g. ABC-123">
         <label>Make</label>
-        <input id="fm-make" value="${isEdit?(v.make||''):''}" placeholder="e.g. Toyota">
+        <input id="fm-make" value="${isEdit ? (v.make || '') : ''}" placeholder="e.g. Toyota">
         <label>Model</label>
-        <input id="fm-model" value="${isEdit?(v.model||''):''}" placeholder="e.g. HiLux SR5">
+        <input id="fm-model" value="${isEdit ? (v.model || '') : ''}" placeholder="e.g. HiLux SR5">
         <label>Year</label>
-        <input id="fm-year" type="number" value="${isEdit?(v.year||''):''}" min="1990" max="2035">
+        <input id="fm-year" type="number" value="${isEdit ? (v.year || '') : ''}" min="1990" max="2035">
         <label>VIN</label>
-        <input id="fm-vin" value="${isEdit?(v.vin||''):''}" placeholder="Vehicle Identification Number">
+        <input id="fm-vin" value="${isEdit ? (v.vin || '') : ''}" placeholder="Vehicle Identification Number">
         <label>Assigned To</label>
-        <input id="fm-assigned" value="${isEdit?(v.assigned_to||''):''}" placeholder="Driver / operator name">
+        <select id="fm-assigned">
+          <option value="">— Unassigned —</option>
+          ${empOpts}
+        </select>
         <label>Status</label>
         <select id="fm-status">
-          ${['active','out_of_service','retired','sold'].map(s => `<option value="${s}" ${(isEdit&&v.status===s)?'selected':''}>${statusLabel(s)}</option>`).join('')}
+          ${['active', 'out_of_service', 'retired', 'sold'].map(s => `<option value="${s}" ${(isEdit && v.status === s) ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
         </select>
         <label>Notes</label>
-        <textarea id="fm-notes" placeholder="Optional notes…">${isEdit?(v.notes||''):''}</textarea>
+        <textarea id="fm-notes" placeholder="Optional notes…">${isEdit ? (v.notes || '') : ''}</textarea>
         <div class="fleet-modal-actions">
           <button class="btn-secondary" id="fm-cancel">Cancel</button>
-          <button class="btn-primary" id="fm-save" data-edit-id="${isEdit?v.id:''}" style="padding:.7rem 1.5rem">${isEdit?'Update':'Add Vehicle'}</button>
+          <button class="btn-primary" id="fm-save" data-edit-id="${isEdit ? v.id : ''}" style="padding:.7rem 1.5rem">${isEdit ? 'Update' : 'Add Vehicle'}</button>
         </div>
       </div>
     </div>`;
@@ -371,7 +401,7 @@ window.BromarPages.fleet = (() => {
     root = container;
     lockViewport();
     root.innerHTML = STYLES + '<div class="fleet-loading">Loading fleet…</div>';
-    await loadVehicles();
+    await Promise.all([loadVehicles(), loadEmployees()]);
     drawPage();
   }
 
@@ -414,7 +444,7 @@ window.BromarPages.fleet = (() => {
         selectedVehicle = v; activeTab = 'details'; expandedAuditId = null;
         audits = await loadAudits(v.id);
         refresh();
-        root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior:'smooth', block:'start' });
+        root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
 
@@ -464,6 +494,7 @@ window.BromarPages.fleet = (() => {
       const plantNo = overlay.querySelector('#fm-plantno').value.trim();
       const plantName = overlay.querySelector('#fm-plantname').value.trim();
       if (!plantNo || !plantName) { alert('Plant Number and Plant Name are required.'); return; }
+      const assignedVal = overlay.querySelector('#fm-assigned').value;
       const data = {
         plant_no: plantNo,
         plant_name: plantName,
@@ -473,11 +504,12 @@ window.BromarPages.fleet = (() => {
         model: overlay.querySelector('#fm-model').value.trim() || null,
         year: +overlay.querySelector('#fm-year').value || null,
         vin: overlay.querySelector('#fm-vin').value.trim() || null,
-        assigned_to: overlay.querySelector('#fm-assigned').value.trim() || null,
+        assigned_to: assignedVal || null,
         status: overlay.querySelector('#fm-status').value,
         notes: overlay.querySelector('#fm-notes').value.trim() || null
       };
-      saveVehicle(data, savev.dataset.editId || null);
+      const editId = savev.dataset.editId;
+      saveVehicle(data, editId || null);
     };
   }
 
