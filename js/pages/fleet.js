@@ -1,23 +1,40 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.07)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.08)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.07';
+  const PAGE_VERSION = 'V1.08';
 
-  /* ── SUPABASE — use the app-wide client ── */
-  function getClient() {
-    return window.supabaseClient || null;
+  /* ── SUPABASE ── */
+  const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
+  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+  let sb = null;
+
+  function loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
   }
 
-  async function waitForClient(maxWait) {
-    const deadline = Date.now() + (maxWait || 3000);
-    while (!window.supabaseClient && Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 100));
+  async function ensureClient() {
+    if (sb) return sb;
+    if (window.supabaseClient) { sb = window.supabaseClient; return sb; }
+    if (!window.supabase?.createClient) {
+      const cdns = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+      ];
+      for (const url of cdns) {
+        try { await loadScript(url); if (window.supabase?.createClient) break; } catch { continue; }
+      }
     }
-    if (!window.supabaseClient) console.error('Fleet: supabaseClient not found on window');
-    return window.supabaseClient || null;
+    if (!window.supabase?.createClient) throw new Error('Supabase library failed to load');
+    sb = window.supabase.createClient(SB_URL, SB_KEY);
+    window.supabaseClient = sb;
+    return sb;
   }
 
   /* ── CONSTANTS ── */
@@ -38,10 +55,8 @@ window.BromarPages.fleet = (() => {
   let expandedAuditId = null;
   let auditChecks = {};
   let root = null;
-  let sb = null;
 
   /* ── HELPERS ── */
-  const today = () => new Date().toISOString().split('T')[0];
   const statusLabel = s => ({ active:'Active', out_of_service:'Out of Service', retired:'Retired', sold:'Sold' }[s] || s);
   const statusBadge = s => ({ active:'fleet-st-active', out_of_service:'fleet-st-shop', retired:'fleet-st-inactive', sold:'fleet-st-inactive' }[s] || '');
   const faultBadge = n => n > 0 ? `<span class="fleet-badge fleet-overdue">${n} Fault${n>1?'s':''}</span>` : `<span class="fleet-badge fleet-ok">Clear</span>`;
@@ -54,84 +69,66 @@ window.BromarPages.fleet = (() => {
 
   function yearOptions(selected) {
     let html = '<option value="">— N/A —</option>';
-    for (let y = YEAR_END; y >= YEAR_START; y--) {
-      html += `<option value="${y}" ${selected === y ? 'selected' : ''}>${y}</option>`;
-    }
+    for (let y = YEAR_END; y >= YEAR_START; y--) html += `<option value="${y}" ${selected === y ? 'selected' : ''}>${y}</option>`;
     return html;
   }
 
   /* ── DATA ── */
   async function loadVehicles() {
-    if (!sb) return;
-    const { data, error } = await sb.from('vehicles').select('*').order('plant_no');
+    const c = await ensureClient();
+    const { data, error } = await c.from('vehicles').select('*').order('plant_no');
     if (error) { console.error('Fleet: loadVehicles', error.message); return; }
     if (data) vehicles = data;
   }
 
   async function loadEmployees() {
-    if (!sb) return;
-    try {
-      const { data, error } = await sb.from('employees').select('full_name, is_active').order('full_name');
-      if (error) { console.error('Fleet: loadEmployees', error.message); return; }
-      if (data) employees = data.filter(e => e.is_active !== false);
-    } catch (err) { console.error('Fleet: loadEmployees exception', err); }
+    const c = await ensureClient();
+    const { data, error } = await c.from('employees').select('full_name, is_active').order('full_name');
+    if (error) { console.error('Fleet: loadEmployees', error.message); return; }
+    if (data) employees = data.filter(e => e.is_active !== false);
   }
 
   async function loadAudits(vehicleId) {
-    if (!sb) return [];
-    const { data, error } = await sb.from('vehicle_audits').select('*').eq('vehicle_id', vehicleId).order('submitted_at', { ascending: false }).limit(20);
+    const c = await ensureClient();
+    const { data, error } = await c.from('vehicle_audits').select('*').eq('vehicle_id', vehicleId).order('submitted_at', { ascending: false }).limit(20);
     if (error) { console.error('Fleet: loadAudits', error.message); return []; }
     return data || [];
   }
 
   async function loadChecks(auditId) {
     if (auditChecks[auditId]) return auditChecks[auditId];
-    if (!sb) return [];
-    const { data, error } = await sb.from('vehicle_audit_checks').select('*').eq('audit_id', auditId).order('sort_order');
+    const c = await ensureClient();
+    const { data, error } = await c.from('vehicle_audit_checks').select('*').eq('audit_id', auditId).order('sort_order');
     if (error) { console.error('Fleet: loadChecks', error.message); return []; }
     if (data) { auditChecks[auditId] = data; return data; }
     return [];
   }
 
   async function actionAudit(auditId) {
-    if (!sb) return;
+    const c = await ensureClient();
     const user = prompt('Your name (actioned by):');
     if (!user) return;
     const notes = prompt('Action notes (optional):') || '';
-    const { error } = await sb.from('vehicle_audits').update({
-      actioned: true, actioned_by: user,
-      actioned_at: new Date().toISOString(), action_notes: notes
-    }).eq('id', auditId);
-    if (error) { alert('Failed to action audit: ' + error.message); return; }
+    const { error } = await c.from('vehicle_audits').update({ actioned: true, actioned_by: user, actioned_at: new Date().toISOString(), action_notes: notes }).eq('id', auditId);
+    if (error) { alert('Failed: ' + error.message); return; }
     if (selectedVehicle) { audits = await loadAudits(selectedVehicle.id); refresh(); }
   }
 
   async function saveVehicle(data, editId) {
-    if (!sb) { alert('Database connection unavailable.'); return; }
-    console.log('Fleet: saving', editId ? 'UPDATE' : 'INSERT', JSON.stringify(data));
-    try {
-      let result;
-      if (editId) { result = await sb.from('vehicles').update(data).eq('id', editId); }
-      else { result = await sb.from('vehicles').insert([data]); }
-      if (result.error) {
-        console.error('Fleet: saveVehicle', result.error);
-        alert('Save failed:\n' + (result.error.message || JSON.stringify(result.error)));
-        return;
-      }
-      await loadVehicles();
-      if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
-      closeModal();
-      refresh();
-    } catch (err) {
-      console.error('Fleet: saveVehicle exception', err);
-      alert('Save failed: ' + err.message);
-    }
+    const c = await ensureClient();
+    let result;
+    if (editId) result = await c.from('vehicles').update(data).eq('id', editId);
+    else result = await c.from('vehicles').insert([data]);
+    if (result.error) { alert('Save failed:\n' + (result.error.message || JSON.stringify(result.error))); return; }
+    await loadVehicles();
+    if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
+    closeModal(); refresh();
   }
 
   async function deleteVehicle(id) {
-    if (!sb) return;
-    const { error } = await sb.from('vehicles').delete().eq('id', id);
-    if (error) { alert('Cannot delete — vehicle may have linked audits.\n' + error.message); return; }
+    const c = await ensureClient();
+    const { error } = await c.from('vehicles').delete().eq('id', id);
+    if (error) { alert('Cannot delete:\n' + error.message); return; }
     vehicles = vehicles.filter(v => v.id !== id);
     selectedVehicle = null; refresh();
   }
@@ -258,7 +255,6 @@ window.BromarPages.fleet = (() => {
       <td>${v.assigned_to || '<span style="color:var(--text-secondary)">Unassigned</span>'}</td>
       <td><span class="fleet-badge ${statusBadge(v.status)}">${statusLabel(v.status)}</span></td>
     </tr>`).join('') : '<tr><td colspan="6" class="fleet-empty">No vehicles found</td></tr>';
-
     return `
     <div class="fleet-toolbar">
       <div class="fleet-search-wrap">
@@ -273,18 +269,14 @@ window.BromarPages.fleet = (() => {
         <button class="fleet-fbtn ${filterStatus==='ALL'?'active':''}" data-fs="ALL">All Status</button>
         ${STATUS_OPTS.map(s => `<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}
       </div>
-      <div class="fleet-actions">
-        <button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button>
-      </div>
+      <div class="fleet-actions"><button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button></div>
     </div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div class="fleet-table-wrap">
-        <table class="fleet-table">
-          <thead><tr><th>Plant #</th><th>Name</th><th>Rego</th><th>Type</th><th>Assigned To</th><th>Status</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+    <div class="card" style="padding:0;overflow:hidden"><div class="fleet-table-wrap">
+      <table class="fleet-table">
+        <thead><tr><th>Plant #</th><th>Name</th><th>Rego</th><th>Type</th><th>Assigned To</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div></div>`;
   }
 
   /* ── DETAIL ── */
@@ -309,99 +301,58 @@ window.BromarPages.fleet = (() => {
         <button class="btn-secondary fleet-delete-vehicle" data-id="${v.id}" style="padding:.5rem 1rem;font-size:.82rem;color:var(--error);border-color:var(--error)">Delete</button>
       </div>`;
     } else if (activeTab === 'audits') {
-      if (!audits.length) {
-        tabContent = '<p class="fleet-empty">No audit records for this vehicle.</p>';
-      } else {
+      if (!audits.length) { tabContent = '<p class="fleet-empty">No audit records for this vehicle.</p>'; }
+      else {
         tabContent = audits.map(a => {
           const expanded = expandedAuditId === a.id;
           const checks = auditChecks[a.id] || [];
           let expandHtml = '';
           if (expanded && checks.length) {
             expandHtml = `<div class="fleet-audit-expand">
-              ${checks.map(ck => {
-                const cls = ck.status === 'FAULT' ? 'fleet-check-fault' : ck.status === 'NA' ? 'fleet-check-na' : 'fleet-check-ok';
-                return `<div class="fleet-check-row"><span>${ck.item_text}</span><span><span class="${cls}">${ck.status}</span>${ck.comment ? `<span class="fleet-check-comment">${ck.comment}</span>` : ''}</span></div>`;
-              }).join('')}
-              ${a.defect_details ? `<div class="fleet-defect-box"><strong>Defect:</strong> ${a.defect_details}${a.defect_reported_by ? ` — reported by ${a.defect_reported_by}` : ''}${a.defect_date ? ` (${a.defect_date})` : ''}</div>` : ''}
+              ${checks.map(ck => { const cls = ck.status==='FAULT'?'fleet-check-fault':ck.status==='NA'?'fleet-check-na':'fleet-check-ok'; return `<div class="fleet-check-row"><span>${ck.item_text}</span><span><span class="${cls}">${ck.status}</span>${ck.comment?`<span class="fleet-check-comment">${ck.comment}</span>`:''}</span></div>`; }).join('')}
+              ${a.defect_details ? `<div class="fleet-defect-box"><strong>Defect:</strong> ${a.defect_details}${a.defect_reported_by?' — '+a.defect_reported_by:''}${a.defect_date?' ('+a.defect_date+')':''}</div>` : ''}
               <div class="fleet-action-row ${a.actioned?'done':''}">
-                ${a.actioned
-                  ? `<span>✔ Actioned by <strong>${a.actioned_by}</strong> on ${new Date(a.actioned_at).toLocaleDateString()}${a.action_notes ? ' — '+a.action_notes : ''}</span>`
-                  : `<button class="btn-primary fleet-action-btn" data-audit="${a.id}" style="padding:.4rem .9rem;font-size:.8rem">Mark Actioned</button>`}
-              </div>
-            </div>`;
-          } else if (expanded) {
-            expandHtml = '<div class="fleet-audit-expand fleet-loading">Loading checks…</div>';
-          }
+                ${a.actioned ? `<span>✔ Actioned by <strong>${a.actioned_by}</strong> on ${new Date(a.actioned_at).toLocaleDateString()}${a.action_notes?' — '+a.action_notes:''}</span>` : `<button class="btn-primary fleet-action-btn" data-audit="${a.id}" style="padding:.4rem .9rem;font-size:.8rem">Mark Actioned</button>`}
+              </div></div>`;
+          } else if (expanded) { expandHtml = '<div class="fleet-audit-expand fleet-loading">Loading…</div>'; }
           return `<div class="fleet-audit-card" data-audit-id="${a.id}">
-            <div class="fleet-audit-top">
-              <div><strong>${a.audit_type_id}</strong><span style="margin-left:.5rem">${faultBadge(a.fault_count)}</span></div>
-              <span style="font-size:.78rem;color:var(--text-secondary)">${new Date(a.submitted_at).toLocaleDateString()}</span>
-            </div>
-            <div class="fleet-audit-meta">Operator: ${a.operator_name} · Week: ${a.week_commencing}${a.current_km_hours ? ` · ${Number(a.current_km_hours).toLocaleString()} km/hrs` : ''} · Checks: ${a.ok_count} OK / ${a.fault_count} Fault / ${a.na_count} N/A</div>
-            ${a.notes ? `<div style="margin-top:.4rem;font-size:.82rem;color:var(--text-secondary);font-style:italic">${a.notes}</div>` : ''}
-            ${expandHtml}
-          </div>`;
+            <div class="fleet-audit-top"><div><strong>${a.audit_type_id}</strong><span style="margin-left:.5rem">${faultBadge(a.fault_count)}</span></div><span style="font-size:.78rem;color:var(--text-secondary)">${new Date(a.submitted_at).toLocaleDateString()}</span></div>
+            <div class="fleet-audit-meta">Operator: ${a.operator_name} · Week: ${a.week_commencing}${a.current_km_hours?' · '+Number(a.current_km_hours).toLocaleString()+' km/hrs':''} · ${a.ok_count} OK / ${a.fault_count} Fault / ${a.na_count} N/A</div>
+            ${a.notes?`<div style="margin-top:.4rem;font-size:.82rem;color:var(--text-secondary);font-style:italic">${a.notes}</div>`:''}
+            ${expandHtml}</div>`;
         }).join('');
       }
     }
-
     return `<div class="fleet-detail-panel card">
-      <div class="fleet-detail-header">
-        <div>
-          <div class="fleet-detail-title">${v.plant_no} — ${v.plant_name}</div>
-          <div class="fleet-detail-sub">${v.assigned_to || 'Unassigned'} · ${v.plant_type || 'No type'} · ${v.rego_no || 'No rego'}</div>
-        </div>
-        <button class="btn-secondary" id="fleet-close-detail" style="padding:.45rem .9rem;font-size:.82rem">✕ Close</button>
-      </div>
+      <div class="fleet-detail-header"><div><div class="fleet-detail-title">${v.plant_no} — ${v.plant_name}</div><div class="fleet-detail-sub">${v.assigned_to||'Unassigned'} · ${v.plant_type||'No type'} · ${v.rego_no||'No rego'}</div></div>
+        <button class="btn-secondary" id="fleet-close-detail" style="padding:.45rem .9rem;font-size:.82rem">✕ Close</button></div>
       <div class="fleet-tabs">
         <button class="fleet-tab ${activeTab==='details'?'active':''}" data-tab="details">Details</button>
         <button class="fleet-tab ${activeTab==='audits'?'active':''}" data-tab="audits">Audits (${audits.length})</button>
       </div>
-      <div class="fleet-tab-content">${tabContent}</div>
-    </div>`;
+      <div class="fleet-tab-content">${tabContent}</div></div>`;
   }
 
-  /* ── VEHICLE MODAL ── */
+  /* ── MODAL ── */
   function vehicleModal(v) {
     const isEdit = !!v;
-    const empOpts = employees.map(e =>
-      `<option value="${e.full_name}" ${(isEdit && v.assigned_to === e.full_name) ? 'selected' : ''}>${e.full_name}</option>`
-    ).join('');
-    const typeOpts = PLANT_TYPES.map(t =>
-      `<option value="${t}" ${(isEdit && v.plant_type === t) ? 'selected' : ''}>${t}</option>`
-    ).join('');
-
-    return `<div class="fleet-modal-overlay" id="fleet-modal-overlay">
-      <div class="fleet-modal">
-        <h2>${isEdit ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
-        <label>Plant Number</label>
-        <input id="fm-plantno" value="${isEdit ? v.plant_no : ''}" placeholder="e.g. P-001" ${isEdit ? 'readonly style="opacity:.6;cursor:not-allowed"' : ''}>
-        <label>Plant Name</label>
-        <input id="fm-plantname" value="${isEdit ? v.plant_name : ''}" placeholder="e.g. Toyota HiLux #1">
-        <label>Plant Type</label>
-        <select id="fm-planttype"><option value="">— Select —</option>${typeOpts}</select>
-        <label>Registration (max 6 characters)</label>
-        <input id="fm-rego" class="fleet-rego-input" value="${isEdit ? (v.rego_no || '') : ''}" placeholder="e.g. ABC123" maxlength="6" autocapitalize="characters">
-        <label>Make</label>
-        <input id="fm-make" value="${isEdit ? (v.make || '') : ''}" placeholder="e.g. Toyota">
-        <label>Model</label>
-        <input id="fm-model" value="${isEdit ? (v.model || '') : ''}" placeholder="e.g. HiLux SR5">
-        <label>Year</label>
-        <select id="fm-year">${yearOptions(isEdit ? v.year : null)}</select>
-        <label>VIN</label>
-        <input id="fm-vin" value="${isEdit ? (v.vin || '') : ''}" placeholder="Vehicle Identification Number">
-        <label>Assigned To</label>
-        <select id="fm-assigned"><option value="">— Unassigned —</option>${empOpts}</select>
-        <label>Status</label>
-        <select id="fm-status">${STATUS_OPTS.map(s => `<option value="${s}" ${(isEdit && v.status === s) ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}</select>
-        <label>Notes</label>
-        <textarea id="fm-notes" placeholder="Optional notes…">${isEdit ? (v.notes || '') : ''}</textarea>
-        <div class="fleet-modal-actions">
-          <button class="btn-secondary" id="fm-cancel">Cancel</button>
-          <button class="btn-primary" id="fm-save" data-edit-id="${isEdit ? v.id : ''}" style="padding:.7rem 1.5rem">${isEdit ? 'Update' : 'Add Vehicle'}</button>
-        </div>
-      </div>
-    </div>`;
+    const empOpts = employees.map(e => `<option value="${e.full_name}" ${(isEdit&&v.assigned_to===e.full_name)?'selected':''}>${e.full_name}</option>`).join('');
+    const typeOpts = PLANT_TYPES.map(t => `<option value="${t}" ${(isEdit&&v.plant_type===t)?'selected':''}>${t}</option>`).join('');
+    return `<div class="fleet-modal-overlay" id="fleet-modal-overlay"><div class="fleet-modal">
+      <h2>${isEdit?'Edit Vehicle':'Add Vehicle'}</h2>
+      <label>Plant Number</label><input id="fm-plantno" value="${isEdit?v.plant_no:''}" placeholder="e.g. P-001" ${isEdit?'readonly style="opacity:.6;cursor:not-allowed"':''}>
+      <label>Plant Name</label><input id="fm-plantname" value="${isEdit?v.plant_name:''}" placeholder="e.g. Toyota HiLux #1">
+      <label>Plant Type</label><select id="fm-planttype"><option value="">— Select —</option>${typeOpts}</select>
+      <label>Registration (max 6 characters)</label><input id="fm-rego" class="fleet-rego-input" value="${isEdit?(v.rego_no||''):''}" placeholder="e.g. ABC123" maxlength="6" autocapitalize="characters">
+      <label>Make</label><input id="fm-make" value="${isEdit?(v.make||''):''}" placeholder="e.g. Toyota">
+      <label>Model</label><input id="fm-model" value="${isEdit?(v.model||''):''}" placeholder="e.g. HiLux SR5">
+      <label>Year</label><select id="fm-year">${yearOptions(isEdit?v.year:null)}</select>
+      <label>VIN</label><input id="fm-vin" value="${isEdit?(v.vin||''):''}" placeholder="Vehicle Identification Number">
+      <label>Assigned To</label><select id="fm-assigned"><option value="">— Unassigned —</option>${empOpts}</select>
+      <label>Status</label><select id="fm-status">${STATUS_OPTS.map(s=>`<option value="${s}" ${(isEdit&&v.status===s)?'selected':''}>${statusLabel(s)}</option>`).join('')}</select>
+      <label>Notes</label><textarea id="fm-notes" placeholder="Optional notes…">${isEdit?(v.notes||''):''}</textarea>
+      <div class="fleet-modal-actions"><button class="btn-secondary" id="fm-cancel">Cancel</button><button class="btn-primary" id="fm-save" data-edit-id="${isEdit?v.id:''}" style="padding:.7rem 1.5rem">${isEdit?'Update':'Add Vehicle'}</button></div>
+    </div></div>`;
   }
 
   /* ── RENDER ── */
@@ -409,25 +360,24 @@ window.BromarPages.fleet = (() => {
     root = container;
     lockViewport();
     root.innerHTML = STYLES + '<div class="fleet-loading">Loading fleet…</div>';
-    sb = await waitForClient(5000);
-    if (!sb) { root.innerHTML = STYLES + '<div class="fleet-loading" style="color:var(--error)">Database connection unavailable. Check that Supabase is configured in the main app.</div>'; return; }
-    await Promise.all([loadVehicles(), loadEmployees()]);
-    drawPage();
+    try {
+      await ensureClient();
+      await Promise.all([loadVehicles(), loadEmployees()]);
+      drawPage();
+    } catch (err) {
+      root.innerHTML = STYLES + `<div class="fleet-loading" style="color:var(--error)">${err.message}</div>`;
+    }
   }
 
   function drawPage() {
     if (!root) return;
     root.innerHTML = STYLES + `
-      <div class="page-title-wrapper">
-        <h1>Fleet Management</h1>
-        <p class="subtitle">Vehicles, audits & compliance</p>
-      </div>
+      <div class="page-title-wrapper"><h1>Fleet Management</h1><p class="subtitle">Vehicles, audits & compliance</p></div>
       ${renderSummary()}
       <div class="section-label">Vehicle Register</div>
       <div id="fleet-table-area">${renderTable()}</div>
       <div id="fleet-detail-area">${selectedVehicle ? renderDetail(selectedVehicle) : ''}</div>
-      <div id="fleet-modal-area"></div>
-    `;
+      <div id="fleet-modal-area"></div>`;
     bind();
   }
 
@@ -439,74 +389,51 @@ window.BromarPages.fleet = (() => {
     if (!root) return;
     root.addEventListener('input', e => {
       if (e.target.id === 'fleet-search') { searchTerm = e.target.value.toLowerCase(); refresh(); }
-      if (e.target.id === 'fm-rego') {
-        const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
-        if (e.target.value !== cleaned) e.target.value = cleaned;
-      }
+      if (e.target.id === 'fm-rego') { const c = e.target.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase().slice(0,6); if (e.target.value !== c) e.target.value = c; }
     });
-    root.addEventListener('click', async (e) => {
-      const target = e.target;
-      const ftBtn = target.closest('[data-ft]');
-      if (ftBtn) { filterType = ftBtn.dataset.ft; refresh(); return; }
-      const fsBtn = target.closest('[data-fs]');
-      if (fsBtn) { filterStatus = fsBtn.dataset.fs; refresh(); return; }
-      const row = target.closest('.fleet-table tr[data-id]');
-      if (row) {
-        const v = vehicles.find(x => x.id === row.dataset.id);
-        if (v) { selectedVehicle = v; activeTab = 'details'; expandedAuditId = null; audits = await loadAudits(v.id); refresh(); root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior:'smooth', block:'start' }); }
-        return;
-      }
-      if (target.closest('#fleet-close-detail')) { selectedVehicle = null; audits = []; expandedAuditId = null; refresh(); return; }
-      const tab = target.closest('.fleet-tab');
-      if (tab) { activeTab = tab.dataset.tab; refresh(); return; }
-      if (target.closest('#fleet-add-btn')) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null); bindModal(); return; }
-      const editBtn = target.closest('.fleet-edit-vehicle');
-      if (editBtn) { const v = vehicles.find(x => x.id === editBtn.dataset.id); if (v) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(v); bindModal(); } return; }
-      const delBtn = target.closest('.fleet-delete-vehicle');
-      if (delBtn) { const v = vehicles.find(x => x.id === delBtn.dataset.id); if (v && confirm(`Delete ${v.plant_no} — ${v.plant_name}?`)) deleteVehicle(v.id); return; }
-      const actBtn = target.closest('.fleet-action-btn');
-      if (actBtn) { e.stopPropagation(); actionAudit(actBtn.dataset.audit); return; }
-      const auditCard = target.closest('.fleet-audit-card[data-audit-id]');
-      if (auditCard && !target.closest('.fleet-action-btn')) { const aid = auditCard.dataset.auditId; if (expandedAuditId === aid) expandedAuditId = null; else { expandedAuditId = aid; await loadChecks(aid); } refresh(); return; }
+    root.addEventListener('click', async e => {
+      const t = e.target;
+      const ft = t.closest('[data-ft]'); if (ft) { filterType = ft.dataset.ft; refresh(); return; }
+      const fs = t.closest('[data-fs]'); if (fs) { filterStatus = fs.dataset.fs; refresh(); return; }
+      const row = t.closest('.fleet-table tr[data-id]');
+      if (row) { const v = vehicles.find(x=>x.id===row.dataset.id); if (v) { selectedVehicle=v; activeTab='details'; expandedAuditId=null; audits=await loadAudits(v.id); refresh(); root.querySelector('#fleet-detail-area')?.scrollIntoView({behavior:'smooth',block:'start'}); } return; }
+      if (t.closest('#fleet-close-detail')) { selectedVehicle=null; audits=[]; expandedAuditId=null; refresh(); return; }
+      const tab = t.closest('.fleet-tab'); if (tab) { activeTab=tab.dataset.tab; refresh(); return; }
+      if (t.closest('#fleet-add-btn')) { root.querySelector('#fleet-modal-area').innerHTML=vehicleModal(null); bindModal(); return; }
+      const eb = t.closest('.fleet-edit-vehicle'); if (eb) { const v=vehicles.find(x=>x.id===eb.dataset.id); if(v){root.querySelector('#fleet-modal-area').innerHTML=vehicleModal(v);bindModal();} return; }
+      const db = t.closest('.fleet-delete-vehicle'); if (db) { const v=vehicles.find(x=>x.id===db.dataset.id); if(v&&confirm(`Delete ${v.plant_no}?`))deleteVehicle(v.id); return; }
+      const ab = t.closest('.fleet-action-btn'); if (ab) { e.stopPropagation(); actionAudit(ab.dataset.audit); return; }
+      const ac = t.closest('.fleet-audit-card[data-audit-id]'); if (ac&&!t.closest('.fleet-action-btn')) { const aid=ac.dataset.auditId; if(expandedAuditId===aid)expandedAuditId=null; else{expandedAuditId=aid;await loadChecks(aid);} refresh(); return; }
     });
   }
 
   function bindModal() {
-    const overlay = root.querySelector('#fleet-modal-overlay');
-    if (!overlay) return;
-    overlay.addEventListener('click', e => { if (e.target === overlay || e.target.closest('#fm-cancel')) closeModal(); });
-    const saveBtn = overlay.querySelector('#fm-save');
-    if (!saveBtn) return;
-    saveBtn.addEventListener('click', async () => {
-      const plantNo = overlay.querySelector('#fm-plantno').value.trim();
-      const plantName = overlay.querySelector('#fm-plantname').value.trim();
-      if (!plantNo || !plantName) { alert('Plant Number and Plant Name are required.'); return; }
-      const regoRaw = overlay.querySelector('#fm-rego').value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
-      const yearVal = overlay.querySelector('#fm-year').value;
+    const ov = root.querySelector('#fleet-modal-overlay'); if (!ov) return;
+    ov.addEventListener('click', e => { if (e.target===ov||e.target.closest('#fm-cancel')) closeModal(); });
+    const sv = ov.querySelector('#fm-save'); if (!sv) return;
+    sv.addEventListener('click', async () => {
+      const pn=ov.querySelector('#fm-plantno').value.trim(), nm=ov.querySelector('#fm-plantname').value.trim();
+      if (!pn||!nm) { alert('Plant Number and Plant Name are required.'); return; }
       const data = {
-        plant_no: plantNo,
-        plant_name: plantName,
-        plant_type: overlay.querySelector('#fm-planttype').value || null,
-        rego_no: regoRaw || null,
-        make: overlay.querySelector('#fm-make').value.trim() || null,
-        model: overlay.querySelector('#fm-model').value.trim() || null,
-        year: yearVal ? parseInt(yearVal, 10) : null,
-        vin: overlay.querySelector('#fm-vin').value.trim() || null,
-        assigned_to: overlay.querySelector('#fm-assigned').value || null,
-        status: overlay.querySelector('#fm-status').value,
-        notes: overlay.querySelector('#fm-notes').value.trim() || null
+        plant_no:pn, plant_name:nm,
+        plant_type: ov.querySelector('#fm-planttype').value||null,
+        rego_no: ov.querySelector('#fm-rego').value.replace(/[^A-Za-z0-9]/g,'').toUpperCase().slice(0,6)||null,
+        make: ov.querySelector('#fm-make').value.trim()||null,
+        model: ov.querySelector('#fm-model').value.trim()||null,
+        year: ov.querySelector('#fm-year').value?parseInt(ov.querySelector('#fm-year').value,10):null,
+        vin: ov.querySelector('#fm-vin').value.trim()||null,
+        assigned_to: ov.querySelector('#fm-assigned').value||null,
+        status: ov.querySelector('#fm-status').value,
+        notes: ov.querySelector('#fm-notes').value.trim()||null
       };
-      const editId = saveBtn.dataset.editId;
-      await saveVehicle(data, editId || null);
+      await saveVehicle(data, sv.dataset.editId||null);
     });
   }
 
-  /* ── CLEANUP ── */
   function destroy() {
-    selectedVehicle = null; activeTab = 'details'; filterType = 'ALL'; filterStatus = 'ALL';
-    searchTerm = ''; audits = []; expandedAuditId = null; auditChecks = {};
-    const s = document.getElementById('fleet-page-styles'); if (s) s.remove();
-    root = null;
+    selectedVehicle=null; activeTab='details'; filterType='ALL'; filterStatus='ALL';
+    searchTerm=''; audits=[]; expandedAuditId=null; auditChecks={};
+    document.getElementById('fleet-page-styles')?.remove(); root=null;
   }
 
   return { title: 'Fleet Management', version: PAGE_VERSION, render, destroy };
