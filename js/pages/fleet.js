@@ -1,10 +1,10 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.03)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.04)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.03';
+  const PAGE_VERSION = 'V1.04';
 
   /* ── SUPABASE ── */
   const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -14,6 +14,7 @@ window.BromarPages.fleet = (() => {
     if (sb) return sb;
     if (window.supabaseClient) { sb = window.supabaseClient; return sb; }
     if (window.supabase?.createClient) { sb = window.supabase.createClient(SB_URL, SB_KEY); return sb; }
+    console.error('Fleet: Supabase client not available');
     return null;
   }
 
@@ -52,9 +53,16 @@ window.BromarPages.fleet = (() => {
 
   async function loadEmployees() {
     const c = getClient(); if (!c) return;
-    const { data, error } = await c.from('employees').select('full_name, is_active').order('full_name');
-    if (error) { console.error('Fleet: loadEmployees', error); return; }
-    if (data) employees = data.filter(e => e.is_active !== false);
+    try {
+      const { data, error } = await c.from('employees').select('full_name, is_active').order('full_name');
+      if (error) { console.error('Fleet: loadEmployees error', error.message); return; }
+      if (data) {
+        employees = data.filter(e => e.is_active !== false);
+        console.log('Fleet: loaded', employees.length, 'active employees');
+      }
+    } catch (err) {
+      console.error('Fleet: loadEmployees exception', err);
+    }
   }
 
   async function loadAudits(vehicleId) {
@@ -87,23 +95,31 @@ window.BromarPages.fleet = (() => {
   }
 
   async function saveVehicle(data, editId) {
-    const c = getClient(); if (!c) return;
-    let result;
-    if (editId) {
-      result = await c.from('vehicles').update(data).eq('id', editId);
-    } else {
-      result = await c.from('vehicles').insert([data]);
+    const c = getClient();
+    if (!c) { alert('Database connection unavailable.'); return; }
+    try {
+      let result;
+      if (editId) {
+        result = await c.from('vehicles').update(data).eq('id', editId);
+      } else {
+        result = await c.from('vehicles').insert([data]);
+      }
+      if (result.error) {
+        const msg = result.error.message || '';
+        console.error('Fleet: saveVehicle error', result.error);
+        if (msg.includes('duplicate') || msg.includes('unique')) { alert('A vehicle with that Plant Number already exists.'); }
+        else if (msg.includes('foreign') || msg.includes('violates')) { alert('Assigned To must match an existing employee name, or be left blank.'); }
+        else { alert('Save failed: ' + msg); }
+        return;
+      }
+      await loadVehicles();
+      if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
+      closeModal();
+      refresh();
+    } catch (err) {
+      console.error('Fleet: saveVehicle exception', err);
+      alert('Save failed: ' + err.message);
     }
-    if (result.error) {
-      const msg = result.error.message || '';
-      if (msg.includes('duplicate') || msg.includes('unique')) { alert('A vehicle with that Plant Number already exists.'); }
-      else if (msg.includes('foreign') || msg.includes('violates')) { alert('Assigned To must match an existing employee name, or be left blank.'); }
-      else { alert('Save failed: ' + msg); }
-      return;
-    }
-    await loadVehicles();
-    if (editId && selectedVehicle?.id === editId) selectedVehicle = vehicles.find(v => v.id === editId) || null;
-    closeModal(); refresh();
   }
 
   async function deleteVehicle(id) {
@@ -428,73 +444,105 @@ window.BromarPages.fleet = (() => {
     if (area) area.innerHTML = '';
   }
 
-  /* ── EVENTS ── */
+  /* ── EVENTS (container-level delegation) ── */
   function bind() {
     if (!root) return;
 
-    const si = root.querySelector('#fleet-search');
-    if (si) si.oninput = e => { searchTerm = e.target.value.toLowerCase(); refresh(); };
+    root.addEventListener('input', e => {
+      if (e.target.id === 'fleet-search') { searchTerm = e.target.value.toLowerCase(); refresh(); }
+    });
 
-    root.querySelectorAll('[data-ft]').forEach(b => b.onclick = () => { filterType = b.dataset.ft; refresh(); });
-    root.querySelectorAll('[data-fs]').forEach(b => b.onclick = () => { filterStatus = b.dataset.fs; refresh(); });
+    root.addEventListener('click', async (e) => {
+      const target = e.target;
 
-    root.querySelectorAll('.fleet-table tr[data-id]').forEach(tr => tr.onclick = async () => {
-      const v = vehicles.find(x => x.id === tr.dataset.id);
-      if (v) {
-        selectedVehicle = v; activeTab = 'details'; expandedAuditId = null;
-        audits = await loadAudits(v.id);
-        refresh();
-        root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      /* filter buttons */
+      const ftBtn = target.closest('[data-ft]');
+      if (ftBtn) { filterType = ftBtn.dataset.ft; refresh(); return; }
+      const fsBtn = target.closest('[data-fs]');
+      if (fsBtn) { filterStatus = fsBtn.dataset.fs; refresh(); return; }
+
+      /* table row */
+      const row = target.closest('.fleet-table tr[data-id]');
+      if (row) {
+        const v = vehicles.find(x => x.id === row.dataset.id);
+        if (v) {
+          selectedVehicle = v; activeTab = 'details'; expandedAuditId = null;
+          audits = await loadAudits(v.id);
+          refresh();
+          root.querySelector('#fleet-detail-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        return;
       }
-    });
 
-    const cb = root.querySelector('#fleet-close-detail');
-    if (cb) cb.onclick = () => { selectedVehicle = null; audits = []; expandedAuditId = null; refresh(); };
+      /* close detail */
+      if (target.closest('#fleet-close-detail')) {
+        selectedVehicle = null; audits = []; expandedAuditId = null; refresh(); return;
+      }
 
-    root.querySelectorAll('.fleet-tab').forEach(t => t.onclick = () => { activeTab = t.dataset.tab; refresh(); });
+      /* tabs */
+      const tab = target.closest('.fleet-tab');
+      if (tab) { activeTab = tab.dataset.tab; refresh(); return; }
 
-    const addBtn = root.querySelector('#fleet-add-btn');
-    if (addBtn) addBtn.onclick = () => { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null); bindModal(); };
+      /* add vehicle */
+      if (target.closest('#fleet-add-btn')) {
+        root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(null);
+        bindModal();
+        return;
+      }
 
-    root.querySelectorAll('.fleet-edit-vehicle').forEach(b => b.onclick = () => {
-      const v = vehicles.find(x => x.id === b.dataset.id);
-      if (v) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(v); bindModal(); }
-    });
+      /* edit vehicle */
+      const editBtn = target.closest('.fleet-edit-vehicle');
+      if (editBtn) {
+        const v = vehicles.find(x => x.id === editBtn.dataset.id);
+        if (v) { root.querySelector('#fleet-modal-area').innerHTML = vehicleModal(v); bindModal(); }
+        return;
+      }
 
-    root.querySelectorAll('.fleet-delete-vehicle').forEach(b => b.onclick = () => {
-      const v = vehicles.find(x => x.id === b.dataset.id);
-      if (v && confirm(`Delete ${v.plant_no} — ${v.plant_name}?`)) deleteVehicle(v.id);
-    });
+      /* delete vehicle */
+      const delBtn = target.closest('.fleet-delete-vehicle');
+      if (delBtn) {
+        const v = vehicles.find(x => x.id === delBtn.dataset.id);
+        if (v && confirm(`Delete ${v.plant_no} — ${v.plant_name}?`)) deleteVehicle(v.id);
+        return;
+      }
 
-    root.querySelectorAll('.fleet-audit-card[data-audit-id]').forEach(card => {
-      card.onclick = async (e) => {
-        if (e.target.closest('.fleet-action-btn')) return;
-        const aid = card.dataset.auditId;
+      /* action audit */
+      const actBtn = target.closest('.fleet-action-btn');
+      if (actBtn) { e.stopPropagation(); actionAudit(actBtn.dataset.audit); return; }
+
+      /* expand audit card */
+      const auditCard = target.closest('.fleet-audit-card[data-audit-id]');
+      if (auditCard && !target.closest('.fleet-action-btn')) {
+        const aid = auditCard.dataset.auditId;
         if (expandedAuditId === aid) { expandedAuditId = null; }
         else { expandedAuditId = aid; await loadChecks(aid); }
         refresh();
-      };
-    });
-
-    root.querySelectorAll('.fleet-action-btn').forEach(b => b.onclick = (e) => {
-      e.stopPropagation();
-      actionAudit(b.dataset.audit);
+        return;
+      }
     });
   }
 
   function bindModal() {
     const overlay = root.querySelector('#fleet-modal-overlay');
-    if (!overlay) return;
+    if (!overlay) { console.error('Fleet: modal overlay not found'); return; }
 
-    overlay.querySelector('#fm-cancel').onclick = closeModal;
-    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+    /* close on cancel or overlay click */
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('#fm-cancel')) { closeModal(); }
+    });
 
-    const savev = overlay.querySelector('#fm-save');
-    if (savev) savev.onclick = () => {
+    /* save */
+    const saveBtn = overlay.querySelector('#fm-save');
+    if (!saveBtn) { console.error('Fleet: save button not found'); return; }
+
+    saveBtn.addEventListener('click', async () => {
       const plantNo = overlay.querySelector('#fm-plantno').value.trim();
       const plantName = overlay.querySelector('#fm-plantname').value.trim();
       if (!plantNo || !plantName) { alert('Plant Number and Plant Name are required.'); return; }
+
       const assignedVal = overlay.querySelector('#fm-assigned').value;
+      const yearVal = overlay.querySelector('#fm-year').value;
+
       const data = {
         plant_no: plantNo,
         plant_name: plantName,
@@ -502,15 +550,16 @@ window.BromarPages.fleet = (() => {
         rego_no: overlay.querySelector('#fm-rego').value.trim() || null,
         make: overlay.querySelector('#fm-make').value.trim() || null,
         model: overlay.querySelector('#fm-model').value.trim() || null,
-        year: +overlay.querySelector('#fm-year').value || null,
+        year: yearVal ? parseInt(yearVal, 10) : null,
         vin: overlay.querySelector('#fm-vin').value.trim() || null,
         assigned_to: assignedVal || null,
         status: overlay.querySelector('#fm-status').value,
         notes: overlay.querySelector('#fm-notes').value.trim() || null
       };
-      const editId = savev.dataset.editId;
-      saveVehicle(data, editId || null);
-    };
+
+      const editId = saveBtn.dataset.editId;
+      await saveVehicle(data, editId || null);
+    });
   }
 
   /* ── CLEANUP ── */
