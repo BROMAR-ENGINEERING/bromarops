@@ -4,13 +4,13 @@
    drag-drop (desktop), mobile day-view with swipe,
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
-   clients, and jobs tables.
-   V1.07
+   clients tables. Jobs table optional.
+   V1.08
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.07';
+  const PAGE_VERSION = 'V1.08';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -26,8 +26,8 @@ window.BromarPages.scheduling = (() => {
   /* ── STATE ── */
   let employees = [];
   let jobs = [];
-  let sites = [];          // from client_sites + clients join
-  let assignments = [];    // from schedule_assignments table
+  let sites = [];
+  let assignments = [];
   let notificationQueue = [];
   let currentWeekStart = null;
   let mobileSelectedDate = null;
@@ -65,10 +65,13 @@ window.BromarPages.scheduling = (() => {
     async fetchEmployees() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('employees').select('id, full_name, first_name, last_name, role, a_grade, is_active').eq('is_active', true).order('full_name');
+        const { data, error } = await sb.from('employees')
+          .select('full_name, first_name, last_name, role, a_grade, is_active')
+          .eq('is_active', true)
+          .order('full_name');
         if (error) throw error;
-        return (data || []).map(e => ({
-          id: e.id,
+        return (data || []).map((e, i) => ({
+          id: 'emp-' + i,
           name: e.full_name || `${e.first_name || ''} ${e.last_name || ''}`.trim(),
           firstName: e.first_name || '',
           lastName: e.last_name || '',
@@ -85,17 +88,20 @@ window.BromarPages.scheduling = (() => {
     async fetchJobs() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('jobs').select('*').order('job_number', { ascending: false });
-        if (error) throw error;
+        const { data, error } = await sb.from('jobs').select('*').order('created_at', { ascending: false });
+        if (error) {
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            console.warn('Jobs table does not exist yet');
+            return [];
+          }
+          throw error;
+        }
         return (data || []).map(j => ({
-          id: j.id,
           number: j.job_number || j.number || '?',
           client: j.client_name || j.client || '',
           site: j.site_name || j.site_address || j.site || '',
           status: j.status || 'active',
-          priority: j.priority || 'medium',
-          clientId: j.client_id || null,
-          siteId: j.site_id || null
+          priority: j.priority || 'medium'
         }));
       } catch (err) {
         console.warn('Jobs fetch failed:', err.message);
@@ -106,7 +112,10 @@ window.BromarPages.scheduling = (() => {
     async fetchSites() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('client_sites').select('id, site_name, address, city, client_id, is_active, clients(name)').eq('is_active', true).order('site_name');
+        const { data, error } = await sb.from('client_sites')
+          .select('id, site_name, address, city, client_id, is_active, clients(name)')
+          .eq('is_active', true)
+          .order('site_name');
         if (error) throw error;
         return (data || []).map(s => ({
           id: s.id,
@@ -126,7 +135,13 @@ window.BromarPages.scheduling = (() => {
       try {
         const sb = await this.init();
         const { data, error } = await sb.from('schedule_assignments').select('*').eq('is_active', true);
-        if (error) throw error;
+        if (error) {
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            console.warn('schedule_assignments table does not exist yet — run the migration SQL');
+            return [];
+          }
+          throw error;
+        }
         return (data || []).map(a => ({
           id: a.id,
           employeeName: a.employee_name,
@@ -183,18 +198,12 @@ window.BromarPages.scheduling = (() => {
     },
 
     async deleteAssignment(id) {
-      if (id.startsWith('local-')) { assignments = assignments.filter(a => a.id !== id); return true; }
+      if (id.startsWith('local-')) { assignments = assignments.filter(a => a.id !== id); return; }
       try {
         const sb = await this.init();
-        const { error } = await sb.from('schedule_assignments').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        assignments = assignments.filter(a => a.id !== id);
-        return true;
-      } catch (err) {
-        console.error('Delete assignment failed:', err);
-        assignments = assignments.filter(a => a.id !== id);
-        return false;
-      }
+        await sb.from('schedule_assignments').update({ is_active: false }).eq('id', id);
+      } catch (err) { console.error('Delete failed:', err); }
+      assignments = assignments.filter(a => a.id !== id);
     },
 
     async updateSkipDates(id, skipDates) {
@@ -244,8 +253,6 @@ window.BromarPages.scheduling = (() => {
   function getMobileDateKey() { return mobileSelectedDate ? formatDateKey(mobileSelectedDate) : formatDateKey(new Date()); }
   function unsent() { return notificationQueue.filter(n => !n.sent).length; }
 
-  function findEmpByName(name) { return employees.find(e => e.name === name); }
-
   /* ── ASSIGNMENT RESOLUTION ── */
   function getEffectiveAssignments(empName, dateKey) {
     const results = [];
@@ -264,43 +271,34 @@ window.BromarPages.scheduling = (() => {
     return results;
   }
 
-  function getAssignmentLabel(a) {
-    if (a.type === 'site') return a.siteName || '?';
-    return a.jobNumber || '?';
-  }
-
+  function getAssignmentLabel(a) { return a.type === 'site' ? (a.siteName || '?') : (a.jobNumber || '?'); }
   function getAssignmentSub(a) {
     if (a.type === 'site') return a.clientName || 'Site Maintenance';
     const job = jobs.find(j => j.number === a.jobNumber);
     return job?.client || a.clientName || '';
   }
-
   function getAssignmentBorderColor(a) {
     if (a.type === 'site') return '#0ea5e9';
     const job = jobs.find(j => j.number === a.jobNumber);
     return priorityColor(job?.priority || 'medium');
   }
-
   function scheduleLabel(s) { return { oneoff: 'One-off', duration: 'Duration', indefinite: 'Indefinite' }[s] || s; }
-
   function getUnassignedJobs() {
     const assigned = new Set(assignments.filter(a => a.type === 'job').map(a => a.jobNumber));
     return jobs.filter(j => !assigned.has(j.number) && (j.status === 'active' || j.status === 'in_progress'));
   }
-
-  function searchJobs(query) {
-    if (!query) return jobs.filter(j => j.status === 'active' || j.status === 'in_progress').slice(0, 12);
+  function searchJobsLocal(query) {
+    const pool = jobs.filter(j => j.status === 'active' || j.status === 'in_progress');
+    if (!query) return pool.slice(0, 12);
     const q = query.toLowerCase();
-    return jobs.filter(j => j.number.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.site.toLowerCase().includes(q));
+    return pool.filter(j => j.number.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.site.toLowerCase().includes(q));
   }
-
-  function searchSites(query) {
+  function searchSitesLocal(query) {
     if (!query) return sites.slice(0, 12);
     const q = query.toLowerCase();
     return sites.filter(s => s.name.toLowerCase().includes(q) || s.clientName.toLowerCase().includes(q) || s.address.toLowerCase().includes(q));
   }
 
-  /* ── CHAIN ICON SVG ── */
   const CHAIN_ICON = `<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 9.5a3 3 0 004 .5l1.5-1.5a3 3 0 00-4.25-4.25L6.75 5.25"/><path d="M9.5 6.5a3 3 0 00-4-.5L4 7.5a3 3 0 004.25 4.25L9.25 10.75"/></svg>`;
 
   /* ── STYLES ── */
@@ -316,7 +314,6 @@ window.BromarPages.scheduling = (() => {
       .sched-badge{font-size:0.65rem;background:var(--accent);color:white;border-radius:10px;padding:0.1rem 0.45rem;font-weight:700;min-width:18px;text-align:center}
       .sched-conflict{margin-top:0.5rem;padding:0.5rem 0.75rem;border-radius:8px;background:var(--error-bg);color:var(--error);font-size:0.78rem;font-weight:500}
       .sched-priority-tag{font-size:0.65rem;font-weight:600;padding:0.15rem 0.45rem;border-radius:4px;text-transform:uppercase;letter-spacing:0.03em}
-
       .sched-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease}
       .sched-modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;padding:1.75rem;width:90%;max-width:500px;box-shadow:0 20px 60px var(--shadow);animation:fadeIn 0.3s ease;max-height:90vh;overflow-y:auto}
       .sched-modal h3{font-size:1.1rem;font-weight:700;margin-bottom:1rem;color:var(--text-primary)}
@@ -347,7 +344,6 @@ window.BromarPages.scheduling = (() => {
       .sched-stype-btn.active{border-color:var(--accent);background:var(--card-hover);color:var(--accent)}
       .sched-date-row{display:flex;gap:0.5rem;margin-top:0.4rem}
       .sched-date-row .sched-input{flex:1}
-
       .sched-toolbar{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1.25rem}
       .sched-toolbar-group{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap}
       .sched-week-nav{display:flex;align-items:center;gap:0.5rem}
@@ -356,7 +352,6 @@ window.BromarPages.scheduling = (() => {
       .sched-nav-btn:hover{border-color:var(--accent);background:var(--card-hover)}
       .sched-toggle{display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--text-secondary);cursor:pointer;user-select:none}
       .sched-toggle input{accent-color:var(--accent);cursor:pointer}
-
       .sched-hidden-bar{display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center;margin-bottom:1rem;padding:0.6rem 0.75rem;border-radius:var(--radius-sm);background:var(--bg-secondary);border:1px solid var(--border);font-size:0.8rem}
       .sched-hidden-bar .hidden-label{color:var(--text-secondary);font-weight:600;font-size:0.75rem;margin-right:0.25rem}
       .sched-hidden-chip{display:flex;align-items:center;gap:0.3rem;padding:0.2rem 0.5rem;border-radius:6px;background:var(--bg-main);border:1px solid var(--border);font-size:0.75rem;color:var(--text-primary);cursor:pointer;transition:border-color 0.15s}
@@ -365,7 +360,6 @@ window.BromarPages.scheduling = (() => {
       .sched-hidden-chip:hover .chip-x{color:var(--accent)}
       .sched-show-all-btn{padding:0.2rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:none;font-family:'Outfit',sans-serif;font-size:0.7rem;font-weight:600;color:var(--accent);cursor:pointer}
       .sched-show-all-btn:hover{background:var(--card-hover);border-color:var(--accent)}
-
       .sched-grid-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg-secondary)}
       .sched-grid{display:grid;min-width:800px}
       .sched-col-head{padding:0.75rem 0.5rem;text-align:center;font-weight:600;font-size:0.8rem;color:var(--text-secondary);border-bottom:2px solid var(--border);background:var(--bg-main);text-transform:uppercase;letter-spacing:0.04em;position:sticky;top:0;z-index:2}
@@ -379,7 +373,6 @@ window.BromarPages.scheduling = (() => {
       .sched-emp-hide{width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:none;color:var(--text-secondary);font-size:0.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s;margin-left:auto;flex-shrink:0}
       .sched-emp-cell:hover .sched-emp-hide{opacity:0.6}
       .sched-emp-cell:hover .sched-emp-hide:hover{opacity:1;color:var(--error);border-color:var(--error)}
-
       .sched-day-cell{padding:0.4rem;border-bottom:1px solid var(--border);border-right:1px solid var(--border);min-height:80px;display:flex;flex-direction:column;gap:0.3rem;transition:background 0.15s;cursor:pointer;position:relative}
       .sched-day-cell:hover{background:var(--card-hover)}
       .sched-day-cell.today-col{background:rgba(234,88,12,0.03)}
@@ -387,7 +380,6 @@ window.BromarPages.scheduling = (() => {
       .sched-day-cell .cell-add{opacity:0;position:absolute;bottom:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:var(--accent);color:white;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s}
       .sched-day-cell:hover .cell-add{opacity:0.7}
       .sched-day-cell:hover .cell-add:hover{opacity:1}
-
       .sched-job-card{padding:0.35rem 0.5rem;border-radius:6px;font-size:0.75rem;border-left:3px solid var(--accent);background:var(--bg-main);cursor:grab;transition:box-shadow 0.15s,transform 0.15s;display:flex;flex-direction:column;gap:1px;position:relative}
       .sched-job-card:active{cursor:grabbing}
       .sched-job-card:hover{box-shadow:0 2px 8px var(--shadow);transform:translateY(-1px)}
@@ -406,7 +398,6 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .ja-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.7rem;line-height:1;padding:1px;pointer-events:auto}
       .sched-job-card .ja-btn:hover{color:var(--error)}
       .sched-job-card .ja-btn.end-btn:hover{color:var(--accent)}
-
       .sched-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.25rem}
       .sched-panel-title{font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;color:var(--text-primary)}
       .sched-list-scroll{display:flex;flex-direction:column;gap:0.4rem;max-height:260px;overflow-y:auto}
@@ -420,11 +411,8 @@ window.BromarPages.scheduling = (() => {
       .sched-notif-item .notif-time{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--text-secondary)}
       .sched-notif-item .notif-send{padding:0.25rem 0.6rem;border-radius:6px;border:none;background:var(--accent);color:white;font-family:'Outfit',sans-serif;font-size:0.7rem;font-weight:600;cursor:pointer}
       .sched-notif-item .notif-sent{color:var(--success);font-weight:600;font-size:0.75rem}
-
-      /* ── MOBILE ── */
       .sched-desktop{display:block}.sched-mobile{display:none}
       @media(max-width:900px){.sched-desktop{display:none!important}.sched-mobile{display:block!important}}
-
       .sm-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
       .sm-date-nav{display:flex;align-items:center;gap:0.5rem}
       .sm-date-label{font-weight:700;font-size:1rem;color:var(--text-primary);text-align:center}
@@ -488,50 +476,31 @@ window.BromarPages.scheduling = (() => {
   }
   function removeStyles() { const el = document.getElementById('sched-styles'); if (el) el.remove(); }
 
-  /* ═══════════════════════════════════════
-     RENDER
-     ═══════════════════════════════════════ */
+  /* ═══════════════════════════════════════ RENDER ═══════════════════════════════════════ */
   async function render(container) {
     injectStyles(); containerRef = container;
     if (!currentWeekStart) currentWeekStart = getMonday(new Date());
     if (!mobileSelectedDate) mobileSelectedDate = new Date();
     container.innerHTML = `<div class="card"><div class="sched-empty">Loading…</div></div>`;
-
-    const [emps, jbs, sts, asgn] = await Promise.all([
-      DB.fetchEmployees(),
-      DB.fetchJobs(),
-      DB.fetchSites(),
-      DB.fetchAssignments()
-    ]);
-    employees = emps;
-    jobs = jbs;
-    sites = sts;
-    assignments = asgn;
-
+    const [emps, jbs, sts, asgn] = await Promise.all([DB.fetchEmployees(), DB.fetchJobs(), DB.fetchSites(), DB.fetchAssignments()]);
+    employees = emps; jobs = jbs; sites = sts; assignments = asgn;
     container.innerHTML = `<div class="sched-desktop">${buildDesktop()}</div><div class="sched-mobile">${buildMobile()}</div>`;
-    bindDesktop(container);
-    bindMobile(container);
-    const vEl = document.getElementById('app-version');
-    if (vEl) vEl.textContent = `scheduling ${PAGE_VERSION}`;
+    bindDesktop(container); bindMobile(container);
+    const vEl = document.getElementById('app-version'); if (vEl) vEl.textContent = `scheduling ${PAGE_VERSION}`;
   }
 
-  /* Re-render without refetching all data (used after local mutations) */
   function rerender(container) {
     container.innerHTML = `<div class="sched-desktop">${buildDesktop()}</div><div class="sched-mobile">${buildMobile()}</div>`;
-    bindDesktop(container);
-    bindMobile(container);
+    bindDesktop(container); bindMobile(container);
   }
 
-  /* ═══════════════════════════════════════
-     DESKTOP
-     ═══════════════════════════════════════ */
+  /* ═══════════════════════════════════════ DESKTOP ═══════════════════════════════════════ */
   function buildDesktop() {
     const days = getDaysOfWeek(); const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const roles = [...new Set(employees.map(e => e.role))].sort();
     const filtered = getFilteredEmployees(); const unassigned = getUnassignedJobs();
     const weekEnd = new Date(currentWeekStart); weekEnd.setDate(weekEnd.getDate() + (showWeekends ? 6 : 4));
     const hiddenEmps = employees.filter(e => hiddenEmployees.has(e.id));
-
     return `
       <div class="sched-toolbar">
         <div class="sched-toolbar-group sched-week-nav">
@@ -550,12 +519,10 @@ window.BromarPages.scheduling = (() => {
       <div class="sched-grid-wrap"><div class="sched-grid" style="grid-template-columns:200px repeat(${days.length},1fr);">
         <div class="sched-col-head" style="position:sticky;left:0;z-index:3;">Employee</div>
         ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
-        ${filtered.map(emp=>{
-      return `<div class="sched-emp-cell">
+        ${filtered.map(emp=>`<div class="sched-emp-cell">
             <div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
-            <div class="sched-emp-info"><span class="sched-emp-name">${emp.name}</span>
-              <div class="sched-emp-meta"><span class="sched-emp-role" style="background:${roleColor(emp.role)}18;color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div>
-            </div><button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
+            <div class="sched-emp-info"><span class="sched-emp-name">${emp.name}</span><div class="sched-emp-meta"><span class="sched-emp-role" style="background:${roleColor(emp.role)}18;color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div></div>
+            <button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
           ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
             <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
               ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
@@ -566,12 +533,12 @@ window.BromarPages.scheduling = (() => {
                   <div class="job-actions">${isLinked?`<button class="ja-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip this day">⊘</button>`:''}${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}${!isLinked?`<button class="ja-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div>
                 </div>`;}).join('')}
               <button class="cell-add" data-cell-emp="${emp.name}" data-cell-date="${dk}" title="Assign">+</button>
-            </div>`;}).join('')}`;}).join('')}
+            </div>`;}).join('')}`).join('')}
         ${filtered.length===0?'<div class="sched-empty" style="grid-column:1/-1;">No employees match your filter.</div>':''}
       </div></div>
       <div class="sched-panels">
         <div class="card"><div class="sched-panel-title">Unassigned Jobs ${unassigned.length?`<span class="sched-badge">${unassigned.length}</span>`:''}</div>
-          <div class="sched-list-scroll">${unassigned.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs loaded — check jobs table':'All jobs assigned'}</div>`:''}
+          <div class="sched-list-scroll">${unassigned.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs table found':'All jobs assigned'}</div>`:''}
             ${unassigned.map(j=>`<div class="sched-unassigned-item" draggable="true" data-job-num="${j.number}"><div class="uaj-left"><span class="uaj-num">${j.number}</span><span class="uaj-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}
           </div></div>
         <div class="card"><div class="sched-panel-title">Notifications ${unsent()?`<span class="sched-badge">${unsent()}</span>`:''}</div>
@@ -589,14 +556,11 @@ window.BromarPages.scheduling = (() => {
     dt.querySelector('#dt-search')?.addEventListener('input',e=>{searchTerm=e.target.value;rerender(container);});
     dt.querySelector('#dt-role')?.addEventListener('change',e=>{filterRole=e.target.value;rerender(container);});
     dt.querySelector('#dt-weekends')?.addEventListener('change',e=>{showWeekends=e.target.checked;rerender(container);});
-
     dt.querySelectorAll('.sched-emp-hide').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();hiddenEmployees.add(b.dataset.hideEmp);rerender(container);}));
     dt.querySelectorAll('.sched-hidden-chip').forEach(c=>c.addEventListener('click',()=>{hiddenEmployees.delete(c.dataset.showEmp);rerender(container);}));
     dt.querySelector('#dt-show-all')?.addEventListener('click',()=>{hiddenEmployees.clear();rerender(container);});
-
     dt.querySelectorAll('.cell-add').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAssignModal(container,b.dataset.cellEmp,b.dataset.cellDate);}));
     bindCardActions(dt,container);
-
     dt.querySelectorAll('.sched-job-card[draggable="true"]').forEach(c=>{
       c.addEventListener('dragstart',e=>{const a=assignments.find(x=>x.id===c.dataset.assignId);if(!a||a.schedule!=='oneoff'){e.preventDefault();return;}dragData={type:'reassign',assignId:c.dataset.assignId};e.dataTransfer.effectAllowed='move';c.style.opacity='0.5';});
       c.addEventListener('dragend',()=>{c.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
@@ -605,30 +569,21 @@ window.BromarPages.scheduling = (() => {
       item.addEventListener('dragstart',e=>{dragData={type:'assign',jobNumber:item.dataset.jobNum};e.dataTransfer.effectAllowed='copy';item.style.opacity='0.5';});
       item.addEventListener('dragend',()=>{item.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
     });
-    dt.querySelectorAll('.sched-day-cell').forEach(cell=>{
-      cell.addEventListener('drop',e=>{e.preventDefault();cell.classList.remove('drag-over');if(!dragData)return;handleDrop(container,cell.dataset.emp,cell.dataset.date);});
-    });
+    dt.querySelectorAll('.sched-day-cell').forEach(cell=>{cell.addEventListener('drop',e=>{e.preventDefault();cell.classList.remove('drag-over');if(!dragData)return;handleDrop(container,cell.dataset.emp,cell.dataset.date);});});
     dt.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',()=>{markNotifSent(container,b.dataset.notifId);}));
   }
 
-  /* ═══════════════════════════════════════
-     MOBILE
-     ═══════════════════════════════════════ */
+  /* ═══════════════════════════════════════ MOBILE ═══════════════════════════════════════ */
   function buildMobile() {
-    const days = getDaysOfWeek(); const dayAbbr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const dk = getMobileDateKey(); const filtered = getFilteredEmployees();
-    const roles = [...new Set(employees.map(e=>e.role))].sort();
+    const days=getDaysOfWeek();const dayAbbr=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const dk=getMobileDateKey();const filtered=getFilteredEmployees();
+    const roles=[...new Set(employees.map(e=>e.role))].sort();
     return `
       <div class="sm-header">
         <div class="sm-date-nav"><button class="sm-nav-btn" id="sm-prev">‹</button><span class="sm-date-label">${formatDateFull(mobileSelectedDate)}</span><button class="sm-nav-btn" id="sm-next">›</button></div>
-        <div class="sm-header-actions">
-          <button class="sm-icon-btn" id="sm-filter-toggle">⚙</button>
-          <button class="sm-icon-btn" id="sm-notif-toggle">🔔${unsent()?'<span class="sm-notif-dot"></span>':''}</button>
-        </div>
+        <div class="sm-header-actions"><button class="sm-icon-btn" id="sm-filter-toggle">⚙</button><button class="sm-icon-btn" id="sm-notif-toggle">🔔${unsent()?'<span class="sm-notif-dot"></span>':''}</button></div>
       </div>
-      <div class="sm-day-dots" id="sm-day-dots">
-        ${days.map(d=>{const active=formatDateKey(d)===dk;const today=isToday(d);return`<div class="sm-day-dot ${active?'active':''} ${today&&!active?'today':''}" data-date="${formatDateKey(d)}"><span class="dot-day">${dayAbbr[d.getDay()]}</span><span class="dot-num">${d.getDate()}</span></div>`;}).join('')}
-      </div>
+      <div class="sm-day-dots">${days.map(d=>{const active=formatDateKey(d)===dk;const today=isToday(d);return`<div class="sm-day-dot ${active?'active':''} ${today&&!active?'today':''}" data-date="${formatDateKey(d)}"><span class="dot-day">${dayAbbr[d.getDay()]}</span><span class="dot-num">${d.getDate()}</span></div>`;}).join('')}</div>
       <div class="sm-filters ${mobileShowFilters?'open':''}"><div class="sm-filters-inner">
         <input class="sched-input" id="sm-search" type="text" placeholder="Search employees…" value="${searchTerm}">
         <select class="sched-select" id="sm-role"><option value="all">All roles</option>${roles.map(r=>`<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
@@ -636,31 +591,20 @@ window.BromarPages.scheduling = (() => {
       </div></div>
       <div class="sm-emp-list sm-swipe-area" id="sm-emp-list">
         ${filtered.length===0?'<div class="sched-empty">No employees match your filter.</div>':''}
-        ${filtered.map(emp=>{
-      const ea=getEffectiveAssignments(emp.name,dk);
-      const expanded=mobileExpandedEmp===emp.id;
-      return`<div class="sm-emp-card ${expanded?'expanded':''} ${ea.length?'has-items':''}" data-emp-id="${emp.id}">
+        ${filtered.map(emp=>{const ea=getEffectiveAssignments(emp.name,dk);const expanded=mobileExpandedEmp===emp.id;
+          return`<div class="sm-emp-card ${expanded?'expanded':''} ${ea.length?'has-items':''}" data-emp-id="${emp.id}">
             <div class="sm-emp-head" data-emp-toggle="${emp.id}">
-              <div class="sm-emp-head-left">
-                <div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
-                <div class="sm-emp-head-info"><span class="sm-emp-head-name">${emp.name}</span><span class="sm-emp-head-role" style="color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div>
-              </div>
+              <div class="sm-emp-head-left"><div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
+                <div class="sm-emp-head-info"><span class="sm-emp-head-name">${emp.name}</span><span class="sm-emp-head-role" style="color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div></div>
               <div class="sm-emp-head-right">${ea.length?`<span class="sm-emp-count">${ea.length}</span>`:''}<span class="sm-emp-chevron">›</span></div>
             </div>
             <div class="sm-emp-body"><div class="sm-emp-body-inner">
               ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
-                return`<div class="sm-assign-card ${isSite?'is-site':'is-job'}">
-                  <div class="sm-assign-left">
+                return`<div class="sm-assign-card ${isSite?'is-site':'is-job'}"><div class="sm-assign-left">
                     ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
                     <span class="a-label">${lbl}</span><span class="a-sub">${sub}</span>
-                    ${isLinked?`<span class="a-sched">${CHAIN_ICON} ${scheduleLabel(a.schedule)}${a.endDate?' · ends '+a.endDate:''}</span>`:''}
-                  </div>
-                  <div class="sm-assign-actions">
-                    ${isLinked?`<button class="sm-assign-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip day">⊘</button>`:''}
-                    ${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}
-                    ${!isLinked?`<button class="sm-assign-btn" data-remove="${a.id}" title="Remove">×</button>`:''}
-                  </div>
-                </div>`;}).join('')}
+                    ${isLinked?`<span class="a-sched">${CHAIN_ICON} ${scheduleLabel(a.schedule)}${a.endDate?' · ends '+a.endDate:''}</span>`:''}</div>
+                  <div class="sm-assign-actions">${isLinked?`<button class="sm-assign-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip day">⊘</button>`:''}${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}${!isLinked?`<button class="sm-assign-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div></div>`;}).join('')}
               <button class="sm-add-btn" data-add-emp="${emp.name}" data-add-date="${dk}">+ Assign job or site</button>
             </div></div></div>`;}).join('')}
       </div>
@@ -668,12 +612,12 @@ window.BromarPages.scheduling = (() => {
   }
 
   function bindMobile(container) {
-    const mb = container.querySelector('.sched-mobile'); if (!mb) return;
+    const mb=container.querySelector('.sched-mobile');if(!mb)return;
     mb.querySelector('#sm-prev')?.addEventListener('click',()=>{mobileSelectedDate.setDate(mobileSelectedDate.getDate()-1);currentWeekStart=getMonday(mobileSelectedDate);rerender(container);});
     mb.querySelector('#sm-next')?.addEventListener('click',()=>{mobileSelectedDate.setDate(mobileSelectedDate.getDate()+1);currentWeekStart=getMonday(mobileSelectedDate);rerender(container);});
     mb.querySelectorAll('.sm-day-dot').forEach(dot=>{dot.addEventListener('click',()=>{const p=dot.dataset.date.split('-');mobileSelectedDate=new Date(+p[0],+p[1]-1,+p[2]);rerender(container);});});
-    const swipeArea = mb.querySelector('#sm-emp-list');
-    if (swipeArea) {
+    const swipeArea=mb.querySelector('#sm-emp-list');
+    if(swipeArea){
       swipeArea.addEventListener('touchstart',e=>{touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;},{passive:true});
       swipeArea.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-touchStartX;const dy=e.changedTouches[0].clientY-touchStartY;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){mobileSelectedDate.setDate(mobileSelectedDate.getDate()+(dx<0?1:-1));currentWeekStart=getMonday(mobileSelectedDate);rerender(container);}},{passive:true});
     }
@@ -688,73 +632,44 @@ window.BromarPages.scheduling = (() => {
     mb.querySelector('#sm-notif-toggle')?.addEventListener('click',()=>{openNotifSheet(container);});
   }
 
-  /* ═══════════════════════════════════════
-     SHARED ACTIONS
-     ═══════════════════════════════════════ */
-  function bindCardActions(root, container) {
+  /* ═══════════════════════════════════════ SHARED ACTIONS ═══════════════════════════════════════ */
+  function bindCardActions(root,container) {
     root.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();removeAssignment(container,b.dataset.remove);}));
-    root.querySelectorAll('[data-skip]').forEach(b=>b.addEventListener('click',e=>{
-      e.stopPropagation();
-      const a = assignments.find(x=>x.id===b.dataset.skip); if(!a) return;
-      if(!a.skipDates) a.skipDates = [];
-      a.skipDates.push(b.dataset.skipDate);
-      DB.updateSkipDates(a.id, a.skipDates);
-      rerender(container);
-    }));
-    root.querySelectorAll('[data-end]').forEach(b=>b.addEventListener('click',e=>{
-      e.stopPropagation();
-      const a = assignments.find(x=>x.id===b.dataset.end); if(!a) return;
-      const d = parseDateKey(b.dataset.endDate); d.setDate(d.getDate()-1);
-      a.endDate = formatDateKey(d);
-      DB.endAssignment(a.id, a.endDate);
-      queueNotification(a.employeeName, `${getAssignmentLabel(a)} ends on ${a.endDate}`);
-      rerender(container);
-    }));
+    root.querySelectorAll('[data-skip]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=assignments.find(x=>x.id===b.dataset.skip);if(!a)return;if(!a.skipDates)a.skipDates=[];a.skipDates.push(b.dataset.skipDate);DB.updateSkipDates(a.id,a.skipDates);rerender(container);}));
+    root.querySelectorAll('[data-end]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=assignments.find(x=>x.id===b.dataset.end);if(!a)return;const d=parseDateKey(b.dataset.endDate);d.setDate(d.getDate()-1);a.endDate=formatDateKey(d);DB.endAssignment(a.id,a.endDate);queueNotification(a.employeeName,`${getAssignmentLabel(a)} ends on ${a.endDate}`);rerender(container);}));
   }
 
-  async function removeAssignment(container, aId) {
-    await DB.deleteAssignment(aId);
-    rerender(container);
-  }
+  async function removeAssignment(container,aId){await DB.deleteAssignment(aId);rerender(container);}
 
-  async function handleDrop(container, empName, date) {
-    if (dragData.type === 'assign') {
-      const job = jobs.find(j=>j.number===dragData.jobNumber); if(!job) return;
-      const a = { employeeName:empName, type:'job', jobNumber:job.number, clientName:job.client, schedule:'oneoff', startDate:date, skipDates:[], recentlyChanged:true };
-      await DB.saveAssignment(a);
-      assignments.push(a);
-      queueNotification(empName, `Assigned ${job.number} on ${date}`);
+  async function handleDrop(container,empName,date) {
+    if(dragData.type==='assign'){
+      const job=jobs.find(j=>j.number===dragData.jobNumber);if(!job)return;
+      const a={employeeName:empName,type:'job',jobNumber:job.number,clientName:job.client,schedule:'oneoff',startDate:date,skipDates:[],recentlyChanged:true};
+      await DB.saveAssignment(a);assignments.push(a);queueNotification(empName,`Assigned ${job.number} on ${date}`);
     }
-    if (dragData.type === 'reassign') {
-      const a = assignments.find(x=>x.id===dragData.assignId); if(!a||(a.employeeName===empName&&a.startDate===date)) return;
-      const oldName = a.employeeName; const lbl = getAssignmentLabel(a);
-      a.employeeName = empName; a.startDate = date; a.recentlyChanged = true;
-      await DB.saveAssignment(a);
-      queueNotification(empName, `${lbl} reassigned to you on ${date}`);
-      if(oldName!==empName) queueNotification(oldName, `${lbl} removed from your schedule`);
+    if(dragData.type==='reassign'){
+      const a=assignments.find(x=>x.id===dragData.assignId);if(!a||(a.employeeName===empName&&a.startDate===date))return;
+      const oldName=a.employeeName;const lbl=getAssignmentLabel(a);a.employeeName=empName;a.startDate=date;a.recentlyChanged=true;
+      await DB.saveAssignment(a);queueNotification(empName,`${lbl} reassigned to you on ${date}`);if(oldName!==empName)queueNotification(oldName,`${lbl} removed from your schedule`);
     }
-    dragData = null; rerender(container);
+    dragData=null;rerender(container);
   }
 
-  function markNotifSent(container, nId) { const n=notificationQueue.find(x=>x.id===nId); if(n){n.sent=true;rerender(container);} }
+  function markNotifSent(container,nId){const n=notificationQueue.find(x=>x.id===nId);if(n){n.sent=true;rerender(container);}}
 
-  /* ═══════════════════════════════════════
-     ASSIGN MODAL
-     ═══════════════════════════════════════ */
-  function openAssignModal(container, empName, date) {
-    const emp = findEmpByName(empName);
-    let activeTab = 'job', selectedJob = null, selectedSite = null, jobQuery = '', siteQuery = '';
-    let schedType = 'oneoff', endDateVal = '';
-    const overlay = document.createElement('div'); overlay.className = 'sched-modal-overlay';
+  /* ═══════════════════════════════════════ ASSIGN MODAL ═══════════════════════════════════════ */
+  function openAssignModal(container,empName,date) {
+    let activeTab='job',selectedJob=null,selectedSite=null,jobQuery='',siteQuery='';
+    let schedType='oneoff',endDateVal='';
+    const overlay=document.createElement('div');overlay.className='sched-modal-overlay';
 
     function rm() {
-      const existing = getEffectiveAssignments(empName, date);
-      const conflict = existing.length >= 3 ? `⚠ ${empName} has ${existing.length} items on this date.` : '';
-      const canSubmit = activeTab === 'job' ? !!selectedJob : !!selectedSite;
-      const filteredJobs = searchJobs(jobQuery);
-      const filteredSites = searchSites(siteQuery);
+      const existing=getEffectiveAssignments(empName,date);
+      const conflict=existing.length>=3?`⚠ ${empName} has ${existing.length} items on this date.`:'';
+      const canSubmit=activeTab==='job'?!!selectedJob:!!selectedSite;
+      const fJobs=searchJobsLocal(jobQuery);const fSites=searchSitesLocal(siteQuery);
 
-      overlay.innerHTML = `<div class="sched-modal">
+      overlay.innerHTML=`<div class="sched-modal">
         <button class="sched-modal-close" id="am-close">×</button>
         <h3>Assign to Schedule</h3>
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem;">${empName} · starting ${date}</p>
@@ -765,13 +680,13 @@ window.BromarPages.scheduling = (() => {
         ${activeTab==='job'?`
           <label>Search Job</label>
           <input class="sched-input" id="am-job-search" type="text" placeholder="Search by job number, client or site…" value="${jobQuery}" autofocus>
-          <div class="sched-job-results">${filteredJobs.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs found in database':'No matching jobs'}</div>`:''}
-            ${filteredJobs.map(j=>`<div class="sched-job-result ${selectedJob?.number===j.number?'selected':''}" data-jnum="${j.number}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}</div>
+          <div class="sched-job-results">${fJobs.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs table found':'No matching jobs'}</div>`:''}
+            ${fJobs.map(j=>`<div class="sched-job-result ${selectedJob?.number===j.number?'selected':''}" data-jnum="${j.number}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}</div>
         `:`
           <label>Search Site</label>
           <input class="sched-input" id="am-site-search" type="text" placeholder="Search by site name, client or address…" value="${siteQuery}" autofocus>
-          <div class="sched-job-results">${filteredSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found in database':'No matching sites'}</div>`:''}
-            ${filteredSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span>${s.address?`<span class="sr-addr">${s.address}${s.city?', '+s.city:''}</span>`:''}</div>`).join('')}</div>
+          <div class="sched-job-results">${fSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found':'No matching sites'}</div>`:''}
+            ${fSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span>${s.address?`<span class="sr-addr">${s.address}${s.city?', '+s.city:''}</span>`:''}</div>`).join('')}</div>
         `}
         <label>Schedule Type</label>
         <div class="sched-schedule-type">
@@ -780,8 +695,8 @@ window.BromarPages.scheduling = (() => {
           <button class="sched-stype-btn ${schedType==='indefinite'?'active':''}" data-stype="indefinite">Indefinite</button>
         </div>
         ${schedType==='duration'?`<div class="sched-date-row"><div style="flex:1"><label>End Date</label><input class="sched-input" id="am-end-date" type="date" value="${endDateVal}"></div></div>`:''}
-        ${schedType==='indefinite'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">Repeats Mon–Fri until manually ended. Skip individual days or end from the grid.</p>':''}
-        ${schedType==='duration'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem;">Repeats Mon–Fri between start and end dates. Skip individual days from the grid.</p>':''}
+        ${schedType==='indefinite'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">Repeats Mon–Fri until manually ended.</p>':''}
+        ${schedType==='duration'?'<p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem;">Repeats Mon–Fri between start and end dates.</p>':''}
         ${conflict?`<div class="sched-conflict">${conflict}</div>`:''}
         <div class="sched-modal-actions">
           <button class="btn-secondary" id="am-cancel">Cancel</button>
@@ -793,33 +708,22 @@ window.BromarPages.scheduling = (() => {
       overlay.querySelector('#am-cancel')?.addEventListener('click',close);
       overlay.querySelectorAll('.sched-modal-tab').forEach(t=>t.addEventListener('click',()=>{activeTab=t.dataset.tab;selectedJob=null;selectedSite=null;jobQuery='';siteQuery='';rm();}));
       overlay.querySelectorAll('.sched-stype-btn').forEach(b=>b.addEventListener('click',()=>{schedType=b.dataset.stype;rm();}));
-
       if(activeTab==='job'){
-        const input = overlay.querySelector('#am-job-search');
-        input?.addEventListener('input',e=>{jobQuery=e.target.value;selectedJob=null;rm();const i=overlay.querySelector('#am-job-search');if(i){i.value=jobQuery;i.focus();}});
+        overlay.querySelector('#am-job-search')?.addEventListener('input',e=>{jobQuery=e.target.value;selectedJob=null;rm();const i=overlay.querySelector('#am-job-search');if(i){i.value=jobQuery;i.focus();}});
         overlay.querySelectorAll('.sched-job-result').forEach(el=>el.addEventListener('click',()=>{selectedJob=jobs.find(j=>j.number===el.dataset.jnum);rm();}));
       } else {
-        const input = overlay.querySelector('#am-site-search');
-        input?.addEventListener('input',e=>{siteQuery=e.target.value;selectedSite=null;rm();const i=overlay.querySelector('#am-site-search');if(i){i.value=siteQuery;i.focus();}});
+        overlay.querySelector('#am-site-search')?.addEventListener('input',e=>{siteQuery=e.target.value;selectedSite=null;rm();const i=overlay.querySelector('#am-site-search');if(i){i.value=siteQuery;i.focus();}});
         overlay.querySelectorAll('.sched-site-result').forEach(el=>el.addEventListener('click',()=>{selectedSite=sites.find(s=>s.id===el.dataset.sid);rm();}));
       }
       overlay.querySelector('#am-end-date')?.addEventListener('change',e=>{endDateVal=e.target.value;});
-
       overlay.querySelector('#am-submit')?.addEventListener('click',async()=>{
-        const a = {employeeName:empName, schedule:schedType, startDate:date, endDate:schedType==='duration'?(endDateVal||null):null, skipDates:[], recentlyChanged:true};
-        if(activeTab==='job'){
-          if(!selectedJob) return;
-          a.type='job'; a.jobNumber=selectedJob.number; a.clientName=selectedJob.client;
-        } else {
-          if(!selectedSite) return;
-          a.type='site'; a.siteId=selectedSite.id; a.siteName=selectedSite.name; a.clientName=selectedSite.clientName;
-        }
-        await DB.saveAssignment(a);
-        assignments.push(a);
-        const lbl = activeTab==='job'?selectedJob.number:selectedSite.name;
-        const schedDesc = schedType==='oneoff'?date:schedType==='indefinite'?'indefinitely from '+date:`${date} to ${endDateVal||'?'}`;
-        queueNotification(empName, `Assigned ${lbl} ${schedDesc}`);
-        close(); rerender(container);
+        const a={employeeName:empName,schedule:schedType,startDate:date,endDate:schedType==='duration'?(endDateVal||null):null,skipDates:[],recentlyChanged:true};
+        if(activeTab==='job'){if(!selectedJob)return;a.type='job';a.jobNumber=selectedJob.number;a.clientName=selectedJob.client;}
+        else{if(!selectedSite)return;a.type='site';a.siteId=selectedSite.id;a.siteName=selectedSite.name;a.clientName=selectedSite.clientName;}
+        await DB.saveAssignment(a);assignments.push(a);
+        const lbl=activeTab==='job'?selectedJob.number:selectedSite.name;
+        queueNotification(empName,`Assigned ${lbl} ${schedType==='oneoff'?date:schedType==='indefinite'?'indefinitely':'to '+endDateVal}`);
+        close();rerender(container);
       });
     }
     function close(){overlay.remove();activeModal=null;}
@@ -828,31 +732,28 @@ window.BromarPages.scheduling = (() => {
   }
 
   function openQuickAssignModal(container) {
-    const dk = getMobileDateKey(); let selectedEmpName = null;
-    const overlay = document.createElement('div'); overlay.className = 'sched-modal-overlay';
+    const dk=getMobileDateKey();let selectedEmpName=null;
+    const overlay=document.createElement('div');overlay.className='sched-modal-overlay';
     function rq() {
-      const filtered = getFilteredEmployees();
-      overlay.innerHTML = `<div class="sched-modal">
-        <button class="sched-modal-close" id="qm-close">×</button>
-        <h3>Quick Assign — ${formatDateFull(mobileSelectedDate)}</h3>
+      const filtered=getFilteredEmployees();
+      overlay.innerHTML=`<div class="sched-modal"><button class="sched-modal-close" id="qm-close">×</button><h3>Quick Assign — ${formatDateFull(mobileSelectedDate)}</h3>
         <label>Select Employee</label>
         <select class="sched-select" id="qm-emp" style="width:100%"><option value="">Choose…</option>${filtered.map(e=>`<option value="${e.name}" ${selectedEmpName===e.name?'selected':''}>${e.name} (${roleLabel(e.role)})</option>`).join('')}</select>
-        <div class="sched-modal-actions"><button class="btn-secondary" id="qm-cancel">Cancel</button><button class="btn-primary" id="qm-next" ${!selectedEmpName?'disabled style="opacity:0.5;pointer-events:none"':''}>Next</button></div>
-      </div>`;
+        <div class="sched-modal-actions"><button class="btn-secondary" id="qm-cancel">Cancel</button><button class="btn-primary" id="qm-next" ${!selectedEmpName?'disabled style="opacity:0.5;pointer-events:none"':''}>Next</button></div></div>`;
       overlay.querySelector('#qm-close')?.addEventListener('click',close);
       overlay.querySelector('#qm-cancel')?.addEventListener('click',close);
       overlay.querySelector('#qm-emp')?.addEventListener('change',e=>{selectedEmpName=e.target.value;rq();});
-      overlay.querySelector('#qm-next')?.addEventListener('click',()=>{if(!selectedEmpName) return;close();openAssignModal(container,selectedEmpName,dk);});
+      overlay.querySelector('#qm-next')?.addEventListener('click',()=>{if(!selectedEmpName)return;close();openAssignModal(container,selectedEmpName,dk);});
     }
     function close(){overlay.remove();activeModal=null;}
     overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
     rq();document.body.appendChild(overlay);activeModal=overlay;
   }
 
-  function openNotifSheet(container) {
-    const overlay = document.createElement('div'); overlay.className = 'sm-notif-overlay';
+  function openNotifSheet() {
+    const overlay=document.createElement('div');overlay.className='sm-notif-overlay';
     function rs() {
-      overlay.innerHTML = `<div class="sm-notif-sheet"><h3>Notifications ${unsent()?`(${unsent()} pending)`:''}</h3>
+      overlay.innerHTML=`<div class="sm-notif-sheet"><h3>Notifications ${unsent()?`(${unsent()} pending)`:''}</h3>
         <div style="display:flex;flex-direction:column;gap:0.4rem;">${notificationQueue.length===0?'<div class="sched-empty">No notifications</div>':''}
           ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span>${n.sent?'<span class="notif-sent">✓</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
         </div></div>`;
@@ -862,8 +763,7 @@ window.BromarPages.scheduling = (() => {
     rs();document.body.appendChild(overlay);
   }
 
-  /* ── DESTROY ── */
-  function destroy() { if(activeModal){activeModal.remove();activeModal=null;} removeStyles(); containerRef=null; }
+  function destroy(){if(activeModal){activeModal.remove();activeModal=null;}removeStyles();containerRef=null;}
 
   return { title:'Scheduling', version:PAGE_VERSION, render, destroy };
 })();
