@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.01',
+  version: 'V1.02',
 
   render(container) {
     // Display this page's version in the footer
@@ -26,6 +26,7 @@ window.BromarPages.timesheets = {
       timesheets: [],
       loading: false,
       error: null,
+      currentDetail: null,
       analysisFrom: getDateNWeeksAgo(4),
       analysisTo:   isoDate(new Date()),
       analysisEmployee: 'all',
@@ -280,25 +281,50 @@ window.BromarPages.timesheets = {
         .ts-modal-inner {
           background: var(--bg-main); border: 1px solid var(--border);
           border-radius: var(--radius); max-width: 900px; width: 100%;
-          max-height: 90vh; overflow-y: auto;
+          max-height: 90vh;
           box-shadow: 0 20px 60px var(--shadow);
+          display: flex; flex-direction: column;
         }
         .ts-modal-head {
           display: flex; align-items: center; justify-content: space-between;
           padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
-          position: sticky; top: 0; background: var(--bg-main); z-index: 1;
+          background: var(--bg-main); flex-shrink: 0;
         }
         .ts-modal-head h2 { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.01em; }
         .ts-modal-head .sub {
           font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; margin-top: 2px;
         }
-        .ts-modal-body { padding: 1.5rem; }
+        .ts-modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
+        .ts-modal-foot {
+          display: flex; gap: 0.75rem; justify-content: flex-end;
+          padding: 1rem 1.5rem; border-top: 1px solid var(--border);
+          background: var(--bg-main); flex-shrink: 0;
+        }
         .ts-close-btn {
           width: 32px; height: 32px; border-radius: var(--radius-sm);
           background: transparent; border: 1px solid var(--border);
           color: var(--text-primary); cursor: pointer; font-size: 1.1rem;
         }
         .ts-close-btn:hover { background: var(--card-hover); border-color: var(--accent); }
+        .ts-export-btn {
+          font-family: 'Outfit', sans-serif; font-size: 0.9rem; font-weight: 600;
+          padding: 0.65rem 1.15rem; border-radius: var(--radius-sm);
+          border: 1px solid var(--border); background: var(--bg-secondary);
+          color: var(--text-primary); cursor: pointer;
+          display: inline-flex; align-items: center; gap: 0.5rem;
+          transition: all 0.2s ease;
+        }
+        .ts-export-btn:hover:not(:disabled) {
+          border-color: var(--accent); color: var(--accent);
+          background: var(--card-hover);
+        }
+        .ts-export-btn:disabled { opacity: 0.5; cursor: wait; }
+        .ts-export-btn svg {
+          width: 15px; height: 15px;
+          stroke: currentColor; stroke-width: 2;
+          stroke-linecap: round; stroke-linejoin: round; fill: none;
+          pointer-events: none;
+        }
 
         .ts-detail-grid {
           display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -344,6 +370,26 @@ window.BromarPages.timesheets = {
           .ts-stat .num { font-size: 1.35rem; }
           .ts-week-banner { padding: 0.85rem 1rem; }
           .ts-week-banner .range { font-size: 0.92rem; }
+
+          /* Modal becomes a full-height bottom sheet on mobile,
+             so the sticky footer (Close / Export) is thumb-reachable */
+          .ts-modal { padding: 0; align-items: flex-end; }
+          .ts-modal-inner {
+            max-height: 100vh; height: 100vh;
+            width: 100vw; border-radius: 0;
+            border-left: none; border-right: none; border-bottom: none;
+          }
+          .ts-modal-head { padding: 1rem 1.15rem; }
+          .ts-modal-head h2 { font-size: 1.05rem; }
+          .ts-modal-body { padding: 1rem; padding-bottom: 1.5rem; }
+          .ts-modal-foot {
+            padding: 0.85rem 1rem;
+            padding-bottom: calc(0.85rem + env(safe-area-inset-bottom, 0));
+            gap: 0.5rem;
+          }
+          .ts-modal-foot .btn-secondary,
+          .ts-modal-foot .ts-export-btn { flex: 1; justify-content: center; padding: 0.85rem 1rem; }
+          .ts-close-btn { width: 36px; height: 36px; }
         }
       </style>
 
@@ -357,6 +403,13 @@ window.BromarPages.timesheets = {
             <button class="ts-close-btn" id="ts-modal-close" aria-label="Close">✕</button>
           </div>
           <div class="ts-modal-body" id="ts-modal-body"></div>
+          <div class="ts-modal-foot">
+            <button class="btn-secondary" id="ts-modal-close-bottom">Close</button>
+            <button class="ts-export-btn" id="ts-modal-export">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+              <span>Export PDF</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -672,9 +725,168 @@ window.BromarPages.timesheets = {
       return summary + table + breakdown;
     }
 
+    /* ── PDF EXPORT ── */
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        if ([...document.scripts].some(s => s.src === src)) return resolve();
+        const s = document.createElement('script');
+        s.src = src; s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load ' + src));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function ensurePdfLibs() {
+      if (!(window.jspdf && window.jspdf.jsPDF)) {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      }
+      if (!(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable)) {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+      }
+      if (!window.BromarReportKit) {
+        throw new Error('BromarReportKit not loaded — check js/bromar-report-kit.js is included in index.html');
+      }
+    }
+
+    async function exportTimesheetPDF(t) {
+      await ensurePdfLibs();
+      const RK = window.BromarReportKit;
+      const doc = RK.createDoc();
+      const M = RK.LAYOUT.margin;
+      const contentW = RK.LAYOUT.contentW;
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+      // Parse entries defensively
+      let entries = t.timesheet_entries;
+      if (typeof entries === 'string') {
+        try { entries = JSON.parse(entries); } catch (_) { entries = []; }
+      }
+      if (!Array.isArray(entries)) entries = [];
+
+      const title = `Timesheet — ${t.employee_name}`;
+      const weekRange = `${fmtDate(t.week_starting)} to ${fmtDate(addDays(t.week_starting, 6))}`;
+
+      await RK.drawHeader(doc, { dark: isDark });
+
+      // Title block
+      let y = RK.LAYOUT.headerH + 8;
+      doc.setFontSize(RK.FONT.title); doc.setFont('helvetica', 'bold');
+      const navy = RK.PALETTE.navy.rgb;
+      doc.setTextColor(navy[0], navy[1], navy[2]);
+      doc.text(RK.normalize(title), M, y);
+      y += 5.5;
+
+      doc.setFontSize(RK.FONT.small); doc.setFont('helvetica', 'normal');
+      const muted = RK.PALETTE.muted.rgb;
+      doc.setTextColor(muted[0], muted[1], muted[2]);
+      doc.text(`Pay week: ${weekRange}`, M, y);
+      y += 6;
+
+      // Employee details block
+      y = RK.sectionHeading(doc, M, y, 'Employee');
+      y = RK.pairRow(doc, M, y, 'Name', t.employee_name);
+      y = RK.pairRow(doc, M, y, 'Role', t.employee_type || '—');
+      y = RK.pairRow(doc, M, y, 'Email', t.employee_email || '—');
+      y = RK.pairRow(doc, M, y, 'Submitted', t.submitted_at ? new Date(t.submitted_at).toLocaleString('en-AU') : '—');
+      y += 4;
+
+      // Totals block
+      y = RK.sectionHeading(doc, M, y, 'Totals');
+      const totalsBody = [
+        ['Normal Hours',       (+t.total_normal_hours).toFixed(2)],
+        ['Overtime Hours',     (+t.total_overtime_hours).toFixed(2)],
+        ['Travel Hours',       (+t.total_travel_hours).toFixed(2)],
+        ['TOTAL',              (+t.total_hours).toFixed(2)]
+      ];
+      doc.autoTable({
+        startY: y,
+        head: [['Category', 'Hours']],
+        body: totalsBody,
+        margin: { left: M, right: M },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: RK.FONT.body, cellPadding: 2, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.2 },
+        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
+        columnStyles: { 1: { halign: 'right', cellWidth: 40 } },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.row.index === totalsBody.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.textColor = RK.PALETTE.accent.rgb;
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
+
+      // Weekly flags
+      const flags = [];
+      if (t.on_call_standby) flags.push('On Call / Standby');
+      if (t.allowance_first_aid) flags.push('First Aid Allowance');
+      if (t.allowance_construction_wiring) flags.push('Construction Wiring Allowance');
+      if (flags.length) {
+        y = RK.sectionHeading(doc, M, y, 'Weekly Flags & Allowances');
+        y = RK.para(doc, M, y, flags.join('   ·   '));
+        y += 4;
+      }
+
+      // Entries table (full detail)
+      y = RK.sectionHeading(doc, M, y, 'Daily Entries');
+      const entryHead = [['Day', 'Date', 'Shift', 'Type', 'Normal', 'OT', 'Travel', 'Job #', 'Client', 'Allowances', 'Comment']];
+      const entryBody = entries.map(e => [
+        e.day || '—',
+        e.date ? fmtDateShort(e.date) : '—',
+        e.shift || '—',
+        e.type || '—',
+        (+e.normal_hours || 0).toFixed(2),
+        (+e.overtime_hours || 0).toFixed(2),
+        (+e.travel_hours || 0).toFixed(2),
+        e.job_number || '—',
+        e.client || '—',
+        e.allowances || '—',
+        e.comment || '—'
+      ]);
+      doc.autoTable({
+        startY: y,
+        head: entryHead,
+        body: entryBody.length ? entryBody : [['—','—','—','—','—','—','—','—','—','—','No entries recorded']],
+        margin: { left: M, right: M },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: RK.FONT.tiny, cellPadding: 1.6, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.15, overflow: 'linebreak' },
+        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold', fontSize: RK.FONT.tiny },
+        columnStyles: {
+          0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 10 },
+          3: { cellWidth: 20 }, 4: { cellWidth: 12, halign: 'right' },
+          5: { cellWidth: 10, halign: 'right' }, 6: { cellWidth: 12, halign: 'right' },
+          7: { cellWidth: 18 }, 8: { cellWidth: 22 }, 9: { cellWidth: 22 }, 10: { cellWidth: 'auto' }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
+
+      // General comments
+      if (t.general_comments) {
+        if (y > RK.LAYOUT.footerY - 30) { doc.addPage(); y = RK.LAYOUT.headerH + 8; }
+        y = RK.sectionHeading(doc, M, y, 'General Comments');
+        y = RK.para(doc, M, y, t.general_comments);
+      }
+
+      // Footer on every page
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        RK.drawFooter(doc, {
+          title: title,
+          ref: weekRange,
+          pageNo: `${i} of ${pageCount}`
+        });
+      }
+
+      // Filename: timesheet_lastname_YYYY-MM-DD.pdf
+      const lastName = (t.employee_name || 'employee').split(' ').slice(-1)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+      doc.save(`timesheet_${lastName}_${t.week_starting}.pdf`);
+    }
+
     function openDetail(timesheetId) {
       const t = state.timesheets.find(x => x.id === timesheetId);
       if (!t) return;
+      state.currentDetail = t;
 
       const flags = [];
       if (t.on_call_standby) flags.push('On Call / Standby');
@@ -740,6 +952,7 @@ window.BromarPages.timesheets = {
     }
 
     function closeDetail() {
+      state.currentDetail = null;
       document.getElementById('ts-modal').classList.remove('show');
     }
 
@@ -825,8 +1038,26 @@ window.BromarPages.timesheets = {
     });
 
     document.getElementById('ts-modal-close').addEventListener('click', closeDetail);
+    document.getElementById('ts-modal-close-bottom').addEventListener('click', closeDetail);
     document.getElementById('ts-modal').addEventListener('click', (e) => {
       if (e.target.id === 'ts-modal') closeDetail();
+    });
+    document.getElementById('ts-modal-export').addEventListener('click', async () => {
+      const t = state.currentDetail;
+      if (!t) return;
+      const btn = document.getElementById('ts-modal-export');
+      const originalHTML = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span>Generating…</span>';
+      try {
+        await exportTimesheetPDF(t);
+      } catch (err) {
+        console.error('PDF export failed:', err);
+        alert('Could not export PDF.\n\nError: ' + (err && err.message ? err.message : String(err)));
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
     });
     const escHandler = (e) => { if (e.key === 'Escape') closeDetail(); };
     document.addEventListener('keydown', escHandler);
