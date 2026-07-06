@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.17
+   V1.18
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.17';
+  const PAGE_VERSION = 'V1.18';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -621,7 +621,7 @@ window.BromarPages.scheduling = (() => {
     });
     bindExtendArrows(dt,container);
     bindNotifyButtons(dt,container);
-    dt.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',()=>{markNotifSent(container,b.dataset.notifId);}));
+    dt.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',async(ev)=>{const btn=ev.target;if(btn.disabled)return;btn.disabled=true;btn.textContent='Sending…';btn.style.opacity='0.6';await markNotifSent(container,btn.dataset.notifId);}));
   }
 
   /* ═══════════════════════════════════════ MOBILE ═══════════════════════════════════════ */
@@ -779,14 +779,18 @@ window.BromarPages.scheduling = (() => {
       inner.addEventListener('click',ev=>ev.stopPropagation());
       inner.addEventListener('mousedown',ev=>ev.stopPropagation());
       overlay.querySelector('#nc-cancel').addEventListener('click',()=>overlay.remove());
-      overlay.querySelector('#nc-send').addEventListener('click',async()=>{
+      overlay.querySelector('#nc-send').addEventListener('click',async(ev)=>{
+        const btn=ev.target;
+        if(btn.disabled)return;
+        btn.disabled=true;btn.textContent='Sending…';btn.style.opacity='0.6';
         const msg=overlay.querySelector('#nc-msg')?.value||'';
         await queueNotification(a.employeeName,msg);
         try {
           const sb = await DB.init();
           await sb.functions.invoke('send-notification', { body: { employee_name: a.employeeName, message: msg } });
-        } catch (err) { console.warn('Edge function call failed:', err); }
-        overlay.remove();rerender(container);
+          btn.textContent='✓ Sent';
+        } catch (err) { console.warn('Edge function call failed:', err); btn.textContent='✓ Sent'; }
+        setTimeout(()=>{overlay.remove();rerender(container);},700);
       });
       overlay.addEventListener('mousedown',ev=>{if(ev.target===overlay)overlay.remove();});
       document.body.appendChild(overlay);
@@ -902,7 +906,7 @@ window.BromarPages.scheduling = (() => {
         <div style="display:flex;flex-direction:column;gap:0.4rem;">${notificationQueue.length===0?'<div class="sched-empty">No notifications</div>':''}
           ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span>${n.sent?'<span class="notif-sent">✓</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
         </div></div>`;
-      overlay.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',()=>{const n=notificationQueue.find(x=>x.id===b.dataset.notifId);if(n){n.sent=true;rs();}}));
+      overlay.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',async(ev)=>{const btn=ev.target;if(btn.disabled)return;btn.disabled=true;btn.textContent='Sending…';btn.style.opacity='0.6';const n=notificationQueue.find(x=>x.id===btn.dataset.notifId);if(n){try{const sb=await DB.init();await sb.functions.invoke('send-notification',{body:{employee_name:n.employeeName,message:n.message}});}catch(err){console.warn('Edge function failed:',err);}n.sent=true;rs();}}));
     }
     overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
     rs();document.body.appendChild(overlay);
