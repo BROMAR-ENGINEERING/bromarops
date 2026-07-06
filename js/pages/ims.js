@@ -7,7 +7,7 @@ window.BromarPages.ims = {
     container.innerHTML = `
       <div class="page-title-wrapper">
         <h1>Integrated Management System</h1>
-        <p class="subtitle">Quality, safety, and environmental management</p>
+        <p class="subtitle">Quality, Safety &amp; Environmental management</p>
       </div>
       <div class="card">
         <div class="section-label">Coming soon</div>
