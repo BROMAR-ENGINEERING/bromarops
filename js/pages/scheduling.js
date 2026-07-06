@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.16
+   V1.17
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.16';
+  const PAGE_VERSION = 'V1.17';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -241,7 +241,14 @@ window.BromarPages.scheduling = (() => {
   function isWeekday(dk) { const d = parseDateKey(dk); const day = d.getDay(); return day >= 1 && day <= 5; }
   function priorityColor(p) { return p === 'high' ? 'var(--error)' : p === 'medium' ? 'var(--accent)' : 'var(--success)'; }
   function timeSince(ts) { const s = Math.floor((Date.now() - ts) / 1000); if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s/60)}m ago`; if (s < 86400) return `${Math.floor(s/3600)}h ago`; return `${Math.floor(s/86400)}d ago`; }
-  function queueNotification(empName, message) { notificationQueue.push({ id: uid(), employeeName: empName, message, timestamp: Date.now(), sent: false }); }
+  async function queueNotification(empName, message) {
+    const notif = { id: uid(), employeeName: empName, message, timestamp: Date.now(), sent: false };
+    notificationQueue.push(notif);
+    try {
+      const sb = await DB.init();
+      await sb.from('notifications').insert({ employee_name: empName, message, type: 'schedule_change' });
+    } catch (err) { console.warn('Failed to save notification:', err); }
+  }
   function roleLabel(r) { return { electrician: 'Electrician', senior_electrician: 'Senior Electrician', apprentice: 'Apprentice', engineer: 'Engineer', unassigned: 'Unassigned' }[r] || r; }
   function roleColor(r) { return { electrician: 'var(--accent)', senior_electrician: '#8b5cf6', apprentice: '#0ea5e9', engineer: '#10b981', unassigned: 'var(--text-secondary)' }[r] || 'var(--text-secondary)'; }
   function getFilteredEmployees() {
@@ -724,7 +731,15 @@ window.BromarPages.scheduling = (() => {
     dragData=null;rerender(container);
   }
 
-  function markNotifSent(container,nId){const n=notificationQueue.find(x=>x.id===nId);if(n){n.sent=true;rerender(container);}}
+  async function markNotifSent(container,nId){
+    const n=notificationQueue.find(x=>x.id===nId);if(!n)return;
+    n.sent=true;
+    try {
+      const sb = await DB.init();
+      await sb.functions.invoke('send-notification', { body: { employee_name: n.employeeName, message: n.message } });
+    } catch (err) { console.warn('Edge function call failed (notification still saved):', err); }
+    rerender(container);
+  }
 
   function bindExtendArrows(root,container) {
     root.querySelectorAll('[data-extend-left]').forEach(b=>b.addEventListener('click',async e=>{
@@ -764,9 +779,13 @@ window.BromarPages.scheduling = (() => {
       inner.addEventListener('click',ev=>ev.stopPropagation());
       inner.addEventListener('mousedown',ev=>ev.stopPropagation());
       overlay.querySelector('#nc-cancel').addEventListener('click',()=>overlay.remove());
-      overlay.querySelector('#nc-send').addEventListener('click',()=>{
+      overlay.querySelector('#nc-send').addEventListener('click',async()=>{
         const msg=overlay.querySelector('#nc-msg')?.value||'';
-        queueNotification(a.employeeName,msg);
+        await queueNotification(a.employeeName,msg);
+        try {
+          const sb = await DB.init();
+          await sb.functions.invoke('send-notification', { body: { employee_name: a.employeeName, message: msg } });
+        } catch (err) { console.warn('Edge function call failed:', err); }
         overlay.remove();rerender(container);
       });
       overlay.addEventListener('mousedown',ev=>{if(ev.target===overlay)overlay.remove();});
