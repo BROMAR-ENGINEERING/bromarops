@@ -6,7 +6,7 @@
    ============================================================ */
 (function () {
   const PAGE_ID  = 'clients';
-  const VERSION  = 'V1.03';
+  const VERSION  = 'V1.04';
 
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
@@ -535,9 +535,10 @@
     .cl-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;display:none}
     .cl-overlay.show{display:block}
 
-    .cl-panel{position:fixed;top:0;right:0;height:100vh;width:440px;max-width:92vw;background:var(--bg-secondary);
+    .cl-panel{position:fixed;top:var(--header-height);right:0;height:calc(100vh - var(--header-height));width:440px;max-width:92vw;background:var(--bg-secondary);
       border-left:1px solid var(--border);z-index:61;transform:translateX(100%);transition:transform .3s ease;
       display:flex;flex-direction:column;box-shadow:-8px 0 24px var(--shadow)}
+    #cl-panel-ov{top:var(--header-height)}
     .cl-panel.open{transform:translateX(0)}
     .cl-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;padding:1.25rem 1.5rem;
       border-bottom:1px solid var(--border)}
