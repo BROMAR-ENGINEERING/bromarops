@@ -1,17 +1,19 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.04
+   V1.05
    Supabase: employees table + employee_cert_history table
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.04',
+  version: 'V1.05',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+
+    const EMPLOYEE_TYPES = ['Apprentice','Electrician','Senior Electrician','Junior Engineer','Engineer','Admin','Operations'];
 
     /* ── CERT GROUPS (view only) ── */
     const CERT_GROUPS = [
@@ -495,7 +497,7 @@ window.BromarPages.employees = {
         return `
           <div class="emp-card${inactive ? ' inactive-card' : ''}" data-name="${emp.full_name}">
             <div class="emp-card-name">${emp.full_name}</div>
-            ${emp.role ? `<div class="emp-card-role">${emp.role}</div>` : ''}
+            ${emp.employee_type ? `<div class="emp-card-role">${emp.employee_type}</div>` : ''}
             <div class="emp-card-contact">
               ${emp.mobile ? `<span>📱 ${emp.mobile}</span>` : ''}
               ${emp.email  ? `<span>✉️ ${emp.email}</span>`  : ''}
@@ -524,7 +526,7 @@ window.BromarPages.employees = {
         <div class="emp-panel">
           <button class="emp-panel-close">✕</button>
           <div class="emp-panel-name">${emp.full_name}</div>
-          ${emp.role ? `<div class="emp-panel-role">${emp.role}</div>` : ''}
+          ${emp.employee_type ? `<div class="emp-panel-role">${emp.employee_type}</div>` : ''}
           <div class="emp-panel-meta">
             ${emp.mobile    ? `<span>📱 <a href="tel:${emp.mobile}">${emp.mobile}</a></span>`    : ''}
             ${emp.email     ? `<span>✉️ <a href="mailto:${emp.email}">${emp.email}</a></span>`   : ''}
@@ -707,8 +709,11 @@ window.BromarPages.employees = {
           </div>
           <div class="edit-section-title">Personal Details</div>
           <div class="edit-field">
-            <label>Role</label>
-            <input class="edit-input" data-field="role" type="text" value="${emp.role || ''}" placeholder="e.g. Electrician">
+            <label>Employee Type</label>
+            <select class="edit-input" data-field="employee_type">
+              <option value="">— Select type —</option>
+              ${EMPLOYEE_TYPES.map(t => `<option value="${t}" ${emp.employee_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+            </select>
           </div>
           <div class="edit-field">
             <label>Date of Birth</label>
@@ -859,8 +864,11 @@ window.BromarPages.employees = {
               <input class="edit-input" id="add-lastname" type="text">
             </div>
             <div class="edit-field">
-              <label>Role</label>
-              <input class="edit-input" id="add-role" type="text" placeholder="e.g. Electrician">
+              <label>Employee Type</label>
+              <select class="edit-input" id="add-employee-type">
+                <option value="">— Select type —</option>
+                ${EMPLOYEE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+              </select>
             </div>
             <div class="edit-field">
               <label>Date of Birth</label>
@@ -901,7 +909,7 @@ window.BromarPages.employees = {
             full_name:  fullName,
             first_name: overlay.querySelector('#add-firstname').value.trim() || null,
             last_name:  overlay.querySelector('#add-lastname').value.trim()  || null,
-            role:       overlay.querySelector('#add-role').value.trim()      || null,
+            employee_type: overlay.querySelector('#add-employee-type').value || null,
             dob:        overlay.querySelector('#add-dob').value              || null,
             mobile:     overlay.querySelector('#add-mobile').value.trim()    || null,
             email:      overlay.querySelector('#add-email').value.trim()     || null,
