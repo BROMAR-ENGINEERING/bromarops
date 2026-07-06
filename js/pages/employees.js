@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.06
+   V1.07
    Supabase: employees, employee_cert_history, inductions, employee_skills
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.06',
+  version: 'V1.07',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -223,6 +223,11 @@ window.BromarPages.employees = {
       @keyframes empFadeIn { from{opacity:0} to{opacity:1} }
       .emp-panel { background:var(--bg-secondary); border:1px solid var(--border); border-radius:20px; width:100%; max-width:820px; max-height:90vh; overflow-y:auto; padding:2rem; position:relative; animation:empSlideUp 0.25s ease; }
       @keyframes empSlideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+      .emp-panel::-webkit-scrollbar { width:6px; }
+      .emp-panel::-webkit-scrollbar-track { background:transparent; }
+      .emp-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
+      .emp-panel::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+      .emp-panel { scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
       .emp-panel-close { position:absolute; top:1.25rem; right:1.25rem; width:34px; height:34px; border:1px solid var(--border); background:var(--bg-main); border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:1rem; transition:all 0.2s; }
       .emp-panel-close:hover { border-color:var(--accent); color:var(--accent); }
       .emp-panel-name { font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; color:var(--text-primary); margin-bottom:0.15rem; }
@@ -524,7 +529,8 @@ window.BromarPages.employees = {
         });
       });
 
-      overlay.querySelector('#edit-save-btn').addEventListener('click', () => saveEdit(emp, overlay));
+      overlay.querySelector('#edit-cancel-btn').addEventListener('click', () => overlay.remove());
+      overlay.querySelector('#edit-save-btn').addEventListener('click', () => saveEdit(emp, overlay, true));
       overlay.querySelector('#former-btn')?.addEventListener('click', () => {
         if (inactive) reactivate(emp, overlay); else markFormer(emp, overlay);
       });
@@ -598,13 +604,13 @@ window.BromarPages.employees = {
         <div style="margin-top:1.25rem">${certHTML}</div>
         <div class="edit-actions">
           <button class="btn-danger" id="former-btn">${inactive?'Reactivate Employee':'Mark as Former Employee'}</button>
-          <button class="btn-sm" id="edit-cancel-btn">Cancel</button>
-          <button class="btn-primary" id="edit-save-btn" style="padding:0.65rem 1.4rem;font-size:0.88rem">Save Changes</button>
+          <button class="btn-sm" id="edit-cancel-btn">Close</button>
+          <button class="btn-primary" id="edit-save-btn" style="padding:0.65rem 1.4rem;font-size:0.88rem">Save &amp; Close</button>
         </div>`;
     }
 
     /* ── SAVE EDIT ── */
-    async function saveEdit(emp, overlay) {
+    async function saveEdit(emp, overlay, closeAfter = false) {
       const btn = overlay.querySelector('#edit-save-btn');
       btn.textContent = 'Saving…'; btn.disabled = true;
       const updates = {}, histP = [];
@@ -623,7 +629,7 @@ window.BromarPages.employees = {
         const newVal = cb.checked, oldVal = !!emp[field];
         if (newVal !== oldVal) { updates[field] = newVal; histP.push(logHistory(emp.full_name, field, oldVal, newVal)); }
       });
-      if (!Object.keys(updates).length) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
+      if (!Object.keys(updates).length) { if (closeAfter) { overlay.remove(); return; } btn.textContent = 'Save & Close'; btn.disabled = false; return; }
       try {
         await sbPatch('employees', { full_name: emp.full_name }, updates);
         await Promise.all(histP);
@@ -632,9 +638,10 @@ window.BromarPages.employees = {
         if (idx >= 0) allEmployees[idx] = emp;
         renderStats(); renderGrid();
         overlay.querySelector('#tab-certs').innerHTML = buildCertView(emp);
+        if (closeAfter) { overlay.remove(); return; }
         btn.textContent = '✓ Saved';
-        setTimeout(() => { btn.textContent = 'Save Changes'; btn.disabled = false; }, 1500);
-      } catch (err) { btn.textContent = 'Error — retry'; btn.disabled = false; console.error(err); }
+        setTimeout(() => { btn.textContent = 'Save & Close'; btn.disabled = false; }, 1500);
+      } catch (err) { btn.textContent = 'Save & Close'; btn.disabled = false; console.error(err); alert('Save failed: ' + err.message); }
     }
 
     /* ── MARK FORMER / REACTIVATE ── */
