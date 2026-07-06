@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.03',
+  version: 'V1.04',
 
   render(container) {
     // Display this page's version in the footer
@@ -174,6 +174,12 @@ window.BromarPages.timesheets = {
           color: var(--text-secondary); margin-top: 2px;
         }
         .ts-week-nav { display: flex; gap: 0.5rem; }
+        .ts-section-head {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 1rem; margin: 2rem 0 1.25rem;
+          flex-wrap: wrap;
+        }
+        .ts-section-head .section-label { margin: 0; }
         .ts-icon-btn {
           width: 36px; height: 36px; border-radius: var(--radius-sm);
           border: 1px solid var(--border); background: var(--bg-main);
@@ -424,19 +430,30 @@ window.BromarPages.timesheets = {
 
     function renderStatusView() {
       const weekEnd = addDays(state.weekStarting, 6);
-      const submittedEmails = new Set(state.timesheets.map(t => (t.employee_email || '').toLowerCase()));
-      const expected = state.employees.filter(e => e.email);
-      const submitted = expected.filter(e => submittedEmails.has(e.email.toLowerCase()));
-      const missing   = expected.filter(e => !submittedEmails.has(e.email.toLowerCase()));
 
+      // Match submissions to employees by email OR by name (fallback)
+      const submittedEmails = new Set(state.timesheets.map(t => (t.employee_email || '').toLowerCase()).filter(Boolean));
+      const submittedNames  = new Set(state.timesheets.map(t => (t.employee_name  || '').toLowerCase()).filter(Boolean));
+
+      const isSubmittedBy = (emp) =>
+        (emp.email && submittedEmails.has(emp.email.toLowerCase())) ||
+        (emp.full_name && submittedNames.has(emp.full_name.toLowerCase()));
+
+      const expected  = state.employees;                              // include ALL employees
+      const submitted = expected.filter(isSubmittedBy);
+      const missing   = expected.filter(e => !isSubmittedBy(e));
+
+      // Late = submitted after Tuesday 09:00 following the pay week
       const tueDeadline = parseISO(state.weekStarting);
       tueDeadline.setDate(tueDeadline.getDate() + 8);
       tueDeadline.setHours(9, 0, 0, 0);
-      const lateEmails = new Set(
-        state.timesheets
-          .filter(t => new Date(t.submitted_at) > tueDeadline)
-          .map(t => (t.employee_email || '').toLowerCase())
-      );
+      const isLate = (t) => new Date(t.submitted_at) > tueDeadline;
+      const lateCount = state.timesheets.filter(isLate).length;
+
+      // Rows in the Submitted table — one row per timesheet in this week
+      const submittedTimesheets = state.timesheets
+        .slice()
+        .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 
       return `
         <div class="ts-week-banner">
@@ -444,21 +461,18 @@ window.BromarPages.timesheets = {
             ${fmtDate(state.weekStarting)} – ${fmtDate(weekEnd)}
             <span class="meta">Due Tuesday ${fmtDateShort(addDays(state.weekStarting, 8))} 9:00 AM · Paid Wednesday ${fmtDateShort(addDays(state.weekStarting, 9))}</span>
           </div>
-          <div class="ts-week-nav">
-            <button class="ts-icon-btn" id="ts-prev-week" title="Previous week">‹</button>
-            <button class="ts-icon-btn" id="ts-this-week" title="Current pay week">●</button>
-            <button class="ts-icon-btn" id="ts-next-week" title="Next week">›</button>
-          </div>
         </div>
 
         <div class="ts-stats">
           <div class="ts-stat"><div class="num">${expected.length}</div><div class="lbl">Expected</div></div>
           <div class="ts-stat"><div class="num success">${submitted.length}</div><div class="lbl">Submitted</div></div>
           <div class="ts-stat"><div class="num error">${missing.length}</div><div class="lbl">Missing</div></div>
-          <div class="ts-stat"><div class="num accent">${lateEmails.size}</div><div class="lbl">Late</div></div>
+          <div class="ts-stat"><div class="num accent">${lateCount}</div><div class="lbl">Late</div></div>
         </div>
 
-        <div class="section-label">Missing submissions</div>
+        <div class="ts-section-head">
+          <div class="section-label">Missing submissions</div>
+        </div>
         ${missing.length === 0
           ? `<div class="ts-table-wrap"><div class="ts-empty">All employees have submitted ✓</div></div>`
           : `<div class="ts-table-wrap"><table class="ts-table">
@@ -466,7 +480,10 @@ window.BromarPages.timesheets = {
               <tbody>
                 ${missing.map(e => `
                   <tr>
-                    <td>${e.full_name}</td>
+                    <td>
+                      ${e.full_name}
+                      <span class="ts-mobile-meta">${e.role || 'unassigned'}</span>
+                    </td>
                     <td class="hide-mobile">${e.role || '—'}</td>
                     <td class="hide-mobile">${e.email || '—'}</td>
                     <td><span class="ts-pill missing"><span class="dot"></span>Missing</span></td>
@@ -476,8 +493,15 @@ window.BromarPages.timesheets = {
             </table></div>`
         }
 
-        <div class="section-label">Submitted (${submitted.length})</div>
-        ${submitted.length === 0
+        <div class="ts-section-head">
+          <div class="section-label">Submitted (${submittedTimesheets.length})</div>
+          <div class="ts-week-nav">
+            <button class="ts-icon-btn" id="ts-prev-week" title="Previous week">‹</button>
+            <button class="ts-icon-btn" id="ts-this-week" title="Current pay week">●</button>
+            <button class="ts-icon-btn" id="ts-next-week" title="Next week">›</button>
+          </div>
+        </div>
+        ${submittedTimesheets.length === 0
           ? `<div class="ts-table-wrap"><div class="ts-empty">No submissions yet for this week.</div></div>`
           : `<div class="ts-table-wrap"><table class="ts-table">
               <thead><tr>
@@ -489,12 +513,9 @@ window.BromarPages.timesheets = {
                 <th class="action-col"></th>
               </tr></thead>
               <tbody>
-                ${state.timesheets
-                  .filter(t => submittedEmails.has((t.employee_email || '').toLowerCase()))
-                  .sort((a, b) => a.employee_name.localeCompare(b.employee_name))
-                  .map(t => {
-                    const late = lateEmails.has((t.employee_email || '').toLowerCase());
-                    return `
+                ${submittedTimesheets.map(t => {
+                  const late = isLate(t);
+                  return `
                     <tr>
                       <td>
                         ${t.employee_name}
@@ -508,7 +529,7 @@ window.BromarPages.timesheets = {
                           : `<span class="ts-pill submitted"><span class="dot"></span>On time</span>`}</td>
                       <td class="action-col">${VIEW_BTN(t.id)}</td>
                     </tr>`;
-                  }).join('')}
+                }).join('')}
               </tbody>
             </table></div>`
         }
