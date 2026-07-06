@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.14
+   V1.16
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.14';
+  const PAGE_VERSION = 'V1.16';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -396,9 +396,9 @@ window.BromarPages.scheduling = (() => {
       .sched-day-cell:hover{background:var(--card-hover)}
       .sched-day-cell.today-col{background:rgba(234,88,12,0.03)}
       .sched-day-cell.drag-over{background:rgba(234,88,12,0.08);outline:2px dashed var(--accent);outline-offset:-2px}
-      .sched-day-cell .cell-add{opacity:0;position:absolute;bottom:4px;right:4px;width:28px;height:28px;border-radius:50%;border:none;background:var(--accent);color:white;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s,transform 0.15s}
-      .sched-day-cell:hover .cell-add{opacity:0.75}
-      .sched-day-cell:hover .cell-add:hover{opacity:1;transform:scale(1.15)}
+      .sched-day-cell .cell-add{opacity:0;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;border-radius:50%;border:none;background:var(--accent);color:white;font-size:1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s,transform 0.15s}
+      .sched-day-cell:hover .cell-add{opacity:0.6}
+      .sched-day-cell:hover .cell-add:hover{opacity:1;transform:translate(-50%,-50%) scale(1.15)}
       .sched-job-card{padding:0.35rem 0.5rem;border-radius:6px;font-size:0.75rem;border-left:3px solid var(--accent);background:var(--bg-main);cursor:grab;transition:box-shadow 0.15s,transform 0.15s;display:flex;flex-direction:column;gap:1px;position:relative}
       .sched-job-card:active{cursor:grabbing}
       .sched-job-card:hover{box-shadow:0 2px 8px var(--shadow);transform:translateY(-1px)}
@@ -420,11 +420,11 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .ja-btn:hover{color:var(--error)}
       .sched-job-card .ja-btn.end-btn:hover{color:var(--accent)}
       .sched-job-card .ja-btn.notif-btn:hover{color:var(--accent)}
-      .sched-job-card .card-extend{position:absolute;top:50%;width:16px;height:28px;border:none;background:var(--accent);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6rem;opacity:0;transition:opacity 0.15s;z-index:2;pointer-events:auto}
-      .sched-job-card:hover .card-extend{opacity:0.7}
-      .sched-job-card:hover .card-extend:hover{opacity:1}
-      .sched-job-card .card-extend-left{left:-9px;transform:translateY(-50%);border-radius:4px 0 0 4px}
-      .sched-job-card .card-extend-right{right:-9px;transform:translateY(-50%);border-radius:0 4px 4px 0}
+      .sched-job-card .card-extend{position:absolute;top:50%;width:20px;height:34px;border:none;background:var(--accent);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;opacity:0;transition:opacity 0.15s,background 0.15s;z-index:2;pointer-events:auto}
+      .sched-job-card:hover .card-extend{opacity:0.8}
+      .sched-job-card:hover .card-extend:hover{opacity:1;background:var(--accent-light)}
+      .sched-job-card .card-extend-left{left:-11px;transform:translateY(-50%);border-radius:5px 0 0 5px}
+      .sched-job-card .card-extend-right{right:-11px;transform:translateY(-50%);border-radius:0 5px 5px 0}
       .sched-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.25rem}
       .sched-panel-title{font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;color:var(--text-primary)}
       .sched-list-scroll{display:flex;flex-direction:column;gap:0.4rem;max-height:260px;overflow-y:auto}
@@ -486,9 +486,10 @@ window.BromarPages.scheduling = (() => {
       .sm-assign-left .a-type{font-size:0.55rem;font-weight:700;text-transform:uppercase;padding:0.05rem 0.3rem;border-radius:3px;align-self:flex-start}
       .sm-assign-left .a-sched{font-size:0.6rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.3rem}
       .sm-assign-actions{display:flex;gap:0.3rem;flex-shrink:0}
-      .sm-assign-btn{width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:none;color:var(--text-secondary);font-size:0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+      .sm-assign-btn{width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:none;color:var(--text-secondary);font-size:0.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s}
       .sm-assign-btn:hover{color:var(--error);border-color:var(--error)}
       .sm-assign-btn.end-btn:hover{color:var(--accent);border-color:var(--accent)}
+      .sm-assign-btn.notif-btn:hover{color:var(--accent);border-color:var(--accent)}
       .sm-add-btn{width:100%;padding:0.5rem;border-radius:8px;border:1px dashed var(--border);background:none;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:0.8rem;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:0.4rem}
       .sm-add-btn:hover{border-color:var(--accent);color:var(--accent)}
       .sm-fab{position:fixed;bottom:70px;right:16px;width:56px;height:56px;border-radius:50%;border:none;background:linear-gradient(135deg,var(--accent),var(--accent-light));color:white;font-size:1.5rem;cursor:pointer;box-shadow:0 4px 16px rgba(234,88,12,0.35);display:flex;align-items:center;justify-content:center;z-index:100;transition:transform 0.2s}
@@ -567,7 +568,7 @@ window.BromarPages.scheduling = (() => {
                   ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}${isLeave?`<span class="job-type-tag" style="background:${bc}20;color:${bc};">LEAVE</span>`:''}
                   <div class="job-top">${isLinked?`<span class="job-chain ${isSite?'is-site-chain':''}" title="${scheduleLabel(a.schedule)}">${CHAIN_ICON}</span>`:''}<span class="job-num">${lbl}</span></div>
                   <span class="job-client">${sub}</span>
-                  <div class="job-actions"><button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify employee">🔔</button>${isLinked?`<button class="ja-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip this day">⊘</button>`:''}${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}${!isLinked?`<button class="ja-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div>
+                  <div class="job-actions"><button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify employee">🔔</button>${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}<button class="ja-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button></div>
                 </div>`;}).join('')}
               <button class="cell-add" data-cell-emp="${emp.name}" data-cell-date="${dk}" title="Assign">+</button>
             </div>`;}).join('')}`).join('')}
@@ -647,7 +648,7 @@ window.BromarPages.scheduling = (() => {
                     ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':isLeave?`<span class="a-type" style="background:${bc}20;color:${bc};">LEAVE</span>`:'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
                     <span class="a-label">${lbl}</span><span class="a-sub">${sub}</span>
                     ${isLinked?`<span class="a-sched">${CHAIN_ICON} ${scheduleLabel(a.schedule)}${a.endDate?' · ends '+a.endDate:''}</span>`:''}</div>
-                  <div class="sm-assign-actions"><button class="sm-assign-btn" data-notify="${a.id}" title="Notify" style="font-size:0.7rem">🔔</button>${isLinked?`<button class="sm-assign-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip day">⊘</button>`:''}${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}${!isLinked?`<button class="sm-assign-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div></div>`;}).join('')}
+                  <div class="sm-assign-actions"><button class="sm-assign-btn" data-notify="${a.id}" title="Notify" style="font-size:0.7rem">🔔</button>${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}<button class="sm-assign-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button></div></div>`;}).join('')}
               <button class="sm-add-btn" data-add-emp="${emp.name}" data-add-date="${dk}">+ Assign job or site</button>
             </div></div></div>`;}).join('')}
       </div>
@@ -691,9 +692,19 @@ window.BromarPages.scheduling = (() => {
       e.stopPropagation();
       const a = assignments.find(x=>x.id===b.dataset.remove); if(!a) return;
       const lbl = getAssignmentLabel(a);
-      showConfirm(`Are you sure you want to remove <strong>${lbl}</strong> from this schedule?`, () => removeAssignment(container, b.dataset.remove));
+      const isLinked = b.dataset.removeLinked === 'true';
+      const dk = b.dataset.removeDate;
+      if(isLinked){
+        showConfirm(`Remove <strong>${lbl}</strong> from <strong>${dk}</strong>?`, async () => {
+          if(!a.skipDates) a.skipDates = [];
+          a.skipDates.push(dk);
+          await DB.updateSkipDates(a.id, a.skipDates);
+          rerender(container);
+        });
+      } else {
+        showConfirm(`Are you sure you want to remove <strong>${lbl}</strong> from this schedule?`, () => removeAssignment(container, b.dataset.remove));
+      }
     }));
-    root.querySelectorAll('[data-skip]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=assignments.find(x=>x.id===b.dataset.skip);if(!a)return;if(!a.skipDates)a.skipDates=[];a.skipDates.push(b.dataset.skipDate);DB.updateSkipDates(a.id,a.skipDates);rerender(container);}));
     root.querySelectorAll('[data-end]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=assignments.find(x=>x.id===b.dataset.end);if(!a)return;const d=parseDateKey(b.dataset.endDate);d.setDate(d.getDate()-1);a.endDate=formatDateKey(d);DB.endAssignment(a.id,a.endDate);queueNotification(a.employeeName,`${getAssignmentLabel(a)} ends on ${a.endDate}`);rerender(container);}));
   }
 
@@ -736,27 +747,31 @@ window.BromarPages.scheduling = (() => {
 
   function bindNotifyButtons(root,container) {
     root.querySelectorAll('[data-notify]').forEach(b=>b.addEventListener('click',e=>{
-      e.stopPropagation();
+      e.stopPropagation();e.preventDefault();
       const a=assignments.find(x=>x.id===b.dataset.notify);if(!a)return;
       const lbl=getAssignmentLabel(a);
       const overlay=document.createElement('div');overlay.className='sched-confirm-overlay';
       overlay.innerHTML=`<div class="sched-confirm">
         <p style="margin-bottom:0.5rem;font-weight:700">Notify ${a.employeeName}</p>
         <p style="font-size:0.85rem;margin-bottom:0.75rem">Send a schedule change notification about <strong>${lbl}</strong>?</p>
-        <textarea class="sched-input" id="nc-msg" rows="3" style="width:100%;margin-bottom:1rem;resize:vertical">Schedule update: ${lbl} ${a.schedule==='oneoff'?'on '+a.startDate:'from '+a.startDate+(a.endDate?' to '+a.endDate:' ongoing')}</textarea>
+        <textarea class="sched-input" id="nc-msg" rows="3" style="width:100%;margin-bottom:1rem;resize:vertical;font-size:16px">Schedule update: ${lbl} ${a.schedule==='oneoff'?'on '+a.startDate:'from '+a.startDate+(a.endDate?' to '+a.endDate:' ongoing')}</textarea>
         <div class="sched-confirm-actions">
           <button class="btn-secondary" id="nc-cancel">Cancel</button>
           <button class="btn-primary" id="nc-send">Send Notification</button>
         </div>
       </div>`;
+      const inner=overlay.querySelector('.sched-confirm');
+      inner.addEventListener('click',ev=>ev.stopPropagation());
+      inner.addEventListener('mousedown',ev=>ev.stopPropagation());
       overlay.querySelector('#nc-cancel').addEventListener('click',()=>overlay.remove());
       overlay.querySelector('#nc-send').addEventListener('click',()=>{
         const msg=overlay.querySelector('#nc-msg')?.value||'';
         queueNotification(a.employeeName,msg);
         overlay.remove();rerender(container);
       });
-      overlay.addEventListener('click',ev=>{if(ev.target===overlay)overlay.remove();});
+      overlay.addEventListener('mousedown',ev=>{if(ev.target===overlay)overlay.remove();});
       document.body.appendChild(overlay);
+      overlay.querySelector('#nc-msg')?.focus();
     }));
   }
 
