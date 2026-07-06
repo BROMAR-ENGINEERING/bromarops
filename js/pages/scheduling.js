@@ -10,7 +10,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.11';
+  const PAGE_VERSION = 'V1.12';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -274,7 +274,7 @@ window.BromarPages.scheduling = (() => {
 
   function getAssignmentLabel(a) { return a.type === 'site' ? (a.siteName || '?') : (a.jobNumber || '?'); }
   function getAssignmentSub(a) {
-    if (a.type === 'site') return a.clientName || 'Site Maintenance';
+    if (a.type === 'site') return a.clientName || 'Site';
     const job = jobs.find(j => j.number === a.jobNumber);
     return job?.client || a.clientName || '';
   }
@@ -387,9 +387,9 @@ window.BromarPages.scheduling = (() => {
       .sched-day-cell.today-col{background:rgba(234,88,12,0.03)}
       .sched-day-cell.drag-over{background:rgba(234,88,12,0.08);outline:2px dashed var(--accent);outline-offset:-2px}
       .sched-day-cell.range-select{background:rgba(234,88,12,0.1);outline:2px solid var(--accent);outline-offset:-2px}
-      .sched-day-cell .cell-add{opacity:0;position:absolute;bottom:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:var(--accent);color:white;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s}
-      .sched-day-cell:hover .cell-add{opacity:0.7}
-      .sched-day-cell:hover .cell-add:hover{opacity:1}
+      .sched-day-cell .cell-add{opacity:0;position:absolute;bottom:4px;right:4px;width:28px;height:28px;border-radius:50%;border:none;background:var(--accent);color:white;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s,transform 0.15s}
+      .sched-day-cell:hover .cell-add{opacity:0.75}
+      .sched-day-cell:hover .cell-add:hover{opacity:1;transform:scale(1.15)}
       .sched-job-card{padding:0.35rem 0.5rem;border-radius:6px;font-size:0.75rem;border-left:3px solid var(--accent);background:var(--bg-main);cursor:grab;transition:box-shadow 0.15s,transform 0.15s;display:flex;flex-direction:column;gap:1px;position:relative}
       .sched-job-card:active{cursor:grabbing}
       .sched-job-card:hover{box-shadow:0 2px 8px var(--shadow);transform:translateY(-1px)}
@@ -405,7 +405,7 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .job-type-tag{font-size:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:0.02rem 0.25rem;border-radius:3px;align-self:flex-start}
       .sched-job-card .job-actions{position:absolute;top:2px;right:3px;display:flex;gap:2px;opacity:0;transition:opacity 0.15s}
       .sched-job-card:hover .job-actions{opacity:1}
-      .sched-job-card .ja-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.7rem;line-height:1;padding:1px;pointer-events:auto}
+      .sched-job-card .ja-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;line-height:1;padding:2px;pointer-events:auto}
       .sched-job-card .ja-btn:hover{color:var(--error)}
       .sched-job-card .ja-btn.end-btn:hover{color:var(--accent)}
       .sched-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.25rem}
@@ -481,6 +481,10 @@ window.BromarPages.scheduling = (() => {
       @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
       .sm-notif-sheet h3{font-size:1rem;font-weight:700;margin-bottom:1rem}
       .sm-swipe-area{touch-action:pan-y}
+      .sched-confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.15s}
+      .sched-confirm{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;padding:1.75rem;width:90%;max-width:380px;box-shadow:0 20px 60px var(--shadow);animation:fadeIn 0.2s ease;text-align:center}
+      .sched-confirm p{font-size:0.95rem;color:var(--text-primary);margin-bottom:1.25rem;line-height:1.5}
+      .sched-confirm-actions{display:flex;gap:0.5rem;justify-content:center}
     `;
     document.head.appendChild(style);
   }
@@ -671,8 +675,22 @@ window.BromarPages.scheduling = (() => {
   }
 
   /* ═══════════════════════════════════════ SHARED ACTIONS ═══════════════════════════════════════ */
+  function showConfirm(message, onConfirm) {
+    const overlay = document.createElement('div'); overlay.className = 'sched-confirm-overlay';
+    overlay.innerHTML = `<div class="sched-confirm"><p>${message}</p><div class="sched-confirm-actions"><button class="btn-secondary" id="sc-cancel">Cancel</button><button class="btn-primary" id="sc-confirm">Remove</button></div></div>`;
+    overlay.querySelector('#sc-cancel').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#sc-confirm').addEventListener('click', () => { overlay.remove(); onConfirm(); });
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+
   function bindCardActions(root,container) {
-    root.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();removeAssignment(container,b.dataset.remove);}));
+    root.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',e=>{
+      e.stopPropagation();
+      const a = assignments.find(x=>x.id===b.dataset.remove); if(!a) return;
+      const lbl = getAssignmentLabel(a);
+      showConfirm(`Are you sure you want to remove <strong>${lbl}</strong> from this schedule?`, () => removeAssignment(container, b.dataset.remove));
+    }));
     root.querySelectorAll('[data-skip]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=assignments.find(x=>x.id===b.dataset.skip);if(!a)return;if(!a.skipDates)a.skipDates=[];a.skipDates.push(b.dataset.skipDate);DB.updateSkipDates(a.id,a.skipDates);rerender(container);}));
     root.querySelectorAll('[data-end]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=assignments.find(x=>x.id===b.dataset.end);if(!a)return;const d=parseDateKey(b.dataset.endDate);d.setDate(d.getDate()-1);a.endDate=formatDateKey(d);DB.endAssignment(a.id,a.endDate);queueNotification(a.employeeName,`${getAssignmentLabel(a)} ends on ${a.endDate}`);rerender(container);}));
   }
@@ -723,7 +741,7 @@ window.BromarPages.scheduling = (() => {
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem;">${empName} · starting ${date}</p>
         <div class="sched-modal-tabs">
           <button class="sched-modal-tab ${activeTab==='job'?'active':''}" data-tab="job">Job Number</button>
-          <button class="sched-modal-tab ${activeTab==='site'?'active':''}" data-tab="site">Site Maintenance</button>
+          <button class="sched-modal-tab ${activeTab==='site'?'active':''}" data-tab="site">Sites</button>
         </div>
         ${activeTab==='job'?`
           <label>Search Job</label>
