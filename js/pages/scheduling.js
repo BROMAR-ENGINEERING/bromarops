@@ -10,7 +10,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.12';
+  const PAGE_VERSION = 'V1.13';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -272,18 +272,25 @@ window.BromarPages.scheduling = (() => {
     return results;
   }
 
-  function getAssignmentLabel(a) { return a.type === 'site' ? (a.siteName || '?') : (a.jobNumber || '?'); }
+  function getAssignmentLabel(a) {
+    if (a.type === 'leave') return a.siteName || 'Leave';
+    if (a.type === 'site') return a.siteName || '?';
+    return a.jobNumber || '?';
+  }
   function getAssignmentSub(a) {
+    if (a.type === 'leave') return 'Leave';
     if (a.type === 'site') return a.clientName || 'Site';
     const job = jobs.find(j => j.number === a.jobNumber);
     return job?.client || a.clientName || '';
   }
   function getAssignmentBorderColor(a) {
+    if (a.type === 'leave') return leaveColor(a.siteName);
     if (a.type === 'site') return '#0ea5e9';
     const job = jobs.find(j => j.number === a.jobNumber);
     return priorityColor(job?.priority || 'medium');
   }
   function scheduleLabel(s) { return { oneoff: 'One-off', duration: 'Duration', indefinite: 'Indefinite' }[s] || s; }
+  function leaveColor(lt) { return { 'RDO': '#8b5cf6', 'Annual Leave': '#14b8a6', 'Sick Leave': 'var(--error)' }[lt] || '#8b5cf6'; }
   function empHasAssignmentsInWeek(empName) {
     const days = getDaysOfWeek();
     return days.some(d => getEffectiveAssignments(empName, formatDateKey(d)).length > 0);
@@ -350,6 +357,10 @@ window.BromarPages.scheduling = (() => {
       .sched-stype-btn.active{border-color:var(--accent);background:var(--card-hover);color:var(--accent)}
       .sched-date-row{display:flex;gap:0.5rem;margin-top:0.4rem}
       .sched-date-row .sched-input{flex:1}
+      .sched-leave-types{display:flex;flex-direction:column;gap:0.4rem;margin-top:0.4rem}
+      .sched-leave-btn{padding:0.65rem 0.75rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);font-family:'Outfit',sans-serif;font-size:0.85rem;font-weight:600;color:var(--text-secondary);cursor:pointer;text-align:left;transition:all 0.15s}
+      .sched-leave-btn:hover{border-color:var(--lc);color:var(--text-primary)}
+      .sched-leave-btn.active{border-color:var(--lc);background:color-mix(in srgb,var(--lc) 8%,transparent);color:var(--lc)}
       .sched-toolbar{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1.25rem}
       .sched-toolbar-group{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap}
       .sched-week-nav{display:flex;align-items:center;gap:0.5rem}
@@ -395,6 +406,8 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card:hover{box-shadow:0 2px 8px var(--shadow);transform:translateY(-1px)}
       .sched-job-card.recently-changed{animation:schedPulse 2s ease}
       .sched-job-card.is-site{border-left-color:#0ea5e9}
+      .sched-job-card.is-leave{border-left-color:#8b5cf6}
+      .sm-assign-card.is-leave{border-left:3px solid #8b5cf6}
       .sched-job-card.no-drag{cursor:default}
       @keyframes schedPulse{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px rgba(234,88,12,0.25)}}
       .sched-job-card .job-top{display:flex;align-items:center;gap:0.3rem}
@@ -543,9 +556,9 @@ window.BromarPages.scheduling = (() => {
             <button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
           ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
             <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
-                return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
-                  ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
+                return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
+                  ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}${isLeave?`<span class="job-type-tag" style="background:${bc}20;color:${bc};">LEAVE</span>`:''}
                   <div class="job-top">${isLinked?`<span class="job-chain ${isSite?'is-site-chain':''}" title="${scheduleLabel(a.schedule)}">${CHAIN_ICON}</span>`:''}<span class="job-num">${lbl}</span></div>
                   <span class="job-client">${sub}</span>
                   <div class="job-actions">${isLinked?`<button class="ja-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip this day">⊘</button>`:''}${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}${!isLinked?`<button class="ja-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div>
@@ -641,9 +654,9 @@ window.BromarPages.scheduling = (() => {
               <div class="sm-emp-head-right">${ea.length?`<span class="sm-emp-count">${ea.length}</span>`:''}<span class="sm-emp-chevron">›</span></div>
             </div>
             <div class="sm-emp-body"><div class="sm-emp-body-inner">
-              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const isSite=a.type==='site';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
-                return`<div class="sm-assign-card ${isSite?'is-site':'is-job'}"><div class="sm-assign-left">
-                    ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
+                return`<div class="sm-assign-card ${isSite?'is-site':isLeave?'is-leave':'is-job'}" ${isLeave?`style="border-left-color:${bc}"`:''}><div class="sm-assign-left">
+                    ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':isLeave?`<span class="a-type" style="background:${bc}20;color:${bc};">LEAVE</span>`:'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
                     <span class="a-label">${lbl}</span><span class="a-sub">${sub}</span>
                     ${isLinked?`<span class="a-sched">${CHAIN_ICON} ${scheduleLabel(a.schedule)}${a.endDate?' · ends '+a.endDate:''}</span>`:''}</div>
                   <div class="sm-assign-actions">${isLinked?`<button class="sm-assign-btn" data-skip="${a.id}" data-skip-date="${dk}" title="Skip day">⊘</button>`:''}${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}${!isLinked?`<button class="sm-assign-btn" data-remove="${a.id}" title="Remove">×</button>`:''}</div></div>`;}).join('')}
@@ -725,14 +738,15 @@ window.BromarPages.scheduling = (() => {
 
   /* ═══════════════════════════════════════ ASSIGN MODAL ═══════════════════════════════════════ */
   function openAssignModal(container,empName,date,prefillSchedule,prefillEndDate) {
-    let activeTab='job',selectedJob=null,selectedSite=null,jobQuery='',siteQuery='';
+    let activeTab='job',selectedJob=null,selectedSite=null,selectedLeave=null,jobQuery='',siteQuery='';
     let schedType=prefillSchedule||'oneoff',endDateVal=prefillEndDate||'';
+    const leaveTypes=['RDO','Annual Leave','Sick Leave'];
     const overlay=document.createElement('div');overlay.className='sched-modal-overlay';
 
     function rm() {
       const existing=getEffectiveAssignments(empName,date);
       const conflict=existing.length>=3?`⚠ ${empName} has ${existing.length} items on this date.`:'';
-      const canSubmit=activeTab==='job'?!!selectedJob:!!selectedSite;
+      const canSubmit=activeTab==='job'?!!selectedJob:activeTab==='site'?!!selectedSite:!!selectedLeave;
       const fJobs=searchJobsLocal(jobQuery);const fSites=searchSitesLocal(siteQuery);
 
       overlay.innerHTML=`<div class="sched-modal">
@@ -742,17 +756,21 @@ window.BromarPages.scheduling = (() => {
         <div class="sched-modal-tabs">
           <button class="sched-modal-tab ${activeTab==='job'?'active':''}" data-tab="job">Job Number</button>
           <button class="sched-modal-tab ${activeTab==='site'?'active':''}" data-tab="site">Sites</button>
+          <button class="sched-modal-tab ${activeTab==='leave'?'active':''}" data-tab="leave" style="${activeTab==='leave'?'color:#8b5cf6;border-bottom-color:#8b5cf6':''}">Leave</button>
         </div>
         ${activeTab==='job'?`
           <label>Search Job</label>
           <input class="sched-input" id="am-job-search" type="text" placeholder="Search by job number, client or site…" value="${jobQuery}" autofocus>
           <div class="sched-job-results">${fJobs.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs table found':'No matching jobs'}</div>`:''}
             ${fJobs.map(j=>`<div class="sched-job-result ${selectedJob?.number===j.number?'selected':''}" data-jnum="${j.number}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}</div>
-        `:`
+        `:activeTab==='site'?`
           <label>Search Site</label>
           <input class="sched-input" id="am-site-search" type="text" placeholder="Search by site name, client or address…" value="${siteQuery}" autofocus>
           <div class="sched-job-results">${fSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found':'No matching sites'}</div>`:''}
             ${fSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span>${s.address?`<span class="sr-addr">${s.address}${s.city?', '+s.city:''}</span>`:''}</div>`).join('')}</div>
+        `:`
+          <label>Leave Type</label>
+          <div class="sched-leave-types">${leaveTypes.map(lt=>`<button class="sched-leave-btn ${selectedLeave===lt?'active':''}" data-leave="${lt}" style="--lc:${leaveColor(lt)}">${lt}</button>`).join('')}</div>
         `}
         <label>Schedule Type</label>
         <div class="sched-schedule-type">
@@ -772,22 +790,25 @@ window.BromarPages.scheduling = (() => {
 
       overlay.querySelector('#am-close')?.addEventListener('click',close);
       overlay.querySelector('#am-cancel')?.addEventListener('click',close);
-      overlay.querySelectorAll('.sched-modal-tab').forEach(t=>t.addEventListener('click',()=>{activeTab=t.dataset.tab;selectedJob=null;selectedSite=null;jobQuery='';siteQuery='';rm();}));
+      overlay.querySelectorAll('.sched-modal-tab').forEach(t=>t.addEventListener('click',()=>{activeTab=t.dataset.tab;selectedJob=null;selectedSite=null;selectedLeave=null;jobQuery='';siteQuery='';rm();}));
       overlay.querySelectorAll('.sched-stype-btn').forEach(b=>b.addEventListener('click',()=>{schedType=b.dataset.stype;rm();}));
       if(activeTab==='job'){
         overlay.querySelector('#am-job-search')?.addEventListener('input',e=>{jobQuery=e.target.value;const pos=e.target.selectionStart;selectedJob=null;rm();const i=overlay.querySelector('#am-job-search');if(i){i.value=jobQuery;i.focus();i.setSelectionRange(pos,pos);}});
         overlay.querySelectorAll('.sched-job-result').forEach(el=>el.addEventListener('click',()=>{selectedJob=jobs.find(j=>j.number===el.dataset.jnum);rm();}));
-      } else {
+      } else if(activeTab==='site'){
         overlay.querySelector('#am-site-search')?.addEventListener('input',e=>{siteQuery=e.target.value;const pos=e.target.selectionStart;selectedSite=null;rm();const i=overlay.querySelector('#am-site-search');if(i){i.value=siteQuery;i.focus();i.setSelectionRange(pos,pos);}});
         overlay.querySelectorAll('.sched-site-result').forEach(el=>el.addEventListener('click',()=>{selectedSite=sites.find(s=>s.id===el.dataset.sid);rm();}));
+      } else {
+        overlay.querySelectorAll('.sched-leave-btn').forEach(el=>el.addEventListener('click',()=>{selectedLeave=el.dataset.leave;rm();}));
       }
       overlay.querySelector('#am-end-date')?.addEventListener('change',e=>{endDateVal=e.target.value;});
       overlay.querySelector('#am-submit')?.addEventListener('click',async()=>{
         const a={employeeName:empName,schedule:schedType,startDate:date,endDate:schedType==='duration'?(endDateVal||null):null,skipDates:[],recentlyChanged:true};
-        if(activeTab==='job'){if(!selectedJob)return;a.type='job';a.jobNumber=selectedJob.number;a.clientName=selectedJob.client;}
-        else{if(!selectedSite)return;a.type='site';a.siteId=selectedSite.id;a.siteName=selectedSite.name;a.clientName=selectedSite.clientName;}
+        let lbl;
+        if(activeTab==='job'){if(!selectedJob)return;a.type='job';a.jobNumber=selectedJob.number;a.clientName=selectedJob.client;lbl=selectedJob.number;}
+        else if(activeTab==='site'){if(!selectedSite)return;a.type='site';a.siteId=selectedSite.id;a.siteName=selectedSite.name;a.clientName=selectedSite.clientName;lbl=selectedSite.name;}
+        else{if(!selectedLeave)return;a.type='leave';a.siteName=selectedLeave;lbl=selectedLeave;}
         await DB.saveAssignment(a);assignments.push(a);
-        const lbl=activeTab==='job'?selectedJob.number:selectedSite.name;
         queueNotification(empName,`Assigned ${lbl} ${schedType==='oneoff'?date:schedType==='indefinite'?'indefinitely':'to '+endDateVal}`);
         close();rerender(container);
       });
