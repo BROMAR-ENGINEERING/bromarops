@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.08
+   V1.09
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.08';
+  const PAGE_VERSION = 'V1.09';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -283,6 +283,11 @@ window.BromarPages.scheduling = (() => {
     return priorityColor(job?.priority || 'medium');
   }
   function scheduleLabel(s) { return { oneoff: 'One-off', duration: 'Duration', indefinite: 'Indefinite' }[s] || s; }
+  function empHasAssignmentsInWeek(empName) {
+    const days = getDaysOfWeek();
+    return days.some(d => getEffectiveAssignments(empName, formatDateKey(d)).length > 0);
+  }
+
   function getUnassignedJobs() {
     const assigned = new Set(assignments.filter(a => a.type === 'job').map(a => a.jobNumber));
     return jobs.filter(j => !assigned.has(j.number) && (j.status === 'active' || j.status === 'in_progress'));
@@ -360,6 +365,9 @@ window.BromarPages.scheduling = (() => {
       .sched-hidden-chip:hover .chip-x{color:var(--accent)}
       .sched-show-all-btn{padding:0.2rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:none;font-family:'Outfit',sans-serif;font-size:0.7rem;font-weight:600;color:var(--accent);cursor:pointer}
       .sched-show-all-btn:hover{background:var(--card-hover);border-color:var(--accent)}
+      .sched-hide-actions{display:flex;gap:0.3rem}
+      .sched-hide-btn{padding:0.3rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:none;font-family:'Outfit',sans-serif;font-size:0.7rem;font-weight:600;color:var(--text-secondary);cursor:pointer;transition:all 0.15s;white-space:nowrap}
+      .sched-hide-btn:hover{background:var(--card-hover);border-color:var(--accent);color:var(--text-primary)}
       .sched-grid-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg-secondary)}
       .sched-grid{display:grid;min-width:800px}
       .sched-col-head{padding:0.75rem 0.5rem;text-align:center;font-weight:600;font-size:0.8rem;color:var(--text-secondary);border-bottom:2px solid var(--border);background:var(--bg-main);text-transform:uppercase;letter-spacing:0.04em;position:sticky;top:0;z-index:2}
@@ -513,6 +521,10 @@ window.BromarPages.scheduling = (() => {
           <input class="sched-input" id="dt-search" type="text" placeholder="Search employees…" value="${searchTerm}" style="width:160px;">
           <select class="sched-select" id="dt-role"><option value="all">All roles</option>${roles.map(r=>`<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
           <label class="sched-toggle"><input type="checkbox" id="dt-weekends" ${showWeekends?'checked':''}> Weekends</label>
+          <div class="sched-hide-actions">
+            <button class="sched-hide-btn" id="dt-hide-scheduled" title="Hide employees with assignments this week">Hide Scheduled</button>
+            <button class="sched-hide-btn" id="dt-hide-all" title="Hide all employees">Hide All</button>
+          </div>
         </div>
       </div>
       ${hiddenEmps.length?`<div class="sched-hidden-bar"><span class="hidden-label">Hidden (${hiddenEmps.length}):</span>${hiddenEmps.map(e=>`<span class="sched-hidden-chip" data-show-emp="${e.id}">${e.name} <span class="chip-x">×</span></span>`).join('')}<button class="sched-show-all-btn" id="dt-show-all">Show all</button></div>`:''}
@@ -559,6 +571,8 @@ window.BromarPages.scheduling = (() => {
     dt.querySelectorAll('.sched-emp-hide').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();hiddenEmployees.add(b.dataset.hideEmp);rerender(container);}));
     dt.querySelectorAll('.sched-hidden-chip').forEach(c=>c.addEventListener('click',()=>{hiddenEmployees.delete(c.dataset.showEmp);rerender(container);}));
     dt.querySelector('#dt-show-all')?.addEventListener('click',()=>{hiddenEmployees.clear();rerender(container);});
+    dt.querySelector('#dt-hide-scheduled')?.addEventListener('click',()=>{employees.forEach(e=>{if(empHasAssignmentsInWeek(e.name))hiddenEmployees.add(e.id);});rerender(container);});
+    dt.querySelector('#dt-hide-all')?.addEventListener('click',()=>{employees.forEach(e=>hiddenEmployees.add(e.id));rerender(container);});
     dt.querySelectorAll('.cell-add').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAssignModal(container,b.dataset.cellEmp,b.dataset.cellDate);}));
     bindCardActions(dt,container);
     dt.querySelectorAll('.sched-job-card[draggable="true"]').forEach(c=>{
@@ -709,10 +723,10 @@ window.BromarPages.scheduling = (() => {
       overlay.querySelectorAll('.sched-modal-tab').forEach(t=>t.addEventListener('click',()=>{activeTab=t.dataset.tab;selectedJob=null;selectedSite=null;jobQuery='';siteQuery='';rm();}));
       overlay.querySelectorAll('.sched-stype-btn').forEach(b=>b.addEventListener('click',()=>{schedType=b.dataset.stype;rm();}));
       if(activeTab==='job'){
-        overlay.querySelector('#am-job-search')?.addEventListener('input',e=>{jobQuery=e.target.value;selectedJob=null;rm();const i=overlay.querySelector('#am-job-search');if(i){i.value=jobQuery;i.focus();}});
+        overlay.querySelector('#am-job-search')?.addEventListener('input',e=>{jobQuery=e.target.value;const pos=e.target.selectionStart;selectedJob=null;rm();const i=overlay.querySelector('#am-job-search');if(i){i.value=jobQuery;i.focus();i.setSelectionRange(pos,pos);}});
         overlay.querySelectorAll('.sched-job-result').forEach(el=>el.addEventListener('click',()=>{selectedJob=jobs.find(j=>j.number===el.dataset.jnum);rm();}));
       } else {
-        overlay.querySelector('#am-site-search')?.addEventListener('input',e=>{siteQuery=e.target.value;selectedSite=null;rm();const i=overlay.querySelector('#am-site-search');if(i){i.value=siteQuery;i.focus();}});
+        overlay.querySelector('#am-site-search')?.addEventListener('input',e=>{siteQuery=e.target.value;const pos=e.target.selectionStart;selectedSite=null;rm();const i=overlay.querySelector('#am-site-search');if(i){i.value=siteQuery;i.focus();i.setSelectionRange(pos,pos);}});
         overlay.querySelectorAll('.sched-site-result').forEach(el=>el.addEventListener('click',()=>{selectedSite=sites.find(s=>s.id===el.dataset.sid);rm();}));
       }
       overlay.querySelector('#am-end-date')?.addEventListener('change',e=>{endDateVal=e.target.value;});
