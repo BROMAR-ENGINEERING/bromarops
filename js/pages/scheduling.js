@@ -5,7 +5,7 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.09
+   V1.13
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
