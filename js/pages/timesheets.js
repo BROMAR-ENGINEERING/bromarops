@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.02',
+  version: 'V1.03',
 
   render(container) {
     // Display this page's version in the footer
@@ -281,7 +281,7 @@ window.BromarPages.timesheets = {
         .ts-modal-inner {
           background: var(--bg-main); border: 1px solid var(--border);
           border-radius: var(--radius); max-width: 900px; width: 100%;
-          max-height: 90vh;
+          max-height: 90vh; overflow: hidden;
           box-shadow: 0 20px 60px var(--shadow);
           display: flex; flex-direction: column;
         }
@@ -309,16 +309,17 @@ window.BromarPages.timesheets = {
         .ts-export-btn {
           font-family: 'Outfit', sans-serif; font-size: 0.9rem; font-weight: 600;
           padding: 0.65rem 1.15rem; border-radius: var(--radius-sm);
-          border: 1px solid var(--border); background: var(--bg-secondary);
-          color: var(--text-primary); cursor: pointer;
+          border: none;
+          background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+          color: white; cursor: pointer;
           display: inline-flex; align-items: center; gap: 0.5rem;
           transition: all 0.2s ease;
         }
         .ts-export-btn:hover:not(:disabled) {
-          border-color: var(--accent); color: var(--accent);
-          background: var(--card-hover);
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(234, 88, 12, 0.3);
         }
-        .ts-export-btn:disabled { opacity: 0.5; cursor: wait; }
+        .ts-export-btn:disabled { opacity: 0.6; cursor: wait; }
         .ts-export-btn svg {
           width: 15px; height: 15px;
           stroke: currentColor; stroke-width: 2;
@@ -744,7 +745,10 @@ window.BromarPages.timesheets = {
         await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
       }
       if (!window.BromarReportKit) {
-        throw new Error('BromarReportKit not loaded — check js/bromar-report-kit.js is included in index.html');
+        await loadScript('js/bromar-report-kit.js');
+      }
+      if (!window.BromarReportKit) {
+        throw new Error('BromarReportKit failed to load from js/bromar-report-kit.js');
       }
     }
 
@@ -949,11 +953,13 @@ window.BromarPages.timesheets = {
       `;
 
       document.getElementById('ts-modal').classList.add('show');
+      document.body.style.overflow = 'hidden';
     }
 
     function closeDetail() {
       state.currentDetail = null;
       document.getElementById('ts-modal').classList.remove('show');
+      document.body.style.overflow = '';
     }
 
     function renderView() {
