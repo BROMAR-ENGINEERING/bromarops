@@ -10,7 +10,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.09';
+  const PAGE_VERSION = 'V1.11';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -42,6 +42,7 @@ window.BromarPages.scheduling = (() => {
   let touchStartX = 0;
   let touchStartY = 0;
   let containerRef = null;
+  let rangeDrag = null; // { empName, startDate, currentDate }
 
   function isMobile() { return window.innerWidth <= 900; }
 
@@ -385,6 +386,7 @@ window.BromarPages.scheduling = (() => {
       .sched-day-cell:hover{background:var(--card-hover)}
       .sched-day-cell.today-col{background:rgba(234,88,12,0.03)}
       .sched-day-cell.drag-over{background:rgba(234,88,12,0.08);outline:2px dashed var(--accent);outline-offset:-2px}
+      .sched-day-cell.range-select{background:rgba(234,88,12,0.1);outline:2px solid var(--accent);outline-offset:-2px}
       .sched-day-cell .cell-add{opacity:0;position:absolute;bottom:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:var(--accent);color:white;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s}
       .sched-day-cell:hover .cell-add{opacity:0.7}
       .sched-day-cell:hover .cell-add:hover{opacity:1}
@@ -505,7 +507,7 @@ window.BromarPages.scheduling = (() => {
   /* ═══════════════════════════════════════ DESKTOP ═══════════════════════════════════════ */
   function buildDesktop() {
     const days = getDaysOfWeek(); const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const roles = [...new Set(employees.map(e => e.role))].sort();
+    const roles = [...new Set(employees.map(e => e.role))].filter(r=>r&&r!=='unassigned').sort();
     const filtered = getFilteredEmployees(); const unassigned = getUnassignedJobs();
     const weekEnd = new Date(currentWeekStart); weekEnd.setDate(weekEnd.getDate() + (showWeekends ? 6 : 4));
     const hiddenEmps = employees.filter(e => hiddenEmployees.has(e.id));
@@ -533,7 +535,7 @@ window.BromarPages.scheduling = (() => {
         ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
         ${filtered.map(emp=>`<div class="sched-emp-cell">
             <div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
-            <div class="sched-emp-info"><span class="sched-emp-name">${emp.name}</span><div class="sched-emp-meta"><span class="sched-emp-role" style="background:${roleColor(emp.role)}18;color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div></div>
+            <div class="sched-emp-info"><span class="sched-emp-name">${emp.name}</span><div class="sched-emp-meta">${emp.role&&emp.role!=='unassigned'?`<span class="sched-emp-role" style="background:${roleColor(emp.role)}18;color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span>`:''}</div></div>
             <button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
           ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
             <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
@@ -583,7 +585,29 @@ window.BromarPages.scheduling = (() => {
       item.addEventListener('dragstart',e=>{dragData={type:'assign',jobNumber:item.dataset.jobNum};e.dataTransfer.effectAllowed='copy';item.style.opacity='0.5';});
       item.addEventListener('dragend',()=>{item.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
     });
-    dt.querySelectorAll('.sched-day-cell').forEach(cell=>{cell.addEventListener('drop',e=>{e.preventDefault();cell.classList.remove('drag-over');if(!dragData)return;handleDrop(container,cell.dataset.emp,cell.dataset.date);});});
+    dt.querySelectorAll('.sched-day-cell').forEach(cell=>{
+      cell.addEventListener('drop',e=>{e.preventDefault();cell.classList.remove('drag-over');if(!dragData)return;handleDrop(container,cell.dataset.emp,cell.dataset.date);});
+      cell.addEventListener('mousedown',e=>{
+        if(e.target.closest('.sched-job-card')||e.target.closest('.cell-add'))return;
+        rangeDrag={empName:cell.dataset.emp,startDate:cell.dataset.date,currentDate:cell.dataset.date};
+        cell.classList.add('range-select');
+        e.preventDefault();
+      });
+      cell.addEventListener('mouseenter',()=>{
+        if(!rangeDrag||rangeDrag.empName!==cell.dataset.emp)return;
+        rangeDrag.currentDate=cell.dataset.date;
+        updateRangeHighlight(dt);
+      });
+    });
+    document.addEventListener('mouseup',function onUp(){
+      if(!rangeDrag){return;}
+      const rd=rangeDrag;rangeDrag=null;
+      dt.querySelectorAll('.range-select').forEach(el=>el.classList.remove('range-select'));
+      if(rd.startDate===rd.currentDate)return;
+      const s=rd.startDate<rd.currentDate?rd.startDate:rd.currentDate;
+      const e2=rd.startDate<rd.currentDate?rd.currentDate:rd.startDate;
+      openAssignModal(container,rd.empName,s,'duration',e2);
+    });
     dt.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',()=>{markNotifSent(container,b.dataset.notifId);}));
   }
 
@@ -591,7 +615,7 @@ window.BromarPages.scheduling = (() => {
   function buildMobile() {
     const days=getDaysOfWeek();const dayAbbr=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const dk=getMobileDateKey();const filtered=getFilteredEmployees();
-    const roles=[...new Set(employees.map(e=>e.role))].sort();
+    const roles=[...new Set(employees.map(e=>e.role))].filter(r=>r&&r!=='unassigned').sort();
     return `
       <div class="sm-header">
         <div class="sm-date-nav"><button class="sm-nav-btn" id="sm-prev">‹</button><span class="sm-date-label">${formatDateFull(mobileSelectedDate)}</span><button class="sm-nav-btn" id="sm-next">›</button></div>
@@ -609,7 +633,7 @@ window.BromarPages.scheduling = (() => {
           return`<div class="sm-emp-card ${expanded?'expanded':''} ${ea.length?'has-items':''}" data-emp-id="${emp.id}">
             <div class="sm-emp-head" data-emp-toggle="${emp.id}">
               <div class="sm-emp-head-left"><div class="sched-emp-avatar" style="background:linear-gradient(135deg,${roleColor(emp.role)},${roleColor(emp.role)}88)">${emp.avatar}</div>
-                <div class="sm-emp-head-info"><span class="sm-emp-head-name">${emp.name}</span><span class="sm-emp-head-role" style="color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span></div></div>
+                <div class="sm-emp-head-info"><span class="sm-emp-head-name">${emp.name}</span>${emp.role&&emp.role!=='unassigned'?`<span class="sm-emp-head-role" style="color:${roleColor(emp.role)}">${roleLabel(emp.role)}</span>`:''}</div></div>
               <div class="sm-emp-head-right">${ea.length?`<span class="sm-emp-count">${ea.length}</span>`:''}<span class="sm-emp-chevron">›</span></div>
             </div>
             <div class="sm-emp-body"><div class="sm-emp-body-inner">
@@ -671,10 +695,20 @@ window.BromarPages.scheduling = (() => {
 
   function markNotifSent(container,nId){const n=notificationQueue.find(x=>x.id===nId);if(n){n.sent=true;rerender(container);}}
 
+  function updateRangeHighlight(root) {
+    root.querySelectorAll('.range-select').forEach(el=>el.classList.remove('range-select'));
+    if(!rangeDrag)return;
+    const s=rangeDrag.startDate<rangeDrag.currentDate?rangeDrag.startDate:rangeDrag.currentDate;
+    const e2=rangeDrag.startDate<rangeDrag.currentDate?rangeDrag.currentDate:rangeDrag.startDate;
+    root.querySelectorAll('.sched-day-cell').forEach(cell=>{
+      if(cell.dataset.emp===rangeDrag.empName&&cell.dataset.date>=s&&cell.dataset.date<=e2) cell.classList.add('range-select');
+    });
+  }
+
   /* ═══════════════════════════════════════ ASSIGN MODAL ═══════════════════════════════════════ */
-  function openAssignModal(container,empName,date) {
+  function openAssignModal(container,empName,date,prefillSchedule,prefillEndDate) {
     let activeTab='job',selectedJob=null,selectedSite=null,jobQuery='',siteQuery='';
-    let schedType='oneoff',endDateVal='';
+    let schedType=prefillSchedule||'oneoff',endDateVal=prefillEndDate||'';
     const overlay=document.createElement('div');overlay.className='sched-modal-overlay';
 
     function rm() {
