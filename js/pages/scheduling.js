@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.20
+   V1.21
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.20';
+  const PAGE_VERSION = 'V1.21';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -410,6 +410,19 @@ window.BromarPages.scheduling = (() => {
       .sm-assign-left .a-loc-badge{font-size:0.55rem;font-weight:700;color:#f59e0b;background:#f59e0b18;padding:0.05rem 0.3rem;border-radius:3px;align-self:flex-start}
       .sm-assign-left .a-notes{font-size:0.65rem;color:var(--text-secondary);font-style:italic;margin-top:1px}
       .sched-toolbar{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1.25rem}
+      .sched-filterbar{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;margin-bottom:1rem;padding:0.6rem 0.75rem;border-radius:var(--radius);background:var(--bg-secondary);border:1px solid var(--border)}
+      .sched-fb-week{display:flex;align-items:center;gap:0.5rem}
+      .sched-fb-filters{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap}
+      .sched-fb-divider{width:1px;height:24px;background:var(--border);margin:0 0.25rem}
+      .sched-unassigned-strip{display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding:0.6rem 0.75rem;border-radius:var(--radius);background:var(--bg-secondary);border:1px solid var(--border);overflow:hidden}
+      .sched-strip-label{font-size:0.8rem;font-weight:700;color:var(--text-primary);white-space:nowrap;display:flex;align-items:center;gap:0.4rem;flex-shrink:0}
+      .sched-strip-scroll{display:flex;gap:0.5rem;overflow-x:auto;padding-bottom:2px;flex:1}
+      .sched-strip-empty{font-size:0.8rem;color:var(--text-secondary);white-space:nowrap}
+      .sched-strip-job{display:flex;flex-direction:column;gap:1px;padding:0.4rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);cursor:grab;white-space:nowrap;flex-shrink:0;position:relative;transition:border-color 0.15s}
+      .sched-strip-job:hover{border-color:var(--accent)}
+      .sched-strip-job .sj-num{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:0.75rem}
+      .sched-strip-job .sj-client{font-size:0.65rem;color:var(--text-secondary)}
+      .sched-strip-job .sj-pri{position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%}
       .sched-toolbar-group{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap}
       .sched-week-nav{display:flex;align-items:center;gap:0.5rem}
       .sched-week-label{font-weight:600;font-size:0.95rem;min-width:180px;text-align:center;color:var(--text-primary)}
@@ -583,24 +596,31 @@ window.BromarPages.scheduling = (() => {
     const weekEnd = new Date(currentWeekStart); weekEnd.setDate(weekEnd.getDate() + (showWeekends ? 6 : 4));
     const hiddenEmps = employees.filter(e => hiddenEmployees.has(e.id));
     return `
-      <div class="sched-toolbar">
-        <div class="sched-toolbar-group sched-week-nav">
+      <div class="sched-filterbar">
+        <div class="sched-fb-week">
           <button class="sched-nav-btn" id="dt-prev">‹</button>
           <span class="sched-week-label">${formatDate(currentWeekStart)} — ${formatDate(weekEnd)}</span>
           <button class="sched-nav-btn" id="dt-next">›</button>
           <button class="sched-nav-btn" id="dt-today" style="font-size:0.75rem;width:auto;padding:0 0.6rem;">Today</button>
         </div>
-        <div class="sched-toolbar-group">
-          <input class="sched-input" id="dt-search" type="text" placeholder="Search employees…" value="${searchTerm}" style="width:160px;">
+        <div class="sched-fb-filters">
+          <input class="sched-input" id="dt-search" type="text" placeholder="Search employees…" value="${searchTerm}" style="width:150px;">
           <select class="sched-select" id="dt-role"><option value="all">All roles</option>${roles.map(r=>`<option value="${r}" ${filterRole===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
           <label class="sched-toggle"><input type="checkbox" id="dt-weekends" ${showWeekends?'checked':''}> Weekends</label>
-          <div class="sched-hide-actions">
-            <button class="sched-hide-btn" id="dt-hide-scheduled" title="Hide employees with assignments this week">Hide Scheduled</button>
-            <button class="sched-hide-btn" id="dt-hide-all" title="Hide all employees">Hide All</button>
-          </div>
+          <span class="sched-fb-divider"></span>
+          <button class="sched-hide-btn" id="dt-hide-scheduled" title="Hide employees with assignments this week">Hide Scheduled</button>
+          <button class="sched-hide-btn" id="dt-hide-all" title="Hide all employees">Hide All</button>
+          ${hiddenEmps.length?`<button class="sched-hide-btn" id="dt-show-all" style="color:var(--accent)">Show All (${hiddenEmps.length})</button>`:''}
         </div>
       </div>
-      ${hiddenEmps.length?`<div class="sched-hidden-bar"><span class="hidden-label">Hidden (${hiddenEmps.length}):</span>${hiddenEmps.map(e=>`<span class="sched-hidden-chip" data-show-emp="${e.id}">${e.name} <span class="chip-x">×</span></span>`).join('')}<button class="sched-show-all-btn" id="dt-show-all">Show all</button></div>`:''}
+      ${hiddenEmps.length?`<div class="sched-hidden-bar"><span class="hidden-label">Hidden:</span>${hiddenEmps.map(e=>`<span class="sched-hidden-chip" data-show-emp="${e.id}">${e.name} <span class="chip-x">×</span></span>`).join('')}</div>`:''}
+      <div class="sched-unassigned-strip">
+        <span class="sched-strip-label">Unassigned Jobs ${unassigned.length?`<span class="sched-badge">${unassigned.length}</span>`:''}</span>
+        <div class="sched-strip-scroll">
+          ${unassigned.length===0?`<span class="sched-strip-empty">${jobs.length===0?'No jobs table found':'All jobs assigned'}</span>`:''}
+          ${unassigned.map(j=>`<div class="sched-strip-job" draggable="true" data-job-num="${j.number}"><span class="sj-num">${j.number}</span><span class="sj-client">${j.client}${j.site?' · '+j.site:''}</span><span class="sj-pri" style="background:${priorityColor(j.priority)}"></span></div>`).join('')}
+        </div>
+      </div>
       <div class="sched-grid-wrap"><div class="sched-grid" style="grid-template-columns:200px repeat(${days.length},1fr);">
         <div class="sched-col-head" style="position:sticky;left:0;z-index:3;">Employee</div>
         ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
@@ -625,16 +645,10 @@ window.BromarPages.scheduling = (() => {
             </div>`;}).join('')}`).join('')}
         ${filtered.length===0?'<div class="sched-empty" style="grid-column:1/-1;">No employees match your filter.</div>':''}
       </div></div>
-      <div class="sched-panels">
-        <div class="card"><div class="sched-panel-title">Unassigned Jobs ${unassigned.length?`<span class="sched-badge">${unassigned.length}</span>`:''}</div>
-          <div class="sched-list-scroll">${unassigned.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs table found':'All jobs assigned'}</div>`:''}
-            ${unassigned.map(j=>`<div class="sched-unassigned-item" draggable="true" data-job-num="${j.number}"><div class="uaj-left"><span class="uaj-num">${j.number}</span><span class="uaj-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}
-          </div></div>
-        <div class="card"><div class="sched-panel-title">Notifications ${unsent()?`<span class="sched-badge">${unsent()}</span>`:''}</div>
-          <div class="sched-list-scroll">${notificationQueue.length===0?'<div class="sched-empty">No pending notifications</div>':''}
-            ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span><span class="notif-time">${timeSince(n.timestamp)}</span>${n.sent?'<span class="notif-sent">✓ Sent</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
-          </div></div>
-      </div>`;
+      <div class="card" style="margin-top:1.25rem"><div class="sched-panel-title">Notifications ${unsent()?`<span class="sched-badge">${unsent()}</span>`:''}</div>
+        <div class="sched-list-scroll">${notificationQueue.length===0?'<div class="sched-empty">No pending notifications</div>':''}
+          ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span><span class="notif-time">${timeSince(n.timestamp)}</span>${n.sent?'<span class="notif-sent">✓ Sent</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
+        </div></div>`;
   }
 
   function bindDesktop(container) {
@@ -656,7 +670,7 @@ window.BromarPages.scheduling = (() => {
       c.addEventListener('dragstart',e=>{const a=assignments.find(x=>x.id===c.dataset.assignId);if(!a||a.schedule!=='oneoff'){e.preventDefault();return;}dragData={type:'reassign',assignId:c.dataset.assignId};e.dataTransfer.effectAllowed='move';c.style.opacity='0.5';});
       c.addEventListener('dragend',()=>{c.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
     });
-    dt.querySelectorAll('.sched-unassigned-item[draggable]').forEach(item=>{
+    dt.querySelectorAll('.sched-strip-job[draggable]').forEach(item=>{
       item.addEventListener('dragstart',e=>{dragData={type:'assign',jobNumber:item.dataset.jobNum};e.dataTransfer.effectAllowed='copy';item.style.opacity='0.5';});
       item.addEventListener('dragend',()=>{item.style.opacity='1';dragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
     });
