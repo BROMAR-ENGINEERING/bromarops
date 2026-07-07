@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.05',
+  version: 'V1.06',
 
   render(container) {
     // Display this page's version in the footer
@@ -290,7 +290,7 @@ window.BromarPages.timesheets = {
         .ts-modal.show { display: flex; }
         .ts-modal-inner {
           background: var(--bg-main); border: 1px solid var(--border);
-          border-radius: var(--radius); max-width: 900px; width: 100%;
+          border-radius: var(--radius); max-width: 1200px; width: 100%;
           max-height: 90vh; overflow: hidden;
           box-shadow: 0 20px 60px var(--shadow);
           display: flex; flex-direction: column;
@@ -343,9 +343,29 @@ window.BromarPages.timesheets = {
         }
         .ts-detail-grid .ts-stat .num { font-size: 1.3rem; }
 
-        .ts-entries-table { min-width: 900px; }
-        .ts-entries-table td { white-space: nowrap; }
-        .ts-entries-table td:last-child { white-space: normal; min-width: 160px; }
+        .ts-entries-table {
+          table-layout: fixed;
+          width: 100%;
+          font-size: 0.82rem;
+        }
+        .ts-entries-table th, .ts-entries-table td {
+          padding: 0.55rem 0.5rem;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          vertical-align: top;
+        }
+        .ts-entries-table td { white-space: normal; }
+        /* Column widths on desktop (percent of 100%) */
+        .ts-entries-table th:nth-child(1),  .ts-entries-table td:nth-child(1)  { width: 9%; }   /* Day */
+        .ts-entries-table th:nth-child(2),  .ts-entries-table td:nth-child(2)  { width: 6%; }   /* Shift */
+        .ts-entries-table th:nth-child(3),  .ts-entries-table td:nth-child(3)  { width: 11%; }  /* Type */
+        .ts-entries-table th:nth-child(4),  .ts-entries-table td:nth-child(4)  { width: 7%; text-align: right; }  /* Normal */
+        .ts-entries-table th:nth-child(5),  .ts-entries-table td:nth-child(5)  { width: 6%; text-align: right; }  /* OT */
+        .ts-entries-table th:nth-child(6),  .ts-entries-table td:nth-child(6)  { width: 7%; text-align: right; }  /* Travel */
+        .ts-entries-table th:nth-child(7),  .ts-entries-table td:nth-child(7)  { width: 10%; }  /* Job */
+        .ts-entries-table th:nth-child(8),  .ts-entries-table td:nth-child(8)  { width: 14%; }  /* Client */
+        .ts-entries-table th:nth-child(9),  .ts-entries-table td:nth-child(9)  { width: 12%; }  /* Allowances */
+        .ts-entries-table th:nth-child(10), .ts-entries-table td:nth-child(10) { width: 18%; }  /* Comment */
 
         .ts-flags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
         .ts-flag {
@@ -401,6 +421,16 @@ window.BromarPages.timesheets = {
           .ts-modal-foot .btn-secondary,
           .ts-modal-foot .ts-export-btn { flex: 1; justify-content: center; padding: 0.85rem 1rem; }
           .ts-close-btn { width: 36px; height: 36px; }
+
+          /* Mobile: entries table too dense at 10 columns fixed — go horizontal scroll */
+          .ts-entries-table {
+            table-layout: auto;
+            width: auto;
+            min-width: 900px;
+            font-size: 0.78rem;
+          }
+          .ts-entries-table th, .ts-entries-table td { white-space: nowrap; }
+          .ts-entries-table td:nth-child(10) { white-space: normal; min-width: 140px; }
         }
       </style>
 
@@ -780,10 +810,16 @@ window.BromarPages.timesheets = {
     async function exportTimesheetPDF(t) {
       await ensurePdfLibs();
       const RK = window.BromarReportKit;
+
+      // Correct the reverse-logo path (kit default doesn't match this repo's filename)
+      RK.configure({
+        logoColour:  'assets/logo/bromar-logo-colour.png',
+        logoReverse: 'assets/logo/bromar-logo-white.png'
+      });
+
       const doc = RK.createDoc();
       const M = RK.LAYOUT.margin;
       const contentW = RK.LAYOUT.contentW;
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
       // Parse entries defensively
       let entries = t.timesheet_entries;
@@ -795,7 +831,8 @@ window.BromarPages.timesheets = {
       const title = `Timesheet — ${t.employee_name}`;
       const weekRange = `${fmtDate(t.week_starting)} to ${fmtDate(addDays(t.week_starting, 6))}`;
 
-      await RK.drawHeader(doc, { dark: isDark });
+      // Always use colour logo — PDFs render on white paper regardless of app theme
+      await RK.drawHeader(doc);
 
       // Title block
       let y = RK.LAYOUT.headerH + 8;
