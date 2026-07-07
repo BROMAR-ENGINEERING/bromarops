@@ -1,17 +1,18 @@
 /* ============================================================
    BROMAR OPS — DASHBOARD PAGE
-   Version: V1.02
+   Version: V1.03
    Overview page. Tiles are added incrementally.
    V1.00 — Initial: standby tile + daily motivation + logo.
    V1.01 — Big centred logo; date tile; Melbourne weather tile;
            standby tile wired to real callout_roster schema.
    V1.02 — Logo slow fade in/out motion; Pending Leave Requests
            tile (two columns wide) using leave_requests schema.
+   V1.03 — Corrected logo asset paths (assets/logo/bromar-logo-*).
    ============================================================ */
 
 (() => {
   const PAGE_ID = 'dashboard';
-  const VERSION = 'V1.02';
+  const VERSION = 'V1.03';
 
   const MEL_LAT = -37.8136, MEL_LON = 144.9631;
 
@@ -273,8 +274,8 @@
 
     container.innerHTML = `
       <div class="dash-logo">
-        <img class="light-logo" src="assets/Bromar-Primary-Logo-Full-Colour.png" alt="Bromar">
-        <img class="dark-logo"  src="assets/Bromar-Primary-Logo-Reverse-White.png" alt="Bromar">
+        <img class="light-logo" src="assets/logo/bromar-logo-colour.png" alt="Bromar">
+        <img class="dark-logo"  src="assets/logo/bromar-logo-white.png" alt="Bromar">
       </div>
 
       <div class="dash-grid">
