@@ -6,24 +6,33 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.05',
+  version: 'V1.08',
 
   render(container) {
-    /* ── supabase (self-initialising) ── */
+    /* ── supabase (self-initialising, with CDN fallback) ── */
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
     let sb = null;
+
+    function loadScript(url) {
+      return new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = url; s.onload = res; s.onerror = () => rej(new Error('load failed: ' + url));
+        document.head.appendChild(s);
+      });
+    }
 
     async function ensureSupabase() {
       if (window.supabaseClient) return (sb = window.supabaseClient);
       if (window.sb) return (sb = window.sb);
       if (!window.supabase) {
-        await new Promise((res, rej) => {
-          const s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-          s.onload = res; s.onerror = () => rej(new Error('Failed to load Supabase library'));
-          document.head.appendChild(s);
-        });
+        const cdns = [
+          'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+          'https://unpkg.com/@supabase/supabase-js@2'
+        ];
+        let ok = false;
+        for (const url of cdns) { try { await loadScript(url); if (window.supabase) { ok = true; break; } } catch (e) { /* try next */ } }
+        if (!ok) throw new Error('Could not load the Supabase library (CDN blocked).');
       }
       window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       return (sb = window.supabaseClient);
@@ -118,6 +127,11 @@ window.BromarPages.jobs = {
         .drawer-actions { display:flex; gap:0.75rem; margin-top:1.5rem; padding-top:1.25rem; border-top:1px solid var(--border); }
         .drawer-actions .btn-primary, .drawer-actions .btn-secondary { flex:1; }
 
+        .nj-mode { display:flex; gap:0.5rem; margin-bottom:1.25rem; }
+        .nj-mode-btn { flex:1; font-family:'Outfit',sans-serif; font-size:0.85rem; font-weight:600; padding:0.6rem; border-radius:var(--radius-sm);
+          border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); cursor:pointer; transition:all 0.18s ease; }
+        .nj-mode-btn.active { border-color:var(--accent); background:var(--card-hover); color:var(--accent); }
+
         .link-chip { font-size:0.66rem; font-weight:700; text-transform:none; letter-spacing:0; padding:2px 9px; border-radius:20px; }
         .link-chip.ok  { background:var(--success-bg); color:var(--success); }
         .link-chip.bad { background:rgba(217,119,6,0.14); color:#b45309; }
@@ -137,7 +151,7 @@ window.BromarPages.jobs = {
         .jt-notice.show { display:block; }
 
         .jobs-toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--text-primary); color:var(--bg-secondary);
-          padding:0.7rem 1.3rem; border-radius:10px; font-size:0.88rem; font-weight:500; z-index:9999; opacity:0; transition:opacity 0.25s; pointer-events:none; }
+          padding:0.7rem 1.3rem; border-radius:10px; font-size:0.88rem; font-weight:500; z-index:9999; opacity:0; transition:opacity 0.25s; pointer-events:none; max-width:90vw; text-align:center; }
         .jobs-toast.show { opacity:1; }
 
         @media (max-width:900px){
@@ -195,9 +209,9 @@ window.BromarPages.jobs = {
     const $ = (id) => container.querySelector('#' + id) || document.getElementById(id);
     const toastEl = $('jobsToast');
     let toastTimer;
-    const toast = (msg) => {
+    const toast = (msg, ms) => {
       toastEl.textContent = msg; toastEl.classList.add('show');
-      clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 2600);
     };
 
     /* ── shared client/site search ── */
@@ -403,7 +417,6 @@ window.BromarPages.jobs = {
       const chip = $('ed_link_chip');
       const setChip = (txt) => { chip.className = 'link-chip ok'; chip.textContent = txt; };
 
-      // populate site dropdown for the currently linked client (resolve from site if only site_id is set)
       if (curClientId) {
         loadSitesInto($('ed_site_select'), curClientId, curSiteId);
       } else if (curSiteId) {
@@ -475,13 +488,16 @@ window.BromarPages.jobs = {
 
       const saveBtn = $('ed_save'); saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
       try {
-        const { error } = await sb.from('job_number_register').update(patch).eq('id', editing.id);
+        const { data, error } = await sb.from('job_number_register').update(patch).eq('id', editing.id).select();
         if (error) throw error;
-        Object.assign(editing, patch);
+        if (!data || !data.length) {
+          throw new Error('Update wrote 0 rows — the anon key likely lacks an UPDATE (RLS) policy on job_number_register.');
+        }
+        Object.assign(editing, data[0]);
         renderStats(); renderPrefixTiles(); renderList();
         toast('Job saved'); closeDrawer();
       } catch (err) {
-        toast('Save failed: ' + err.message);
+        toast('Save failed: ' + err.message, 6000);
         saveBtn.disabled = false; saveBtn.textContent = 'Save Changes';
       }
     }
@@ -494,6 +510,18 @@ window.BromarPages.jobs = {
 
       $('drawerTitle').textContent = 'New Job';
       $('drawerBody').innerHTML = `
+        <div class="nj-mode">
+          <button type="button" class="nj-mode-btn active" data-mode="blank">Blank Job</button>
+          <button type="button" class="nj-mode-btn" data-mode="quote">From Quote</button>
+        </div>
+
+        <div class="jf ac-wrap" id="nj_quote_wrap" style="display:none;">
+          <label>Quote</label>
+          <input type="text" id="nj_quote_search" placeholder="Search quote #, client or title…" autocomplete="off">
+          <div class="ac-results" id="nj_quote_results"></div>
+        </div>
+        <div class="jt-notice" id="nj_quote_selected"></div>
+
         <div class="jf-row">
           <div class="jf"><label>Job Type <span style="color:var(--accent)">*</span></label>
             <select id="nj_type"><option value="">Select job type…</option>${optgroups}</select>
@@ -510,7 +538,7 @@ window.BromarPages.jobs = {
         <div class="jt-notice" id="nj_selected">
           <div id="nj_sel_client" style="font-weight:600; color:var(--accent);"></div>
           <div id="nj_sel_site" class="ac-sub" style="margin-top:2px;"></div>
-          <button class="btn-secondary" id="nj_clear" style="margin-top:0.6rem; padding:0.4rem 1rem; font-size:0.8rem;">Change</button>
+          <button type="button" class="btn-secondary" id="nj_clear" style="margin-top:0.6rem; padding:0.4rem 1rem; font-size:0.8rem;">Change</button>
         </div>
 
         <div class="jf" id="nj_site_wrap" style="display:none;">
@@ -525,8 +553,71 @@ window.BromarPages.jobs = {
 
       let sel = { clientId: null, clientName: '', siteId: null, siteName: '', siteAddress: '' };
       let prefix = '', jobLabel = '';
+      let quoteData = null;
 
       const refreshCreateBtn = () => { $('nj_create').disabled = !(prefix && (sel.clientId || sel.siteId)); };
+
+      const pickClient = (d) => { sel = { clientId: d.id, clientName: d.name, siteId: null, siteName: '', siteAddress: '' }; loadSites(d.id); showSelected(); };
+      const pickSite = (d) => { sel = { clientId: d.clientId || null, clientName: d.clientName || '', siteId: d.id, siteName: d.name, siteAddress: d.address || '' }; $('nj_site_wrap').style.display = 'none'; showSelected(); };
+
+      $('drawerBody').querySelectorAll('.nj-mode-btn').forEach(b => b.addEventListener('click', function () {
+        $('drawerBody').querySelectorAll('.nj-mode-btn').forEach(x => x.classList.remove('active'));
+        this.classList.add('active');
+        const mode = this.dataset.mode;
+        $('nj_quote_wrap').style.display = mode === 'quote' ? 'block' : 'none';
+        if (mode === 'blank') { quoteData = null; $('nj_quote_selected').classList.remove('show'); }
+      }));
+
+      let qt; const quoteCache = {};
+      $('nj_quote_search').addEventListener('input', function () {
+        clearTimeout(qt);
+        const q = this.value.trim();
+        const r = $('nj_quote_results');
+        if (q.length < 2) { r.classList.remove('show'); return; }
+        qt = setTimeout(async () => {
+          try {
+            const { data, error } = await sb.from('quotes')
+              .select('id, root_number, version, status, client, client_email, client_contact, client_address, job_title')
+              .or(`root_number.ilike.%${q}%,client.ilike.%${q}%,job_title.ilike.%${q}%`)
+              .order('created_at', { ascending: false }).limit(12);
+            if (error) throw error;
+            if (!data || !data.length) { r.innerHTML = `<div class="ac-item" style="color:var(--text-secondary)">No quotes found</div>`; r.classList.add('show'); return; }
+            r.innerHTML = data.map(qq => { quoteCache[qq.id] = qq; return `
+              <div class="ac-item" data-quote-id="${qq.id}">
+                <div style="font-weight:600;">${esc(qq.root_number)} <span style="color:var(--text-secondary); font-weight:400;">v${qq.version} · ${esc(qq.status)}</span></div>
+                <div class="ac-sub">${esc(qq.client || '')}${qq.job_title ? ' · ' + esc(qq.job_title) : ''}</div>
+              </div>`; }).join('');
+            r.querySelectorAll('.ac-item[data-quote-id]').forEach(it => it.addEventListener('click', () => pickQuote(quoteCache[it.dataset.quoteId])));
+            r.classList.add('show');
+          } catch (err) {
+            r.innerHTML = `<div class="ac-item" style="color:var(--error)">Quote search error: ${esc(err.message)}</div>`;
+            r.classList.add('show');
+          }
+        }, 300);
+      });
+
+      async function pickQuote(q) {
+        quoteData = q;
+        $('nj_quote_results').classList.remove('show');
+        $('nj_quote_search').value = '';
+        $('nj_quote_selected').innerHTML = `
+          <div style="font-weight:600; color:var(--accent);">📄 ${esc(q.root_number)} v${q.version}</div>
+          <div class="ac-sub" style="margin-top:2px;">${esc(q.client || '')}${q.job_title ? ' · ' + esc(q.job_title) : ''}</div>
+          <button type="button" class="btn-secondary" id="nj_quote_clear" style="margin-top:0.6rem; padding:0.4rem 1rem; font-size:0.8rem;">Change quote</button>`;
+        $('nj_quote_selected').classList.add('show');
+        $('nj_quote_clear').addEventListener('click', () => { quoteData = null; $('nj_quote_selected').classList.remove('show'); });
+
+        $('nj_search').value = q.client || '';
+        if (q.client) {
+          try {
+            const res = await searchClientsSites(q.client);
+            const exact = res.clients.find(c => c.name.toLowerCase() === q.client.toLowerCase());
+            if (exact) pickClient(exact);
+            else if (res.clients.length === 1 && !res.sites.length) pickClient(res.clients[0]);
+            else renderAcResults($('nj_results'), res, pickClient, pickSite);
+          } catch {}
+        }
+      }
 
       $('nj_type').addEventListener('change', async function () {
         const preview = $('nj_preview');
@@ -541,10 +632,7 @@ window.BromarPages.jobs = {
         refreshCreateBtn();
       });
 
-      wireSearch($('nj_search'), $('nj_results'),
-        (d) => { sel = { clientId: d.id, clientName: d.name, siteId: null, siteName: '', siteAddress: '' }; loadSites(d.id); showSelected(); },
-        (d) => { sel = { clientId: d.clientId || null, clientName: d.clientName || '', siteId: d.id, siteName: d.name, siteAddress: d.address || '' }; $('nj_site_wrap').style.display = 'none'; showSelected(); }
-      );
+      wireSearch($('nj_search'), $('nj_results'), pickClient, pickSite);
 
       function showSelected() {
         $('nj_search_wrap').style.display = 'none';
@@ -587,16 +675,31 @@ window.BromarPages.jobs = {
         try {
           const { data: newJobNum, error } = await sb.rpc('create_new_job', {
             p_prefix: prefix, p_client_id: sel.clientId || null, p_site_id: sel.siteId || null,
-            p_job_type: jobLabel || null, p_contact_person: null, p_contact_phone: null, p_contact_role: null
+            p_job_type: jobLabel || null,
+            p_contact_person: quoteData?.client_contact || null,
+            p_contact_phone: null, p_contact_role: null
           });
           if (error) throw error;
           if (!newJobNum) throw new Error('No job number returned');
+
+          if (quoteData) {
+            const extra = {};
+            if (quoteData.job_title) extra.work_type = quoteData.job_title;
+            if (quoteData.client_address && !sel.siteId) extra.site_address = quoteData.client_address;
+            extra.notes = `From quote ${quoteData.root_number} v${quoteData.version}`;
+            if (quoteData.client_contact) extra.contact_person = quoteData.client_contact;
+            if (Object.keys(extra).length) {
+              const { error: exErr } = await sb.from('job_number_register').update(extra).eq('job_number', newJobNum).select();
+              if (exErr) console.warn('Quote detail update failed:', exErr.message);
+            }
+          }
+
           toast('Created ' + newJobNum);
           await loadJobs();
           const created = jobs.find(j => j.job_number === newJobNum);
           if (created) openDrawer(created); else closeDrawer();
         } catch (err) {
-          toast('Create failed: ' + err.message);
+          toast('Create failed: ' + err.message, 6000);
           this.disabled = false; this.textContent = 'Create Job';
         }
       });
