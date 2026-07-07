@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.13',
+  version: 'V1.14',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -1356,11 +1356,15 @@ window.BromarPages.admin = {
       if (isOther) classes += ' other-month';
       if (isToday) classes += ' today';
 
-      /* Group entries by group for this date */
+      /* Group entries by group for this date — deduplicate */
       const dayEntries = this._rdoData.filter(r => r.rdo_date === cellStr);
       const groups = {};
+      const daySeen = new Set();
       dayEntries.forEach(r => {
         const g = (r.rdo_group || 'A').toUpperCase();
+        const dk = g + '|' + r.employee_name;
+        if (daySeen.has(dk)) return;
+        daySeen.add(dk);
         if (!groups[g]) groups[g] = [];
         groups[g].push(r);
       });
@@ -1415,9 +1419,13 @@ window.BromarPages.admin = {
 
     const today = this._isoDate(new Date());
 
-    /* Group by date for the list */
+    /* Group by date for the list — deduplicate by employee+date+group */
     const byDate = {};
+    const seen = new Set();
     this._rdoData.forEach(r => {
+      const key = r.rdo_date + '|' + r.employee_name + '|' + r.rdo_group;
+      if (seen.has(key)) return;
+      seen.add(key);
       if (!byDate[r.rdo_date]) byDate[r.rdo_date] = [];
       byDate[r.rdo_date].push(r);
     });
