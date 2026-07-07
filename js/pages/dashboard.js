@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — DASHBOARD PAGE
-   Version: V1.03
+   Version: V1.04
    Overview page. Tiles are added incrementally.
    V1.00 — Initial: standby tile + daily motivation + logo.
    V1.01 — Big centred logo; date tile; Melbourne weather tile;
@@ -8,13 +8,22 @@
    V1.02 — Logo slow fade in/out motion; Pending Leave Requests
            tile (two columns wide) using leave_requests schema.
    V1.03 — Corrected logo asset paths (assets/logo/bromar-logo-*).
+   V1.04 — Self-initialising Supabase client (loads supabase-js
+           from jsDelivr w/ unpkg fallback, creates client if
+           absent) — fixes intermittent "client not initialised".
    ============================================================ */
 
 (() => {
   const PAGE_ID = 'dashboard';
-  const VERSION = 'V1.03';
+  const VERSION = 'V1.04';
 
   const MEL_LAT = -37.8136, MEL_LON = 144.9631;
+  const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
+  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+  const SB_CDNS = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+    'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+  ];
 
   /* ── Scoped styles (injected once) ── */
   function injectStyles() {
@@ -35,12 +44,10 @@
       .dash-tile .tile-head::before{content:'';width:4px;height:18px;background:linear-gradient(180deg,var(--accent) 0%,var(--accent-light) 100%);border-radius:4px}
       .tile-count{margin-left:auto;font-size:.72rem;font-weight:700;padding:.15rem .55rem;border-radius:999px;background:var(--card-hover);color:var(--accent);border:1px solid rgba(234,88,12,.2)}
 
-      /* Date tile */
       .date-weekday{font-size:1rem;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
       .date-day{font-size:4rem;font-weight:700;line-height:1;letter-spacing:-.04em;margin:.25rem 0}
       .date-month{font-size:1.05rem;color:var(--text-secondary);font-weight:500}
 
-      /* Weather tile */
       .wx-main{display:flex;align-items:center;gap:1rem}
       .wx-icon{font-size:3.25rem;line-height:1}
       .wx-temp{font-size:2.75rem;font-weight:700;letter-spacing:-.03em;line-height:1}
@@ -48,7 +55,6 @@
       .wx-meta{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;margin-top:1rem;font-size:.85rem;color:var(--text-secondary)}
       .wx-meta b{color:var(--text-primary);font-weight:600}
 
-      /* Person rows (standby + leave) */
       .person-row{display:flex;align-items:center;gap:.9rem;padding:.75rem 0;border-top:1px solid var(--border)}
       .person-row:first-of-type{border-top:none}
       .person-avatar{width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-light) 100%)}
@@ -74,16 +80,37 @@
     document.head.appendChild(s);
   }
 
-  /* ── Supabase client (lazy) ── */
-  function ensureClient() {
-    return new Promise((resolve) => {
-      if (window.supabaseClient) return resolve(window.supabaseClient);
-      let tries = 0;
-      const t = setInterval(() => {
-        if (window.supabaseClient) { clearInterval(t); resolve(window.supabaseClient); }
-        else if (++tries > 50) { clearInterval(t); resolve(null); }
-      }, 100);
+  /* ── Supabase client (self-initialising) ── */
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('load failed: ' + src));
+      document.head.appendChild(s);
     });
+  }
+  async function ensureSupabaseLib() {
+    if (window.supabase && window.supabase.createClient) return true;
+    for (const url of SB_CDNS) {
+      try { await loadScript(url); if (window.supabase?.createClient) return true; }
+      catch (e) { /* try next */ }
+    }
+    return !!window.supabase?.createClient;
+  }
+  let clientPromise = null;
+  function ensureClient() {
+    if (clientPromise) return clientPromise;
+    clientPromise = (async () => {
+      if (window.supabaseClient) return window.supabaseClient;
+      const ok = await ensureSupabaseLib();
+      if (!ok) return null;
+      if (!window.supabaseClient) {
+        window.supabaseClient = window.supabase.createClient(SB_URL, SB_KEY);
+      }
+      return window.supabaseClient;
+    })();
+    return clientPromise;
   }
 
   function localISO(d) {
@@ -103,7 +130,7 @@
   /* ── Standby tile ── */
   async function loadStandby(el) {
     const client = await ensureClient();
-    if (!client) { el.innerHTML = `<div class="dash-err">Supabase client not initialised.</div>`; return; }
+    if (!client) { el.innerHTML = `<div class="dash-err">Supabase unavailable (CDN blocked?).</div>`; return; }
 
     const iso = localISO(new Date());
     let heading = 'Currently on standby';
@@ -145,7 +172,7 @@
     const el = tile.querySelector('.leave-body');
     const badge = tile.querySelector('.leave-count');
     const client = await ensureClient();
-    if (!client) { el.innerHTML = `<div class="dash-err">Supabase client not initialised.</div>`; return; }
+    if (!client) { el.innerHTML = `<div class="dash-err">Supabase unavailable (CDN blocked?).</div>`; return; }
 
     const { data, error } = await client
       .from('leave_requests').select('*')
