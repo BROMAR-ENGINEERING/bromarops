@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.12',
+  version: 'V1.13',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -517,6 +517,74 @@ window.BromarPages.admin = {
           text-decoration: none; display: inline-flex; align-items: center;
         }
 
+        /* ── Feedback tracker ── */
+        .fb-summary {
+          display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1.25rem;
+        }
+        .fb-stat {
+          background: var(--bg-main); border: 1px solid var(--border);
+          border-radius: var(--radius-sm); padding: 0.6rem; text-align: center;
+        }
+        .fb-stat-n { display: block; font-size: 1.25rem; font-weight: 700; line-height: 1; }
+        .fb-stat-l { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); font-weight: 600; margin-top: 0.25rem; display: block; }
+        .fb-open { color: var(--accent); }
+        .fb-prog { color: #2563eb; }
+        .fb-resolved { color: var(--success); }
+        .fb-closed { color: var(--text-secondary); }
+        .fb-card {
+          background: var(--bg-main); border: 1px solid var(--border);
+          border-radius: var(--radius-sm); padding: 1rem 1.25rem;
+          margin-bottom: 0.6rem; transition: all 0.2s ease;
+        }
+        .fb-card:hover { border-color: var(--accent); }
+        .fb-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
+        .fb-card-title { display: flex; gap: 0.6rem; align-items: flex-start; }
+        .fb-card-title h4 { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+        .fb-card-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.15rem; }
+        .fb-card-right { display: flex; gap: 0.4rem; align-items: center; flex-shrink: 0; }
+        .fb-type-icon {
+          display: inline-block; padding: 3px 8px; border-radius: 6px;
+          font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.04em; white-space: nowrap; margin-top: 2px;
+        }
+        .fb-status-badge {
+          padding: 2px 10px; border-radius: 20px;
+          font-size: 0.68rem; font-weight: 600; white-space: nowrap;
+        }
+        .fb-badge-open { background: rgba(234,88,12,0.1); color: var(--accent); }
+        .fb-badge-prog { background: rgba(37,99,235,0.1); color: #2563eb; }
+        .fb-badge-resolved { background: var(--success-bg); color: var(--success); }
+        .fb-badge-closed { background: var(--border); color: var(--text-secondary); }
+        .fb-prio {
+          padding: 2px 8px; border-radius: 20px;
+          font-size: 0.65rem; font-weight: 600; white-space: nowrap;
+        }
+        .fb-prio-critical { background: var(--error-bg); color: var(--error); }
+        .fb-prio-high { background: rgba(234,88,12,0.1); color: var(--accent); }
+        .fb-prio-med { background: rgba(37,99,235,0.1); color: #2563eb; }
+        .fb-prio-low { background: var(--border); color: var(--text-secondary); }
+        .fb-desc {
+          font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;
+          margin: 0 0 0.75rem; white-space: pre-wrap;
+        }
+        .fb-card-actions {
+          display: flex; justify-content: space-between; align-items: center;
+          padding-top: 0.6rem; border-top: 1px solid var(--border);
+        }
+        .fb-status-group { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+        .fb-status-btn {
+          padding: 3px 10px; border: 1px solid var(--border); border-radius: 20px;
+          background: transparent; color: var(--text-secondary); font-family: 'Outfit', sans-serif;
+          font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+        }
+        .fb-status-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--card-hover); }
+
+        @media (max-width: 600px) {
+          .fb-summary { grid-template-columns: repeat(2, 1fr); }
+          .fb-card-top { flex-direction: column; }
+          .fb-card-right { align-self: flex-start; }
+        }
+
         /* ── Instructions modal ── */
         .co-modal-overlay {
           display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -707,6 +775,35 @@ window.BromarPages.admin = {
         supCard.classList.toggle('expanded');
         return;
       }
+
+      /* Feedback actions */
+      if (e.target.closest('[data-fb-add]')) {
+        this._showFeedbackForm(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-fb-save]')) {
+        this._saveFeedback(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-fb-cancel]')) {
+        this._renderBugs(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-fb-status]')) {
+        const btn = e.target.closest('[data-fb-status]');
+        this._updateFeedbackStatus(btn.dataset.fbId, btn.dataset.fbStatus, container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-fb-delete]')) {
+        const btn = e.target.closest('[data-fb-delete]');
+        if (confirm('Delete this report?')) this._deleteFeedback(btn.dataset.fbDelete, container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-fb-edit]')) {
+        const btn = e.target.closest('[data-fb-edit]');
+        this._showFeedbackForm(container.querySelector('#admin-section-content'), btn.dataset.fbEdit);
+        return;
+      }
     });
 
     container.addEventListener('change', (e) => {
@@ -722,9 +819,12 @@ window.BromarPages.admin = {
         const file = e.target.files[0];
         if (file) this._handleSupplierXlsxUpload(file, container.querySelector('#admin-section-content'));
       }
-      /* Supplier filter/search */
       if (e.target.matches('#sup-category-filter') || e.target.matches('#sup-search')) {
         this._renderSupplierList(container.querySelector('#sup-list-area'));
+      }
+      /* Feedback filters */
+      if (e.target.matches('#fb-type-filter') || e.target.matches('#fb-status-filter')) {
+        this._renderFeedbackList(container.querySelector('#fb-list-area'));
       }
     });
 
@@ -1882,17 +1982,276 @@ window.BromarPages.admin = {
   },
 
   /* ════════════════════════════════════════
-     SECTION: Bug / Feedback (placeholder)
+     SECTION: Bug / Feedback
      ════════════════════════════════════════ */
-  _renderBugs(target) {
+  _fbData: [],
+  _fbTypes: ['Bug','Improvement','Feature Request','Other'],
+  _fbStatuses: ['open','in_progress','resolved','closed'],
+  _fbPriorities: ['Low','Medium','High','Critical'],
+
+  async _renderBugs(target) {
     target.innerHTML = `
       <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Bug / Feedback</h2></div>
-        <div class="admin-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 8h-2.81a5.99 5.99 0 00-1.82-2.43l1.63-1.63-1.41-1.41-2.02 2.02a5.97 5.97 0 00-3.14 0L8.41 2.53 7 3.94l1.63 1.63A5.99 5.99 0 006.81 8H4v2h2.09a6.01 6.01 0 000 4H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09a6.01 6.01 0 000-4H20V8z"/></svg>
-          <p>Bug reports and feedback will appear here</p><span class="coming-soon">Ready to build</span>
+        <div class="admin-section-header">
+          <h2>Bug / Feedback Tracker</h2>
+          <div class="co-toolbar">
+            <button class="btn-primary" data-fb-add style="padding:0.6rem 1.2rem;font-size:0.85rem">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>New Report
+            </button>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap">
+          <select id="fb-type-filter" style="padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;cursor:pointer">
+            <option value="">All Types</option>
+            ${this._fbTypes.map(t => '<option value="' + t + '">' + t + '</option>').join('')}
+          </select>
+          <select id="fb-status-filter" style="padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;cursor:pointer">
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+        <div id="fb-list-area">
+          <div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading…</p></div>
+        </div>
+      </div>
+    `;
+
+    await this._fetchFeedback();
+    this._renderFeedbackList(target.querySelector('#fb-list-area'));
+  },
+
+  async _fetchFeedback() {
+    try {
+      const res = await fetch(
+        this._SB_URL + '/rest/v1/feedback_reports?select=*&order=created_at.desc',
+        { headers: this._sbHeaders() }
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      this._fbData = await res.json();
+    } catch (err) {
+      console.error('Feedback fetch error:', err);
+      this._fbData = [];
+    }
+  },
+
+  _renderFeedbackList(container) {
+    if (!container) return;
+    const typeFilter = (document.getElementById('fb-type-filter') || {}).value || '';
+    const statusFilter = (document.getElementById('fb-status-filter') || {}).value || '';
+
+    let filtered = this._fbData.filter(r => {
+      if (typeFilter && r.report_type !== typeFilter) return false;
+      if (statusFilter && r.status !== statusFilter) return false;
+      return true;
+    });
+
+    /* Summary counts */
+    const open = this._fbData.filter(r => r.status === 'open').length;
+    const inProg = this._fbData.filter(r => r.status === 'in_progress').length;
+    const resolved = this._fbData.filter(r => r.status === 'resolved').length;
+    const closed = this._fbData.filter(r => r.status === 'closed').length;
+
+    const summaryHtml = `
+      <div class="fb-summary">
+        <div class="fb-stat"><span class="fb-stat-n fb-open">${open}</span><span class="fb-stat-l">Open</span></div>
+        <div class="fb-stat"><span class="fb-stat-n fb-prog">${inProg}</span><span class="fb-stat-l">In Progress</span></div>
+        <div class="fb-stat"><span class="fb-stat-n fb-resolved">${resolved}</span><span class="fb-stat-l">Resolved</span></div>
+        <div class="fb-stat"><span class="fb-stat-n fb-closed">${closed}</span><span class="fb-stat-l">Closed</span></div>
+      </div>
+    `;
+
+    if (!filtered.length) {
+      container.innerHTML = summaryHtml + '<div class="admin-placeholder"><p>' + (this._fbData.length ? 'No reports match filters.' : 'No reports yet.') + '</p></div>';
+      return;
+    }
+
+    const statusLabel = s => {
+      const map = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed' };
+      return map[s] || s;
+    };
+    const statusClass = s => {
+      if (s === 'open') return 'fb-badge-open';
+      if (s === 'in_progress') return 'fb-badge-prog';
+      if (s === 'resolved') return 'fb-badge-resolved';
+      return 'fb-badge-closed';
+    };
+    const prioClass = p => {
+      if (p === 'Critical') return 'fb-prio-critical';
+      if (p === 'High') return 'fb-prio-high';
+      if (p === 'Medium') return 'fb-prio-med';
+      return 'fb-prio-low';
+    };
+    const typeIcon = t => {
+      if (t === 'Bug') return '<span class="fb-type-icon" style="background:var(--error-bg);color:var(--error)">Bug</span>';
+      if (t === 'Improvement') return '<span class="fb-type-icon" style="background:rgba(37,99,235,0.1);color:#2563eb">Improvement</span>';
+      if (t === 'Feature Request') return '<span class="fb-type-icon" style="background:rgba(147,51,234,0.1);color:#9333ea">Feature</span>';
+      return '<span class="fb-type-icon" style="background:var(--border);color:var(--text-secondary)">Other</span>';
+    };
+
+    const fmtDate = iso => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+    };
+
+    const cards = filtered.map(r => {
+      const nextStatuses = this._fbStatuses.filter(s => s !== r.status);
+      const statusBtns = nextStatuses.map(s =>
+        '<button class="fb-status-btn" data-fb-status="' + s + '" data-fb-id="' + r.id + '">' + statusLabel(s) + '</button>'
+      ).join('');
+
+      return `<div class="fb-card">
+        <div class="fb-card-top">
+          <div class="fb-card-title">
+            ${typeIcon(r.report_type)}
+            <div>
+              <h4>${r.subject}</h4>
+              <div class="fb-card-meta">${r.user_name}${r.page_url ? ' · ' + r.page_url : ''} · ${fmtDate(r.created_at)}</div>
+            </div>
+          </div>
+          <div class="fb-card-right">
+            ${r.priority ? '<span class="fb-prio ' + prioClass(r.priority) + '">' + r.priority + '</span>' : ''}
+            <span class="fb-status-badge ${statusClass(r.status)}">${statusLabel(r.status)}</span>
+          </div>
+        </div>
+        <p class="fb-desc">${r.description}</p>
+        <div class="fb-card-actions">
+          <div class="fb-status-group">${statusBtns}</div>
+          <div style="display:flex;gap:0.25rem">
+            <button class="sup-action-btn" data-fb-edit="${r.id}" title="Edit"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+            <button class="sup-action-btn sup-action-delete" data-fb-delete="${r.id}" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+          </div>
         </div>
       </div>`;
+    }).join('');
+
+    container.innerHTML = summaryHtml + '<div class="fb-count" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">' + filtered.length + ' report' + (filtered.length !== 1 ? 's' : '') + '</div>' + cards;
+  },
+
+  _showFeedbackForm(target, editId) {
+    const r = editId ? this._fbData.find(f => f.id === editId) : null;
+    const title = r ? 'Edit Report' : 'New Report';
+    const v = field => r ? (r[field] || '') : '';
+
+    const typeOpts = this._fbTypes.map(t => '<option value="' + t + '"' + (v('report_type') === t ? ' selected' : '') + '>' + t + '</option>').join('');
+    const prioOpts = this._fbPriorities.map(p => '<option value="' + p + '"' + (v('priority') === p ? ' selected' : '') + '>' + p + '</option>').join('');
+    const statusOpts = this._fbStatuses.map(s => {
+      const label = { open:'Open', in_progress:'In Progress', resolved:'Resolved', closed:'Closed' }[s] || s;
+      return '<option value="' + s + '"' + (v('status') === s ? ' selected' : '') + '>' + label + '</option>';
+    }).join('');
+
+    target.innerHTML = `
+      <div class="card admin-section-panel">
+        <div class="admin-section-header">
+          <h2>${title}</h2>
+          <button class="btn-secondary" data-fb-cancel>
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back
+          </button>
+        </div>
+        <div id="fb-form">
+          <input type="hidden" id="fb-id" value="${editId || ''}">
+          <div class="sup-form-grid">
+            <div class="sup-form-section">
+              <h4>Report Details</h4>
+              <div class="sup-form-row"><label>Your Name <span class="sup-req">*</span></label><input type="text" id="fb-name" value="${v('user_name')}"></div>
+              <div class="sup-form-row"><label>Your Email <span class="sup-req">*</span></label><input type="email" id="fb-email" value="${v('user_email')}"></div>
+              <div class="sup-form-row"><label>Type <span class="sup-req">*</span></label><select id="fb-type"><option value="">Select…</option>${typeOpts}</select></div>
+              <div class="sup-form-row"><label>Priority</label><select id="fb-priority"><option value="">Select…</option>${prioOpts}</select></div>
+              ${r ? '<div class="sup-form-row"><label>Status</label><select id="fb-status">' + statusOpts + '</select></div>' : ''}
+            </div>
+            <div class="sup-form-section">
+              <h4>Details</h4>
+              <div class="sup-form-row"><label>Subject <span class="sup-req">*</span></label><input type="text" id="fb-subject" value="${v('subject')}"></div>
+              <div class="sup-form-row"><label>Page / Area</label><input type="text" id="fb-page" value="${v('page_url')}" placeholder="e.g. Scheduling, Fleet"></div>
+              <div class="sup-form-row"><label>Description <span class="sup-req">*</span></label><textarea id="fb-desc" rows="5" placeholder="What happened? What did you expect?">${v('description')}</textarea></div>
+            </div>
+          </div>
+          <div class="sup-form-actions">
+            <button class="btn-primary" data-fb-save style="padding:0.7rem 1.5rem">${r ? 'Update' : 'Submit'} Report</button>
+            <button class="btn-secondary" data-fb-cancel>Cancel</button>
+          </div>
+          <div id="fb-form-feedback"></div>
+        </div>
+      </div>
+    `;
+  },
+
+  async _saveFeedback(sectionTarget) {
+    const id = (document.getElementById('fb-id') || {}).value;
+    const name = (document.getElementById('fb-name').value || '').trim();
+    const email = (document.getElementById('fb-email').value || '').trim();
+    const type = (document.getElementById('fb-type').value || '');
+    const subject = (document.getElementById('fb-subject').value || '').trim();
+    const desc = (document.getElementById('fb-desc').value || '').trim();
+    const feedback = document.getElementById('fb-form-feedback');
+
+    if (!name || !email || !type || !subject || !desc) {
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Please fill in all required fields.</div>';
+      return;
+    }
+
+    const payload = {
+      user_name: name, user_email: email, report_type: type, subject: subject,
+      description: desc,
+      page_url: (document.getElementById('fb-page').value || '').trim() || null,
+      browser: navigator.userAgent.substring(0, 200),
+      priority: document.getElementById('fb-priority').value || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const statusEl = document.getElementById('fb-status');
+    if (statusEl) payload.status = statusEl.value;
+
+    try {
+      let res;
+      if (id) {
+        res = await fetch(this._SB_URL + '/rest/v1/feedback_reports?id=eq.' + id, {
+          method: 'PATCH', headers: this._sbHeaders(), body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch(this._SB_URL + '/rest/v1/feedback_reports', {
+          method: 'POST', headers: this._sbHeaders(), body: JSON.stringify(payload)
+        });
+      }
+      if (!res.ok) throw new Error(await res.text());
+      await this._fetchFeedback();
+      this._renderBugs(sectionTarget);
+    } catch (err) {
+      console.error('Feedback save error:', err);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Save failed: ' + err.message + '</div>';
+    }
+  },
+
+  async _updateFeedbackStatus(id, newStatus, sectionTarget) {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/feedback_reports?id=eq.' + id, {
+        method: 'PATCH', headers: this._sbHeaders(),
+        body: JSON.stringify({ status: newStatus, updated_at: new Date().toISOString() })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await this._fetchFeedback();
+      this._renderBugs(sectionTarget);
+    } catch (err) {
+      console.error('Status update error:', err);
+      alert('Failed to update status.');
+    }
+  },
+
+  async _deleteFeedback(id, sectionTarget) {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/feedback_reports?id=eq.' + id, {
+        method: 'DELETE', headers: this._sbHeaders()
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await this._fetchFeedback();
+      this._renderBugs(sectionTarget);
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Delete failed.');
+    }
   },
 
   destroy() {
