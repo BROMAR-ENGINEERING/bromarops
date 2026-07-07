@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.08',
+  version: 'V1.09',
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
@@ -54,6 +54,7 @@ window.BromarPages.jobs = {
       on_hold:   { label: 'On Hold',   bg: 'rgba(217,119,6,0.14)',  fg: '#b45309' },
       cancelled: { label: 'Cancelled', bg: 'var(--error-bg)',       fg: 'var(--error)' }
     };
+    const SITE_TABLES = ['client_sites', 'sites'];
 
     /* ── state ── */
     let jobs = [];
@@ -214,23 +215,53 @@ window.BromarPages.jobs = {
       clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 2600);
     };
 
-    /* ── shared client/site search ── */
+    /* ── site helpers (work across client_sites / sites, flexible columns) ── */
+    function normalizeSiteRows(rows) {
+      return (rows || []).map(r => ({
+        id: r.id,
+        name: r.name || r.site_name || r.site || 'Site',
+        address: r.address || r.site_address || r.full_address || '',
+        client_id: r.client_id,
+        is_active: r.is_active
+      })).filter(s => s.is_active !== false);
+    }
+
+    async function getClientSites(clientId) {
+      if (!clientId) return [];
+      for (const tbl of SITE_TABLES) {
+        try {
+          const { data, error } = await sb.from(tbl).select('*').eq('client_id', clientId);
+          if (error) continue;
+          const mapped = normalizeSiteRows(data);
+          if (mapped.length) return mapped.sort((a, b) => a.name.localeCompare(b.name));
+        } catch (e) { /* try next table */ }
+      }
+      return [];
+    }
+
+    async function searchSites(q) {
+      const seen = new Set(); const out = [];
+      const attempts = [['client_sites', 'name'], ['client_sites', 'site_name'], ['sites', 'name']];
+      for (const [tbl, col] of attempts) {
+        try {
+          const { data, error } = await sb.from(tbl).select('*').ilike(col, `%${q}%`).limit(6);
+          if (error) continue;
+          for (const s of normalizeSiteRows(data)) { if (!seen.has(s.id)) { seen.add(s.id); out.push(s); } }
+        } catch (e) { /* try next */ }
+      }
+      return out.slice(0, 8);
+    }
+
     async function searchClientsSites(q) {
-      const [clientRes, siteRes] = await Promise.all([
-        sb.from('clients').select('id, name, is_active').ilike('name', `%${q}%`).order('name').limit(8),
-        sb.from('sites').select('id, name, address, client_id, is_active').ilike('name', `%${q}%`).order('name').limit(6)
-      ]);
+      const clientRes = await sb.from('clients').select('id, name, is_active').ilike('name', `%${q}%`).order('name').limit(8);
       if (clientRes.error) throw clientRes.error;
-      if (siteRes.error) throw siteRes.error;
       const clients = (clientRes.data || []).filter(c => c.is_active !== false);
-      const sites = (siteRes.data || []).filter(s => s.is_active !== false);
-      if (sites.length) {
-        const ids = [...new Set(sites.map(s => s.client_id).filter(Boolean))];
-        if (ids.length) {
-          const { data: parents } = await sb.from('clients').select('id, name').in('id', ids);
-          const map = {}; (parents || []).forEach(c => map[c.id] = c.name);
-          sites.forEach(s => s.clientName = map[s.client_id] || '');
-        }
+      const sites = await searchSites(q);
+      const ids = [...new Set(sites.map(s => s.client_id).filter(Boolean))];
+      if (ids.length) {
+        const { data: parents } = await sb.from('clients').select('id, name').in('id', ids);
+        const map = {}; (parents || []).forEach(c => map[c.id] = c.name);
+        sites.forEach(s => s.clientName = map[s.client_id] || '');
       }
       return { clients, sites };
     }
@@ -277,11 +308,7 @@ window.BromarPages.jobs = {
       if (!clientId) { selectEl.innerHTML = base; return; }
       selectEl.innerHTML = base + `<option value="" disabled>Loading sites…</option>`;
       try {
-        const { data, error } = await sb.from('sites')
-          .select('id, name, address, is_active')
-          .eq('client_id', clientId).order('name');
-        if (error) throw error;
-        const sites = (data || []).filter(s => s.is_active !== false);
+        const sites = await getClientSites(clientId);
         if (!sites.length) { selectEl.innerHTML = base + `<option value="" disabled>— No site records on this client —</option>`; return; }
         selectEl.innerHTML = base + sites.map(s =>
           `<option value="${s.id}" data-name="${esc(s.name)}" data-address="${esc(s.address || '')}" ${s.id === selectedSiteId ? 'selected' : ''}>${esc(s.address ? s.name + ' — ' + s.address : s.name)}</option>`).join('');
@@ -420,9 +447,14 @@ window.BromarPages.jobs = {
       if (curClientId) {
         loadSitesInto($('ed_site_select'), curClientId, curSiteId);
       } else if (curSiteId) {
-        sb.from('sites').select('client_id').eq('id', curSiteId).maybeSingle().then(({ data }) => {
-          if (data?.client_id) { curClientId = data.client_id; loadSitesInto($('ed_site_select'), curClientId, curSiteId); }
-        }).catch(() => {});
+        (async () => {
+          for (const tbl of SITE_TABLES) {
+            try {
+              const { data, error } = await sb.from(tbl).select('client_id').eq('id', curSiteId).maybeSingle();
+              if (!error && data?.client_id) { curClientId = data.client_id; loadSitesInto($('ed_site_select'), curClientId, curSiteId); return; }
+            } catch (e) { /* try next */ }
+          }
+        })();
       }
 
       const applyClient = (d) => {
@@ -644,8 +676,7 @@ window.BromarPages.jobs = {
       }
 
       async function loadSites(clientId) {
-        const { data } = await sb.from('sites').select('id, name, address, is_active').eq('client_id', clientId).order('name');
-        const sites = (data || []).filter(s => s.is_active !== false);
+        const sites = await getClientSites(clientId);
         if (!sites.length) { $('nj_site_wrap').style.display = 'none'; return; }
         $('nj_site').innerHTML = `<option value="">No specific site</option>` + sites.map(s =>
           `<option value="${s.id}" data-name="${esc(s.name)}" data-address="${esc(s.address || '')}">${esc(s.address ? s.name + ' — ' + s.address : s.name)}</option>`).join('');
