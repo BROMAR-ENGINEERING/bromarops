@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.04',
+  version: 'V1.05',
 
   render(container) {
     // Display this page's version in the footer
@@ -94,7 +94,11 @@ window.BromarPages.timesheets = {
     }
 
     async function loadEmployees() {
-      return sbFetch('employees', { select: 'full_name,email,role', order: 'full_name.asc' });
+      return sbFetch('employees', {
+        select: 'full_name,email,role,employee_type,is_active',
+        is_active: 'eq.true',
+        order: 'full_name.asc'
+      });
     }
     async function loadTimesheetsByWeek(weekStarting) {
       return sbFetch('timesheets', {
