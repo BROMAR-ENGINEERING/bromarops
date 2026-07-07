@@ -1,17 +1,17 @@
 /* ============================================================
    BROMAR OPS — DASHBOARD PAGE
-   Version: V1.01
+   Version: V1.02
    Overview page. Tiles are added incrementally.
    V1.00 — Initial: standby tile + daily motivation + logo.
-   V1.01 — Big centred logo; date tile; Melbourne weather tile
-           (Open-Meteo, no key); standby tile wired to real
-           callout_roster schema (employee_name/start_date/
-           end_date/shift_type/notes).
+   V1.01 — Big centred logo; date tile; Melbourne weather tile;
+           standby tile wired to real callout_roster schema.
+   V1.02 — Logo slow fade in/out motion; Pending Leave Requests
+           tile (two columns wide) using leave_requests schema.
    ============================================================ */
 
 (() => {
   const PAGE_ID = 'dashboard';
-  const VERSION = 'V1.01';
+  const VERSION = 'V1.02';
 
   const MEL_LAT = -37.8136, MEL_LON = 144.9631;
 
@@ -20,15 +20,19 @@
     if (document.getElementById('dash-styles')) return;
     const css = `
       .dash-logo{display:flex;justify-content:center;align-items:center;margin:.5rem 0 2rem}
-      .dash-logo img{height:72px;width:auto}
+      .dash-logo img{height:72px;width:auto;animation:dashLogoBreathe 5s ease-in-out infinite}
       .dash-logo .light-logo{display:block}
       .dash-logo .dark-logo{display:none}
       [data-theme="dark"] .dash-logo .light-logo{display:none}
       [data-theme="dark"] .dash-logo .dark-logo{display:block}
+      @keyframes dashLogoBreathe{0%,100%{opacity:.55}50%{opacity:1}}
+
       .dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem}
       .dash-tile{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;padding:1.5rem;box-shadow:0 4px 12px var(--shadow);animation:fadeIn .5s ease backwards}
+      .dash-tile-wide{grid-column:span 2}
       .dash-tile .tile-head{display:flex;align-items:center;gap:.6rem;font-size:1.05rem;font-weight:600;letter-spacing:-.02em;margin-bottom:1rem}
       .dash-tile .tile-head::before{content:'';width:4px;height:18px;background:linear-gradient(180deg,var(--accent) 0%,var(--accent-light) 100%);border-radius:4px}
+      .tile-count{margin-left:auto;font-size:.72rem;font-weight:700;padding:.15rem .55rem;border-radius:999px;background:var(--card-hover);color:var(--accent);border:1px solid rgba(234,88,12,.2)}
 
       /* Date tile */
       .date-weekday{font-size:1rem;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
@@ -43,14 +47,16 @@
       .wx-meta{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;margin-top:1rem;font-size:.85rem;color:var(--text-secondary)}
       .wx-meta b{color:var(--text-primary);font-weight:600}
 
-      /* Standby tile */
-      .standby-person{display:flex;align-items:center;gap:.9rem;padding:.75rem 0;border-top:1px solid var(--border)}
-      .standby-person:first-of-type{border-top:none}
-      .standby-avatar{width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-light) 100%)}
-      .standby-info{flex:1;min-width:0}
-      .standby-name{font-weight:600;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-      .standby-role{font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:.15rem .5rem;border-radius:6px;background:var(--card-hover);color:var(--accent);border:1px solid rgba(234,88,12,.2)}
-      .standby-meta{font-size:.82rem;color:var(--text-secondary)}
+      /* Person rows (standby + leave) */
+      .person-row{display:flex;align-items:center;gap:.9rem;padding:.75rem 0;border-top:1px solid var(--border)}
+      .person-row:first-of-type{border-top:none}
+      .person-avatar{width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-light) 100%)}
+      .person-info{flex:1;min-width:0}
+      .person-name{font-weight:600;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+      .person-badge{font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:.15rem .5rem;border-radius:6px;background:var(--card-hover);color:var(--accent);border:1px solid rgba(234,88,12,.2)}
+      .person-meta{font-size:.82rem;color:var(--text-secondary)}
+      .person-days{flex-shrink:0;text-align:right;font-size:.82rem;color:var(--text-secondary)}
+      .person-days b{display:block;font-size:1.25rem;color:var(--text-primary);line-height:1.1}
 
       .dash-quote{font-size:1.15rem;font-weight:500;line-height:1.5;letter-spacing:-.01em}
       .dash-quote-mark{color:var(--accent);font-weight:700}
@@ -58,6 +64,8 @@
       .dash-err{color:var(--error);font-size:.88rem;background:var(--error-bg);padding:.75rem .9rem;border-radius:10px}
       .dash-skel{height:14px;border-radius:6px;background:var(--card-hover);animation:pulse 1.2s ease-in-out infinite;margin:.5rem 0}
       @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
+
+      @media (max-width:640px){.dash-tile-wide{grid-column:span 1}}
     `;
     const s = document.createElement('style');
     s.id = 'dash-styles';
@@ -91,7 +99,7 @@
     return d ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
   }
 
-  /* ── Standby tile (real schema) ── */
+  /* ── Standby tile ── */
   async function loadStandby(el) {
     const client = await ensureClient();
     if (!client) { el.innerHTML = `<div class="dash-err">Supabase client not initialised.</div>`; return; }
@@ -104,7 +112,6 @@
       .order('start_date', { ascending: true });
 
     if (error) { el.innerHTML = `<div class="dash-err">${error.message}</div>`; return; }
-
     if (!data || !data.length) {
       heading = 'Most recent roster';
       const fb = await client.from('callout_roster').select('*')
@@ -112,7 +119,7 @@
       data = fb.data || [];
     }
     if (!data.length) {
-      el.innerHTML = `<p class="dash-muted">No callout roster entries found. (If unexpected, check RLS policies — anon reads can silently return empty.)</p>`;
+      el.innerHTML = `<p class="dash-muted">No callout roster entries found. (If unexpected, check RLS.)</p>`;
       return;
     }
 
@@ -120,16 +127,52 @@
       const start = parseISO(r.start_date), end = parseISO(r.end_date);
       const period = start && end ? `${fmtShort(start)} – ${fmtShort(end)}` : '';
       return `
-        <div class="standby-person">
-          <div class="standby-avatar">${initials(r.employee_name)}</div>
-          <div class="standby-info">
-            <div class="standby-name">${r.employee_name}${r.shift_type ? `<span class="standby-role">${r.shift_type}</span>` : ''}</div>
-            <div class="standby-meta">${period}${r.notes ? ` · ${r.notes}` : ''}</div>
+        <div class="person-row">
+          <div class="person-avatar">${initials(r.employee_name)}</div>
+          <div class="person-info">
+            <div class="person-name">${r.employee_name}${r.shift_type ? `<span class="person-badge">${r.shift_type}</span>` : ''}</div>
+            <div class="person-meta">${period}${r.notes ? ` · ${r.notes}` : ''}</div>
           </div>
         </div>`;
     }).join('');
 
     el.innerHTML = `<p class="dash-muted" style="margin-bottom:.5rem">${heading}</p>${rows}`;
+  }
+
+  /* ── Pending leave tile ── */
+  async function loadLeave(tile) {
+    const el = tile.querySelector('.leave-body');
+    const badge = tile.querySelector('.leave-count');
+    const client = await ensureClient();
+    if (!client) { el.innerHTML = `<div class="dash-err">Supabase client not initialised.</div>`; return; }
+
+    const { data, error } = await client
+      .from('leave_requests').select('*')
+      .eq('status', 'pending')
+      .order('last_day_of_work', { ascending: true });
+
+    if (error) { el.innerHTML = `<div class="dash-err">${error.message}</div>`; return; }
+    if (!data || !data.length) {
+      el.innerHTML = `<p class="dash-muted">No pending leave requests.</p>`;
+      return;
+    }
+
+    badge.textContent = data.length;
+    badge.style.display = '';
+    el.innerHTML = data.map(r => {
+      const start = parseISO(r.last_day_of_work), end = parseISO(r.return_to_work);
+      const period = start && end ? `Last day ${fmtShort(start)} · back ${fmtShort(end)}` : '';
+      const days = r.working_days != null ? `<div class="person-days"><b>${r.working_days}</b>days</div>` : '';
+      return `
+        <div class="person-row">
+          <div class="person-avatar">${initials(r.employee_name)}</div>
+          <div class="person-info">
+            <div class="person-name">${r.employee_name}${r.leave_type ? `<span class="person-badge">${r.leave_type}</span>` : ''}</div>
+            <div class="person-meta">${period}${r.notes ? ` · ${r.notes}` : ''}</div>
+          </div>
+          ${days}
+        </div>`;
+    }).join('');
   }
 
   /* ── Weather tile (Open-Meteo, no key) ── */
@@ -256,12 +299,18 @@
           <div class="tile-head">Daily Motivation</div>
           <div id="dash-quote"></div>
         </div>
+
+        <div class="dash-tile dash-tile-wide" id="dash-leave-tile">
+          <div class="tile-head">Pending Leave Requests <span class="tile-count leave-count" style="display:none"></span></div>
+          <div class="leave-body"><div class="dash-skel" style="width:55%"></div><div class="dash-skel" style="width:40%"></div></div>
+        </div>
       </div>
     `;
 
     loadQuote(container.querySelector('#dash-quote'));
     loadWeather(container.querySelector('#dash-weather'));
     loadStandby(container.querySelector('#dash-standby'));
+    loadLeave(container.querySelector('#dash-leave-tile'));
   }
 
   function destroy() {}
