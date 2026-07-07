@@ -1,13 +1,15 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.33 — Client & site selection from Supabase (clients,
+   V1.35 — Correct logo asset paths (assets/logo/...) and
+   make preview pricing tables scroll horizontally on mobile.
+   Client & site selection from Supabase (clients,
    client_sites) populates quote fields. Supabase-backed.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.33',
+  version: 'V1.35',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -28,8 +30,8 @@ window.BromarPages.quotes = {
       abn: '45 634 835 939',
       acn: '634 835 939',
       rec: '30340',
-      logoLight: 'assets/Bromar-Primary-Logo-Full-Colour.png',
-      logoDark:  'assets/Bromar-Primary-Logo-Reverse-White.png'
+      logoLight: 'assets/logo/bromar-logo-colour.png',
+      logoDark:  'assets/logo/bromar-logo-white.png'
     };
 
     const PREPARED_BY_OPTIONS = ['John Henshall', 'Tim Purdy', 'Tom Elpis', 'Ashley Shirreff'];
@@ -469,19 +471,19 @@ window.BromarPages.quotes = {
         <div class="quote-modal">
           <div class="modal-header"><h2>New ${label}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
           <div class="modal-body">
-            <div class="form-row"><label>${label} Number</label><input type="text" id="nq-number" class="quote-input" value="${number}" readonly></div>
+            <div class="form-row"><label>${label} Number</label><input type="text" id="nq-number" class="quote-input" value="${number}" readonly autocomplete="off"></div>
             <div class="form-row"><label>Client / Account</label>
-              <select id="nq-client" class="quote-input">
+              <select id="nq-client" class="quote-input" autocomplete="off">
                 <option value="">— Select client —</option>
                 ${clients.map(c => `<option value="${escape(c.id)}">${escape(c.name)}</option>`).join('')}
                 <option value="__manual__">+ Manual entry…</option>
               </select>
             </div>
-            <div class="form-row" id="nq-manual-row" style="display:none"><label>Client Name</label><input id="nq-client-manual" class="quote-input" placeholder="Client name"></div>
+            <div class="form-row" id="nq-manual-row" style="display:none"><label>Client Name</label><input id="nq-client-manual" class="quote-input" placeholder="Client name" autocomplete="off"></div>
             <div class="form-row" id="nq-site-row" style="display:none"><label>Site (optional)</label>
-              <select id="nq-site" class="quote-input"><option value="">— No site / manual —</option></select>
+              <select id="nq-site" class="quote-input" autocomplete="off"><option value="">— No site / manual —</option></select>
             </div>
-            <div class="form-row"><label>Site Name / Nickname</label><input type="text" id="nq-sitename" class="quote-input" placeholder="e.g. Building A Switchboard Upgrade"></div>
+            <div class="form-row"><label>Site Name / Nickname</label><input type="text" id="nq-sitename" class="quote-input" placeholder="e.g. Building A Switchboard Upgrade" autocomplete="off" autocorrect="off" spellcheck="false"></div>
             <div class="form-row"><label>Prepared By</label>
               <select id="nq-prepby" class="quote-input">
                 <option value="">— Select —</option>
@@ -1189,17 +1191,17 @@ window.BromarPages.quotes = {
           if (!(d.items || []).length) return '';
           const matTotal = sectionSellTotal(s, q);
           if (d.showTable === false) body = `<div class="doc-line"><span>Materials total</span><strong>${fmt(matTotal)}</strong></div>`;
-          else body = `<table class="doc-table"><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr></tbody></table>`;
+          else body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr></tbody></table></div>`;
           break;
         case 'labour':
           if (!(d.items || []).length) return '';
           const labTotal = sectionSellTotal(s, q);
           if (d.showTable === false) body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
-          else body = `<table class="doc-table"><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table>`;
+          else body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
           break;
         case 'pcSums':
           if (!(d.items || []).length) return '';
-          body = `<table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}<tr class="doc-table-total"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table>`; break;
+          body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}<tr class="doc-table-total"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table></div>`; break;
       }
       if (!body) return '';
       if (meta.isOption) {
@@ -1673,6 +1675,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .doc-scope { margin-bottom: 12px; }
         .doc-bullets { padding-left: 22px; margin: 6px 0; }
         .doc-bullets li { margin: 4px 0; color: #1a1a1e; }
+        .doc-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .doc-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
         .doc-table th, .doc-table td { padding: 9px 10px; border-bottom: 1px solid #eee; text-align: left; }
         .doc-table th { background: #faf7f5; font-weight: 700; color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1707,7 +1710,10 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
           .items-head.mat-head, .line-row.mat-row { grid-template-columns: 1fr 1fr 80px 60px 60px 80px 34px; font-size: 0.8rem; }
           .items-head.lab-head, .line-row.lab-row { grid-template-columns: 1fr 80px 70px 80px 34px; font-size: 0.85rem; }
           .section-grid { grid-template-columns: 1fr; }
-          .doc-page { padding: 32px 28px; }
+          .doc-page { padding: 32px 20px; overflow-x: hidden; }
+          .doc-content { overflow-x: hidden; }
+          .doc-table-wrap { border: 1px solid #eee; border-radius: 6px; }
+          .doc-table { min-width: 460px; }
           .doc-header-top { flex-direction: column; gap: 16px; }
           .doc-company { text-align: left; }
           .doc-number-block { flex-direction: column; gap: 16px; }
