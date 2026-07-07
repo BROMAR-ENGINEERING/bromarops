@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.22
+   V1.23
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.22';
+  const PAGE_VERSION = 'V1.23';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -28,6 +28,7 @@ window.BromarPages.scheduling = (() => {
   let jobs = [];
   let sites = [];
   let pinnedSites = [];
+  let rdoRoster = [];
   let assignments = [];
   let notificationQueue = [];
   let currentWeekStart = null;
@@ -158,6 +159,15 @@ window.BromarPages.scheduling = (() => {
         const sb = await this.init();
         await sb.from('pinned_sites').delete().eq('site_id', siteId);
       } catch (err) { console.error('Unpin failed:', err); }
+    },
+
+    async fetchRdoRoster() {
+      try {
+        const sb = await this.init();
+        const { data, error } = await sb.from('rdo_roster').select('employee_name, rdo_group, rdo_date, notes');
+        if (error) { if (error.code === '42P01') return []; throw error; }
+        return data || [];
+      } catch (err) { console.warn('RDO roster fetch failed:', err.message); return []; }
     },
 
     async fetchAssignments() {
@@ -305,6 +315,12 @@ window.BromarPages.scheduling = (() => {
       if (!isWeekday(dateKey)) continue;
       if (a.skipDates && a.skipDates.includes(dateKey)) continue;
       results.push({ ...a, effective: true, linked: true });
+    }
+    // Auto-populated RDO roster entries (read-only)
+    for (const r of rdoRoster) {
+      if (r.employee_name === empName && r.rdo_date === dateKey) {
+        results.push({ id: 'rdo-' + r.employee_name + '-' + r.rdo_date, type: 'leave', siteName: 'RDO', schedule: 'oneoff', startDate: dateKey, rdoAuto: true, rdoGroup: r.rdo_group, notes: r.notes || '', effective: true, linked: false });
+      }
     }
     return results;
   }
@@ -486,6 +502,8 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .ja-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;line-height:1;padding:2px;pointer-events:auto}
       .sched-job-card .ja-btn:hover{color:var(--error)}
       .sched-job-card .ja-btn.end-btn:hover{color:var(--accent)}
+      .sched-job-card .ja-roster{font-size:0.7rem;opacity:0.6;padding:1px}
+      .sm-roster-lock{font-size:0.75rem;opacity:0.6;display:flex;align-items:center}
       .sched-job-card .ja-btn.notif-btn:hover{color:var(--accent)}
       .sched-job-card .card-extend{position:absolute;top:50%;width:20px;height:34px;border:none;background:var(--accent);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;opacity:0;transition:opacity 0.15s,background 0.15s;z-index:2;pointer-events:auto}
       .sched-job-card:hover .card-extend{opacity:0.8}
@@ -581,8 +599,8 @@ window.BromarPages.scheduling = (() => {
     if (!currentWeekStart) currentWeekStart = getMonday(new Date());
     if (!mobileSelectedDate) mobileSelectedDate = new Date();
     container.innerHTML = `<div class="card"><div class="sched-empty">Loading…</div></div>`;
-    const [emps, jbs, sts, asgn, pins] = await Promise.all([DB.fetchEmployees(), DB.fetchJobs(), DB.fetchSites(), DB.fetchAssignments(), DB.fetchPinnedSites()]);
-    employees = emps; jobs = jbs; sites = sts; assignments = asgn; pinnedSites = pins;
+    const [emps, jbs, sts, asgn, pins, rdos] = await Promise.all([DB.fetchEmployees(), DB.fetchJobs(), DB.fetchSites(), DB.fetchAssignments(), DB.fetchPinnedSites(), DB.fetchRdoRoster()]);
+    employees = emps; jobs = jbs; sites = sts; assignments = asgn; pinnedSites = pins; rdoRoster = rdos;
     container.innerHTML = `<div class="sched-desktop">${buildDesktop()}</div><div class="sched-mobile">${buildMobile()}</div>`;
     bindDesktop(container); bindMobile(container);
     const vEl = document.getElementById('app-version'); if (vEl) vEl.textContent = `scheduling ${PAGE_VERSION}`;
@@ -635,7 +653,7 @@ window.BromarPages.scheduling = (() => {
             <button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
           ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
             <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked&&!a.rdoAuto;
                 return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${isWorkshop?'is-workshop':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
                   <button class="card-extend card-extend-left" data-extend-left="${a.id}" data-extend-date="${dk}" title="Extend to previous day">◂</button>
                   <button class="card-extend card-extend-right" data-extend-right="${a.id}" data-extend-date="${dk}" title="Extend to next day">▸</button>
@@ -644,7 +662,7 @@ window.BromarPages.scheduling = (() => {
                   <span class="job-client">${sub}</span>
                   ${!isWorkshop&&a.location==='workshop'?'<span class="job-loc-badge">🔧 Workshop</span>':''}
                   ${a.notes?`<span class="job-notes" title="${a.notes.replace(/"/g,'&quot;')}">📝 ${a.notes.length>24?a.notes.slice(0,24)+'…':a.notes}</span>`:''}
-                  <div class="job-actions"><button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify employee">🔔</button>${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}<button class="ja-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button></div>
+                  <div class="job-actions">${a.rdoAuto?'<span class="ja-roster" title="From RDO roster">🔒</span>':`<button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify employee">🔔</button>${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}<button class="ja-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button>`}</div>
                 </div>`;}).join('')}
               <button class="cell-add" data-cell-emp="${emp.name}" data-cell-date="${dk}" title="Assign">+</button>
             </div>`;}).join('')}`).join('')}
@@ -720,7 +738,7 @@ window.BromarPages.scheduling = (() => {
                     ${!isWorkshop&&a.location==='workshop'?'<span class="a-loc-badge">🔧 Workshop</span>':''}
                     ${a.notes?`<span class="a-notes">📝 ${a.notes}</span>`:''}
                     ${isLinked?`<span class="a-sched">${CHAIN_ICON} ${scheduleLabel(a.schedule)}${a.endDate?' · ends '+a.endDate:''}</span>`:''}</div>
-                  <div class="sm-assign-actions"><button class="sm-assign-btn" data-notify="${a.id}" title="Notify" style="font-size:0.7rem">🔔</button>${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}<button class="sm-assign-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button></div></div>`;}).join('')}
+                  <div class="sm-assign-actions">${a.rdoAuto?'<span class="sm-roster-lock" title="From RDO roster">🔒</span>':`<button class="sm-assign-btn" data-notify="${a.id}" title="Notify" style="font-size:0.7rem">🔔</button>${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}<button class="sm-assign-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button>`}</div></div>`;}).join('')}
               <button class="sm-add-btn" data-add-emp="${emp.name}" data-add-date="${dk}">+ Assign job or site</button>
             </div></div></div>`;}).join('')}
       </div>
