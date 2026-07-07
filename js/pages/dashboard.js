@@ -1,30 +1,49 @@
 /* ============================================================
    BROMAR OPS — DASHBOARD PAGE
-   Version: V1.00
+   Version: V1.01
    Overview page. Tiles are added incrementally.
-   V1.00 — Initial: On-Standby (callout_roster) tile + daily
-           motivation one-liner tile + themed logo hero.
+   V1.00 — Initial: standby tile + daily motivation + logo.
+   V1.01 — Big centred logo; date tile; Melbourne weather tile
+           (Open-Meteo, no key); standby tile wired to real
+           callout_roster schema (employee_name/start_date/
+           end_date/shift_type/notes).
    ============================================================ */
 
 (() => {
   const PAGE_ID = 'dashboard';
-  const VERSION = 'V1.00';
+  const VERSION = 'V1.01';
+
+  const MEL_LAT = -37.8136, MEL_LON = 144.9631;
 
   /* ── Scoped styles (injected once) ── */
   function injectStyles() {
     if (document.getElementById('dash-styles')) return;
     const css = `
-      .dash-hero{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}
-      .dash-hero img{height:34px;width:auto}
-      .dash-hero .light-logo{display:block}
-      .dash-hero .dark-logo{display:none}
-      [data-theme="dark"] .dash-hero .light-logo{display:none}
-      [data-theme="dark"] .dash-hero .dark-logo{display:block}
-      .dash-hero .hero-date{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--text-secondary)}
-      .dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.25rem}
+      .dash-logo{display:flex;justify-content:center;align-items:center;margin:.5rem 0 2rem}
+      .dash-logo img{height:72px;width:auto}
+      .dash-logo .light-logo{display:block}
+      .dash-logo .dark-logo{display:none}
+      [data-theme="dark"] .dash-logo .light-logo{display:none}
+      [data-theme="dark"] .dash-logo .dark-logo{display:block}
+      .dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem}
       .dash-tile{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;padding:1.5rem;box-shadow:0 4px 12px var(--shadow);animation:fadeIn .5s ease backwards}
       .dash-tile .tile-head{display:flex;align-items:center;gap:.6rem;font-size:1.05rem;font-weight:600;letter-spacing:-.02em;margin-bottom:1rem}
       .dash-tile .tile-head::before{content:'';width:4px;height:18px;background:linear-gradient(180deg,var(--accent) 0%,var(--accent-light) 100%);border-radius:4px}
+
+      /* Date tile */
+      .date-weekday{font-size:1rem;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
+      .date-day{font-size:4rem;font-weight:700;line-height:1;letter-spacing:-.04em;margin:.25rem 0}
+      .date-month{font-size:1.05rem;color:var(--text-secondary);font-weight:500}
+
+      /* Weather tile */
+      .wx-main{display:flex;align-items:center;gap:1rem}
+      .wx-icon{font-size:3.25rem;line-height:1}
+      .wx-temp{font-size:2.75rem;font-weight:700;letter-spacing:-.03em;line-height:1}
+      .wx-cond{color:var(--text-secondary);font-weight:500}
+      .wx-meta{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;margin-top:1rem;font-size:.85rem;color:var(--text-secondary)}
+      .wx-meta b{color:var(--text-primary);font-weight:600}
+
+      /* Standby tile */
       .standby-person{display:flex;align-items:center;gap:.9rem;padding:.75rem 0;border-top:1px solid var(--border)}
       .standby-person:first-of-type{border-top:none}
       .standby-avatar{width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-light) 100%)}
@@ -32,12 +51,11 @@
       .standby-name{font-weight:600;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
       .standby-role{font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:.15rem .5rem;border-radius:6px;background:var(--card-hover);color:var(--accent);border:1px solid rgba(234,88,12,.2)}
       .standby-meta{font-size:.82rem;color:var(--text-secondary)}
-      .standby-phone{color:var(--accent);text-decoration:none;font-weight:500}
-      .standby-phone:hover{text-decoration:underline}
-      .dash-muted{color:var(--text-secondary);font-size:.9rem}
-      .dash-err{color:var(--error);font-size:.88rem;background:var(--error-bg);padding:.75rem .9rem;border-radius:10px}
+
       .dash-quote{font-size:1.15rem;font-weight:500;line-height:1.5;letter-spacing:-.01em}
       .dash-quote-mark{color:var(--accent);font-weight:700}
+      .dash-muted{color:var(--text-secondary);font-size:.9rem}
+      .dash-err{color:var(--error);font-size:.88rem;background:var(--error-bg);padding:.75rem .9rem;border-radius:10px}
       .dash-skel{height:14px;border-radius:6px;background:var(--card-hover);animation:pulse 1.2s ease-in-out infinite;margin:.5rem 0}
       @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
     `;
@@ -59,87 +77,107 @@
     });
   }
 
-  /* ── Helpers ── */
-  function parseISO(s) {
-    if (!s) return null;
-    const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
-    const d = new Date(s);
-    return isNaN(d) ? null : d;
+  function localISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
-  function pick(row, keys) {
-    for (const k of Object.keys(row)) {
-      if (keys.includes(k.toLowerCase()) && row[k] != null && row[k] !== '') return row[k];
-    }
-    return null;
+  function parseISO(s) {
+    const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
   }
   function initials(name) {
     return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
   }
-  function fmtDate(d) {
-    if (!d) return '';
-    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  function fmtShort(d) {
+    return d ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
   }
 
-  const NAME_KEYS  = ['employee_name','name','on_call','oncall','standby','standby_employee','technician','tech','person','staff'];
-  const PHONE_KEYS = ['phone','mobile','contact','phone_number','mobile_number','contact_number','number'];
-  const ROLE_KEYS  = ['role','type','position','level','priority','tier','category'];
-  const START_KEYS = ['start_date','start','from_date','from','week_start','week_starting','date_from','begins','starts'];
-  const END_KEYS   = ['end_date','end','to_date','to','week_end','week_ending','date_to','ends'];
-
-  /* ── Standby tile ── */
+  /* ── Standby tile (real schema) ── */
   async function loadStandby(el) {
     const client = await ensureClient();
     if (!client) { el.innerHTML = `<div class="dash-err">Supabase client not initialised.</div>`; return; }
 
-    const { data, error } = await client.from('callout_roster').select('*');
+    const iso = localISO(new Date());
+    let heading = 'Currently on standby';
+    let { data, error } = await client
+      .from('callout_roster').select('*')
+      .lte('start_date', iso).gte('end_date', iso)
+      .order('start_date', { ascending: true });
+
     if (error) { el.innerHTML = `<div class="dash-err">${error.message}</div>`; return; }
+
     if (!data || !data.length) {
-      el.innerHTML = `<p class="dash-muted">No callout roster entries found. (If you expected data, check the table's RLS policies — anon reads can silently return empty.)</p>`;
+      heading = 'Most recent roster';
+      const fb = await client.from('callout_roster').select('*')
+        .order('start_date', { ascending: false }).limit(2);
+      data = fb.data || [];
+    }
+    if (!data.length) {
+      el.innerHTML = `<p class="dash-muted">No callout roster entries found. (If unexpected, check RLS policies — anon reads can silently return empty.)</p>`;
       return;
     }
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const enriched = data.map(r => {
-      const start = parseISO(pick(r, START_KEYS));
-      const end   = parseISO(pick(r, END_KEYS));
-      const current = start && start <= today && (!end || today <= end);
-      return { r, start, end, current };
-    });
-
-    let show = enriched.filter(e => e.current);
-    if (!show.length) {
-      show = enriched
-        .filter(e => e.start)
-        .sort((a, b) => b.start - a.start)
-        .slice(0, 2);
-    }
-    if (!show.length) show = enriched.slice(0, 2);
-
-    const rows = show.map(({ r, start, end }) => {
-      const name  = pick(r, NAME_KEYS) || 'Unassigned';
-      const phone = pick(r, PHONE_KEYS);
-      const role  = pick(r, ROLE_KEYS);
-      let period = '';
-      if (start && end) period = `${fmtDate(start)} – ${fmtDate(end)}`;
-      else if (start)   period = `From ${fmtDate(start)}`;
+    const rows = data.map(r => {
+      const start = parseISO(r.start_date), end = parseISO(r.end_date);
+      const period = start && end ? `${fmtShort(start)} – ${fmtShort(end)}` : '';
       return `
         <div class="standby-person">
-          <div class="standby-avatar">${initials(name)}</div>
+          <div class="standby-avatar">${initials(r.employee_name)}</div>
           <div class="standby-info">
-            <div class="standby-name">${name}${role ? `<span class="standby-role">${role}</span>` : ''}</div>
-            <div class="standby-meta">
-              ${phone ? `<a class="standby-phone" href="tel:${String(phone).replace(/\s+/g,'')}">${phone}</a>` : ''}
-              ${phone && period ? ' · ' : ''}${period}
-            </div>
+            <div class="standby-name">${r.employee_name}${r.shift_type ? `<span class="standby-role">${r.shift_type}</span>` : ''}</div>
+            <div class="standby-meta">${period}${r.notes ? ` · ${r.notes}` : ''}</div>
           </div>
         </div>`;
     }).join('');
 
-    const heading = enriched.some(e => e.current)
-      ? 'Currently on standby'
-      : 'Most recent roster';
     el.innerHTML = `<p class="dash-muted" style="margin-bottom:.5rem">${heading}</p>${rows}`;
+  }
+
+  /* ── Weather tile (Open-Meteo, no key) ── */
+  function wxIcon(code) {
+    if (code === 0) return '☀️';
+    if (code <= 2) return '🌤️';
+    if (code === 3) return '☁️';
+    if (code <= 48) return '🌫️';
+    if (code <= 57) return '🌦️';
+    if (code <= 67) return '🌧️';
+    if (code <= 77) return '❄️';
+    if (code <= 82) return '🌧️';
+    if (code <= 86) return '🌨️';
+    return '⛈️';
+  }
+  function wxLabel(code) {
+    const m = { 0:'Clear', 1:'Mainly clear', 2:'Partly cloudy', 3:'Overcast', 45:'Fog', 48:'Rime fog',
+      51:'Light drizzle', 53:'Drizzle', 55:'Heavy drizzle', 61:'Light rain', 63:'Rain', 65:'Heavy rain',
+      71:'Light snow', 73:'Snow', 75:'Heavy snow', 80:'Showers', 81:'Showers', 82:'Heavy showers',
+      95:'Thunderstorm', 96:'Storm w/ hail', 99:'Storm w/ hail' };
+    return m[code] || 'Melbourne';
+  }
+  async function loadWeather(el) {
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${MEL_LAT}&longitude=${MEL_LON}` +
+        `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m` +
+        `&daily=temperature_2m_max,temperature_2m_min&timezone=Australia%2FMelbourne`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('weather unavailable');
+      const d = await res.json();
+      const c = d.current, day = d.daily;
+      el.innerHTML = `
+        <div class="wx-main">
+          <div class="wx-icon">${wxIcon(c.weather_code)}</div>
+          <div>
+            <div class="wx-temp">${Math.round(c.temperature_2m)}°</div>
+            <div class="wx-cond">${wxLabel(c.weather_code)}</div>
+          </div>
+        </div>
+        <div class="wx-meta">
+          <span>Feels <b>${Math.round(c.apparent_temperature)}°</b></span>
+          <span>H <b>${Math.round(day.temperature_2m_max[0])}°</b> · L <b>${Math.round(day.temperature_2m_min[0])}°</b></span>
+          <span>Humidity <b>${c.relative_humidity_2m}%</b></span>
+          <span>Wind <b>${Math.round(c.wind_speed_10m)} km/h</b></span>
+        </div>`;
+    } catch (e) {
+      el.innerHTML = `<p class="dash-muted">Weather unavailable right now.</p>`;
+    }
   }
 
   /* ── Daily motivation tile ── */
@@ -149,7 +187,7 @@
     ["Believe you can and you're halfway there. Test it and you're compliant.", "AS/NZS 3000"],
     ["Success is 1% inspiration, 99% not touching the live one.", "Occupational Health"],
     ["The best time to label the switchboard was 20 years ago. The second best is now.", "Ancient Proverb"],
-    ["Be the change you wish to see. Also RCD-test it monthly.", "Ghandi, probably"],
+    ["Be the change you wish to see. Also RCD-test it monthly.", "Gandhi, probably"],
     ["Great things never came from comfortable extension leads.", "Motivational Poster"],
     ["Hard work beats talent when talent forgets to isolate.", "Toolbox Talk"],
     ["Dream big. Terminate neatly.", "Bromar Standards"],
@@ -185,27 +223,33 @@
   /* ── Render ── */
   function render(container) {
     injectStyles();
-    const dateStr = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const now = new Date();
+    const weekday = now.toLocaleDateString('en-AU', { weekday: 'long' });
+    const dayNum = now.getDate();
+    const monthYear = now.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
 
     container.innerHTML = `
-      <div class="page-title-wrapper">
-        <h1>Dashboard</h1>
-        <p class="subtitle">Bromar Electrical Services — operations overview</p>
-      </div>
-
-      <div class="dash-hero">
+      <div class="dash-logo">
         <img class="light-logo" src="assets/Bromar-Primary-Logo-Full-Colour.png" alt="Bromar">
         <img class="dark-logo"  src="assets/Bromar-Primary-Logo-Reverse-White.png" alt="Bromar">
-        <span class="hero-date">${dateStr}</span>
       </div>
 
       <div class="dash-grid">
         <div class="dash-tile">
+          <div class="tile-head">Today</div>
+          <div class="date-weekday">${weekday}</div>
+          <div class="date-day">${dayNum}</div>
+          <div class="date-month">${monthYear}</div>
+        </div>
+
+        <div class="dash-tile">
+          <div class="tile-head">Melbourne Weather</div>
+          <div id="dash-weather"><div class="dash-skel" style="width:60%"></div><div class="dash-skel" style="width:80%"></div></div>
+        </div>
+
+        <div class="dash-tile">
           <div class="tile-head">On Standby / On-Call</div>
-          <div id="dash-standby">
-            <div class="dash-skel" style="width:70%"></div>
-            <div class="dash-skel" style="width:45%"></div>
-          </div>
+          <div id="dash-standby"><div class="dash-skel" style="width:70%"></div><div class="dash-skel" style="width:45%"></div></div>
         </div>
 
         <div class="dash-tile">
@@ -216,6 +260,7 @@
     `;
 
     loadQuote(container.querySelector('#dash-quote'));
+    loadWeather(container.querySelector('#dash-weather'));
     loadStandby(container.querySelector('#dash-standby'));
   }
 
