@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.21
+   V1.22
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.21';
+  const PAGE_VERSION = 'V1.22';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -310,17 +310,20 @@ window.BromarPages.scheduling = (() => {
   }
 
   function getAssignmentLabel(a) {
+    if (a.type === 'workshop') return 'Workshop/Office';
     if (a.type === 'leave') return a.siteName || 'Leave';
     if (a.type === 'site') return a.siteName || '?';
     return a.jobNumber || '?';
   }
   function getAssignmentSub(a) {
+    if (a.type === 'workshop') return 'Workshop / Office';
     if (a.type === 'leave') return 'Leave';
     if (a.type === 'site') return a.clientName || 'Site';
     const job = jobs.find(j => j.number === a.jobNumber);
     return job?.client || a.clientName || '';
   }
   function getAssignmentBorderColor(a) {
+    if (a.type === 'workshop') return '#f59e0b';
     if (a.type === 'leave') return leaveColor(a.siteName);
     if (a.type === 'site') return '#0ea5e9';
     const job = jobs.find(j => j.number === a.jobNumber);
@@ -467,6 +470,8 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card.recently-changed{animation:schedPulse 2s ease}
       .sched-job-card.is-site{border-left-color:#0ea5e9}
       .sched-job-card.is-leave{border-left-color:#8b5cf6}
+      .sched-job-card.is-workshop{border-left-color:#f59e0b}
+      .sm-assign-card.is-workshop{border-left:3px solid #f59e0b}
       .sm-assign-card.is-leave{border-left:3px solid #8b5cf6}
       .sched-job-card.no-drag{cursor:default}
       @keyframes schedPulse{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px rgba(234,88,12,0.25)}}
@@ -630,14 +635,14 @@ window.BromarPages.scheduling = (() => {
             <button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
           ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
             <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
-                return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked;
+                return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${isWorkshop?'is-workshop':''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" style="border-left-color:${bc}">
                   <button class="card-extend card-extend-left" data-extend-left="${a.id}" data-extend-date="${dk}" title="Extend to previous day">◂</button>
                   <button class="card-extend card-extend-right" data-extend-right="${a.id}" data-extend-date="${dk}" title="Extend to next day">▸</button>
-                  ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}${isLeave?`<span class="job-type-tag" style="background:${bc}20;color:${bc};">LEAVE</span>`:''}
+                  ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}${isLeave?`<span class="job-type-tag" style="background:${bc}20;color:${bc};">LEAVE</span>`:''}${isWorkshop?'<span class="job-type-tag" style="background:#f59e0b20;color:#f59e0b;">🔧 WORKSHOP</span>':''}
                   <div class="job-top">${isLinked?`<span class="job-chain ${isSite?'is-site-chain':''}" title="${scheduleLabel(a.schedule)}">${CHAIN_ICON}</span>`:''}<span class="job-num">${lbl}</span></div>
                   <span class="job-client">${sub}</span>
-                  ${a.location==='workshop'?'<span class="job-loc-badge">🔧 Workshop</span>':''}
+                  ${!isWorkshop&&a.location==='workshop'?'<span class="job-loc-badge">🔧 Workshop</span>':''}
                   ${a.notes?`<span class="job-notes" title="${a.notes.replace(/"/g,'&quot;')}">📝 ${a.notes.length>24?a.notes.slice(0,24)+'…':a.notes}</span>`:''}
                   <div class="job-actions"><button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify employee">🔔</button>${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}<button class="ja-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button></div>
                 </div>`;}).join('')}
@@ -708,11 +713,11 @@ window.BromarPages.scheduling = (() => {
               <div class="sm-emp-head-right">${ea.length?`<span class="sm-emp-count">${ea.length}</span>`:''}<span class="sm-emp-chevron">›</span></div>
             </div>
             <div class="sm-emp-body"><div class="sm-emp-body-inner">
-              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
-                return`<div class="sm-assign-card ${isSite?'is-site':isLeave?'is-leave':'is-job'}" ${isLeave?`style="border-left-color:${bc}"`:''}><div class="sm-assign-left">
-                    ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':isLeave?`<span class="a-type" style="background:${bc}20;color:${bc};">LEAVE</span>`:'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
+              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const sub=getAssignmentSub(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;
+                return`<div class="sm-assign-card ${isSite?'is-site':isLeave?'is-leave':isWorkshop?'is-workshop':'is-job'}" ${(isLeave||isWorkshop)?`style="border-left-color:${bc}"`:''}><div class="sm-assign-left">
+                    ${isSite?'<span class="a-type" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':isLeave?`<span class="a-type" style="background:${bc}20;color:${bc};">LEAVE</span>`:isWorkshop?'<span class="a-type" style="background:#f59e0b20;color:#f59e0b;">🔧 WORKSHOP</span>':'<span class="a-type" style="background:var(--card-hover);color:var(--accent);">JOB</span>'}
                     <span class="a-label">${lbl}</span><span class="a-sub">${sub}</span>
-                    ${a.location==='workshop'?'<span class="a-loc-badge">🔧 Workshop</span>':''}
+                    ${!isWorkshop&&a.location==='workshop'?'<span class="a-loc-badge">🔧 Workshop</span>':''}
                     ${a.notes?`<span class="a-notes">📝 ${a.notes}</span>`:''}
                     ${isLinked?`<span class="a-sched">${CHAIN_ICON} ${scheduleLabel(a.schedule)}${a.endDate?' · ends '+a.endDate:''}</span>`:''}</div>
                   <div class="sm-assign-actions"><button class="sm-assign-btn" data-notify="${a.id}" title="Notify" style="font-size:0.7rem">🔔</button>${isIndef&&isLinked?`<button class="sm-assign-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End here">⏹</button>`:''}<button class="sm-assign-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button></div></div>`;}).join('')}
@@ -869,7 +874,7 @@ window.BromarPages.scheduling = (() => {
     function rm() {
       const existing=getEffectiveAssignments(empName,date);
       const conflict=existing.length>=3?`⚠ ${empName} has ${existing.length} items on this date.`:'';
-      const canSubmit=activeTab==='job'?!!selectedJob:activeTab==='site'?!!selectedSite:activeTab==='pinned'?!!selectedSite:!!selectedLeave;
+      const canSubmit=activeTab==='job'?!!selectedJob:activeTab==='site'?!!selectedSite:activeTab==='pinned'?!!selectedSite:activeTab==='leave'?!!selectedLeave:locationVal==='workshop';
       const fJobs=searchJobsLocal(jobQuery);const fSites=searchSitesLocal(siteQuery);
       const pinnedIds=new Set(pinnedSites.map(p=>p.id));
 
@@ -915,6 +920,7 @@ window.BromarPages.scheduling = (() => {
           <button class="sched-loc-btn ${locationVal==='site'?'active':''}" data-loc="site">On Site</button>
           <button class="sched-loc-btn ${locationVal==='workshop'?'active':''}" data-loc="workshop">Workshop/Office</button>
         </div>
+        ${locationVal==='workshop'&&!selectedJob&&!selectedSite&&!selectedLeave?'<p style="font-size:0.75rem;color:#f59e0b;margin-top:0.4rem;">🔧 Will assign as Workshop/Office with no job or site — a quick shortcut.</p>':''}
         <label>Notes <span style="font-weight:400;color:var(--text-secondary)">(visible to employee)</span></label>
         <textarea class="sched-input" id="am-notes" rows="2" style="width:100%;resize:vertical;font-size:16px" placeholder="e.g. Bring test equipment, meet foreman at gate…">${notesVal}</textarea>
         ${conflict?`<div class="sched-conflict">${conflict}</div>`:''}
@@ -949,7 +955,9 @@ window.BromarPages.scheduling = (() => {
         let lbl;
         if(activeTab==='job'){if(!selectedJob)return;a.type='job';a.jobNumber=selectedJob.number;a.clientName=selectedJob.client;lbl=selectedJob.number;}
         else if(activeTab==='site'||activeTab==='pinned'){if(!selectedSite)return;a.type='site';a.siteId=selectedSite.id;a.siteName=selectedSite.name;a.clientName=selectedSite.clientName;lbl=selectedSite.name;}
-        else{if(!selectedLeave)return;a.type='leave';a.siteName=selectedLeave;lbl=selectedLeave;}
+        else if(activeTab==='leave'){if(!selectedLeave)return;a.type='leave';a.siteName=selectedLeave;lbl=selectedLeave;}
+        else if(locationVal==='workshop'){a.type='workshop';a.siteName='Workshop/Office';lbl='Workshop/Office';}
+        else return;
         await DB.saveAssignment(a);assignments.push(a);
         queueNotification(empName,`Assigned ${lbl} ${schedType==='oneoff'?date:schedType==='indefinite'?'indefinitely':'to '+endDateVal}`);
         close();rerender(container);
