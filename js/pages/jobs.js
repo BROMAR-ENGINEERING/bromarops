@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.04',
+  version: 'V1.05',
 
   render(container) {
     /* ── supabase (self-initialising) ── */
@@ -259,11 +259,21 @@ window.BromarPages.jobs = {
 
     async function loadSitesInto(selectEl, clientId, selectedSiteId) {
       if (!selectEl) return;
-      if (!clientId) { selectEl.innerHTML = `<option value="">No specific site / not listed</option>`; return; }
-      const { data } = await sb.from('sites').select('id, name, address, is_active').eq('client_id', clientId).order('name');
-      const sites = (data || []).filter(s => s.is_active !== false);
-      selectEl.innerHTML = `<option value="">No specific site / not listed</option>` + sites.map(s =>
-        `<option value="${s.id}" data-name="${esc(s.name)}" data-address="${esc(s.address || '')}" ${s.id === selectedSiteId ? 'selected' : ''}>${esc(s.address ? s.name + ' — ' + s.address : s.name)}</option>`).join('');
+      const base = `<option value="">No specific site / not listed</option>`;
+      if (!clientId) { selectEl.innerHTML = base; return; }
+      selectEl.innerHTML = base + `<option value="" disabled>Loading sites…</option>`;
+      try {
+        const { data, error } = await sb.from('sites')
+          .select('id, name, address, is_active')
+          .eq('client_id', clientId).order('name');
+        if (error) throw error;
+        const sites = (data || []).filter(s => s.is_active !== false);
+        if (!sites.length) { selectEl.innerHTML = base + `<option value="" disabled>— No site records on this client —</option>`; return; }
+        selectEl.innerHTML = base + sites.map(s =>
+          `<option value="${s.id}" data-name="${esc(s.name)}" data-address="${esc(s.address || '')}" ${s.id === selectedSiteId ? 'selected' : ''}>${esc(s.address ? s.name + ' — ' + s.address : s.name)}</option>`).join('');
+      } catch (err) {
+        selectEl.innerHTML = base + `<option value="" disabled>— Could not load sites: ${esc(err.message)} —</option>`;
+      }
     }
 
     /* ── stats ── */
@@ -393,8 +403,14 @@ window.BromarPages.jobs = {
       const chip = $('ed_link_chip');
       const setChip = (txt) => { chip.className = 'link-chip ok'; chip.textContent = txt; };
 
-      // populate site dropdown for the currently linked client
-      if (curClientId) loadSitesInto($('ed_site_select'), curClientId, curSiteId);
+      // populate site dropdown for the currently linked client (resolve from site if only site_id is set)
+      if (curClientId) {
+        loadSitesInto($('ed_site_select'), curClientId, curSiteId);
+      } else if (curSiteId) {
+        sb.from('sites').select('client_id').eq('id', curSiteId).maybeSingle().then(({ data }) => {
+          if (data?.client_id) { curClientId = data.client_id; loadSitesInto($('ed_site_select'), curClientId, curSiteId); }
+        }).catch(() => {});
+      }
 
       const applyClient = (d) => {
         curClientId = d.id; curSiteId = null;
