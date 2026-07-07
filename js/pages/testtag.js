@@ -8,11 +8,13 @@
 
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
+
+   VERSION: V1.23  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.20',
+  version: 'V1.23',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -42,8 +44,8 @@ window.BromarAdmin.testtag = {
     hdrAddr: '2/98-108 Western Ave, Westmeadows 3049',
     hdrPhoneRec: 'PH: 9335 5344    REC: 30340'
   },
-  _ttLogoColour: 'assets/Bromar-Primary-Logo-Full-Colour.png',
-  _ttLogoWhite: 'assets/Bromar-Primary-Logo-Reverse-White.png',
+  _ttLogoColour: 'assets/logo/bromar-logo-colour.png',
+  _ttLogoWhite: 'assets/logo/bromar-logo-reverse-white.png',
   _ttLogoDataUrl: null,
   _ttLogoDims: null,
 
@@ -183,24 +185,57 @@ window.BromarAdmin.testtag = {
   },
   /* ── Report scope: split one export into per-location or per-date reports ── */
   _ttScope: { mode: 'all', value: '' },
+  _ttSessionCache: [],
+  _ttParseTS(s) {
+    const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+    if (!m) return null;
+    let h = +m[4]; const ap = (m[6] || '').toLowerCase();
+    if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+    return new Date(+m[3], +m[2] - 1, +m[1], h, +m[5]);
+  },
+  _ttBuildSessions(gapMin) {
+    gapMin = gapMin || 120;
+    const withTS = ((this._ttModel && this._ttModel.assets) || [])
+      .map(a => ({ a, t: this._ttParseTS(a.testedAt) })).filter(x => x.t)
+      .sort((x, y) => x.t - y.t);
+    const sessions = [];
+    let cur = null;
+    for (const { a, t } of withTS) {
+      if (!cur || (t - cur.to) > gapMin * 60000) { cur = { from: t, to: t, assets: [a] }; sessions.push(cur); }
+      else { cur.to = t; cur.assets.push(a); }
+    }
+    const fT = d => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const fD = d => d.toLocaleDateString('en-GB');
+    sessions.forEach((s, i) => { s.key = 'S' + i; s.label = fD(s.from) + ' ' + fT(s.from) + '\u2013' + fT(s.to) + ' (' + s.assets.length + ' items)'; });
+    this._ttSessionCache = sessions;
+    return sessions;
+  },
   _ttScopedAssets() {
     const list = (this._ttModel && this._ttModel.assets) || [];
     const s = this._ttScope || { mode: 'all' };
     if (s.mode === 'location') return list.filter(a => (a.location || '') === s.value);
     if (s.mode === 'date') return list.filter(a => (a.tested || '') === s.value);
+    if (s.mode === 'session') { const ss = (this._ttSessionCache || []).find(x => x.key === s.value); return ss ? ss.assets : list; }
     return list;
   },
   _ttScopeToken() {
     const s = this._ttScope || { mode: 'all' };
-    return (s.mode !== 'all' && s.value) ? String(s.value).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') : '';
+    if (s.mode === 'all' || !s.value) return '';
+    if (s.mode === 'session') {
+      const ss = (this._ttSessionCache || []).find(x => x.key === s.value);
+      if (ss) { const d = ss.from, p = n => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+    }
+    return String(s.value).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
   },
   _ttEffectiveCert(f) {
     const tok = this._ttScopeToken();
     return (f.cert || '') + (tok ? '-' + tok : '');
   },
   _ttScopedRange(f) {
-    if ((this._ttScope || {}).mode === 'all') return f.range || '\u2014';
-    const parse = s => { const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const s = this._ttScope || { mode: 'all' };
+    if (s.mode === 'all') return f.range || '\u2014';
+    if (s.mode === 'session') { const ss = (this._ttSessionCache || []).find(x => x.key === s.value); if (ss) return ss.label.replace(/\s*\(\d+ items\)$/, ''); }
+    const parse = x => { const m = x.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
     const valid = this._ttScopedAssets().map(a => ({ s: a.tested, d: parse(a.tested || '') })).filter(x => x.d);
     if (!valid.length) return f.range || '\u2014';
     valid.sort((a, b) => a.d - b.d);
@@ -223,10 +258,12 @@ window.BromarAdmin.testtag = {
     const locs = [...new Set(assets.map(a => a.location).filter(Boolean))];
     const parse = s => { const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
     const dates = [...new Set(assets.map(a => a.tested).filter(Boolean))].sort((a, b) => { const da = parse(a), db = parse(b); return (da && db) ? da - db : 0; });
+    const sessions = this._ttBuildSessions();
     const attr = s => this._ttEsc(s).replace(/"/g, '&quot;');
     let html = '<option value="all|">Whole report (all locations)</option>';
     if (locs.length > 1) html += '<optgroup label="By location">' + locs.map(l => '<option value="location|' + attr(l) + '">Location: ' + this._ttEsc(l) + '</option>').join('') + '</optgroup>';
     if (dates.length > 1) html += '<optgroup label="By test date">' + dates.map(d => '<option value="date|' + attr(d) + '">Test date: ' + this._ttEsc(d) + '</option>').join('') + '</optgroup>';
+    if (sessions.length > 1) html += '<optgroup label="By time on site">' + sessions.map(s => '<option value="session|' + s.key + '">' + this._ttEsc(s.label) + '</option>').join('') + '</optgroup>';
     sel.innerHTML = html;
     sel.value = 'all|';
   },
@@ -648,6 +685,7 @@ window.BromarAdmin.testtag = {
     this._ttForm = rd.form || null;
     this._ttView = 'build';
     this._ttRenderTestTag(target);
+    this._ttPopulateScope();
   },
 
   async _ttDeleteFromRegister(id, target) {
@@ -787,6 +825,7 @@ window.BromarAdmin.testtag = {
       }
       const dm = String(a.tested).match(/\d{1,2}\/\d{1,2}\/\d{2,4}/);
       a.tested = this._ttCleanDate(dm ? dm[0] : a.tested);
+      a.testedAt = a['Test Date'] || a['Tested On'] || '';
       a.due = this._ttCleanDate(a['Due']);
       a.testPerformed = a['Test Performed'] || '';
       let st = (a['Final Status'] || '').trim();
@@ -951,9 +990,10 @@ window.BromarAdmin.testtag = {
 
   async _ttBuildPDF() {
     if (!this._ttModel) return;
+    const RK = window.BromarReportKit;
+    if (!RK) { alert('Report kit (bromar-report-kit.js) is not loaded.'); return; }
+    RK.configure({ logoColour: 'assets/logo/bromar-logo-colour.png', logoReverse: 'assets/logo/bromar-logo-reverse-white.png' });
     await this._ttLoadJsPDF();
-    const logoUrl = await this._ttGetLogoDataUrl();
-    const { jsPDF } = window.jspdf;
     const f = this._ttReadForm();
     const boards = this._ttGroupBoards(this._ttScopedAssets());
     const assets = this._ttScopedAssets();
@@ -963,43 +1003,20 @@ window.BromarAdmin.testtag = {
     const oos = assets.filter(a => a.state === 'oos').length;
     const overdue = (this._ttScope || {}).mode === 'all' ? (this._ttModel.stats['Overdue'] || '0') : String(this._ttOverdue(assets));
     const effCert = this._ttEffectiveCert(f);
-    const navy = [36, 59, 107], orange = [234, 88, 12], muted = [107, 114, 128];
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const W = doc.internal.pageSize.getWidth(), M = 14;
 
-    /* Logo sizing: fit within a 38mm-wide / 14mm-tall box, preserving aspect ratio */
-    let logoW = 0, logoH = 0;
-    if (logoUrl && this._ttLogoDims) {
-      const maxW = 38, maxH = 14;
-      const ratio = this._ttLogoDims.w / this._ttLogoDims.h;
-      logoW = maxW; logoH = logoW / ratio;
-      if (logoH > maxH) { logoH = maxH; logoW = logoH * ratio; }
-    }
+    const P = RK.PALETTE;
+    const navy = P.navy.rgb, orange = P.accent.rgb, muted = P.muted.rgb;
+    const doc = RK.createDoc();
+    const W = RK.LAYOUT.pageW, M = RK.LAYOUT.margin;
+    const TOP = RK.LAYOUT.headerH + 3;             // content top (below kit header)
+    const BOT = RK.LAYOUT.footerY - 6;             // content bottom bound
+    const tbMargin = { left: M, right: M, top: TOP, bottom: RK.LAYOUT.pageH - BOT };
+    const footerTitle = 'Site Equipment Test Report';
 
-    const stamp = () => {
-      doc.setFillColor(...orange); doc.rect(0, 0, W, 3, 'F');
-      /* Logo top-left */
-      if (logoUrl && logoW) doc.addImage(logoUrl, 'PNG', M, 7, logoW, logoH);
-      /* Company block, right-aligned */
-      const rx = W - M;
-      doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...navy);
-      doc.text(this._ttORG.hdrName, rx, 8, { align: 'right' });
-      doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...muted);
-      doc.text(this._ttORG.hdrAddr, rx, 12, { align: 'right' });
-      doc.text(this._ttORG.hdrPhoneRec, rx, 15.5, { align: 'right' });
-      doc.text('WEB: ' + this._ttORG.web, rx, 19, { align: 'right' });
-      /* Footer: generated (left) \u00b7 title (centre) \u00b7 page (right) */
-      doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...muted);
-      doc.text('Generated ' + (this._ttModel.head.generated || new Date().toLocaleDateString('en-GB')), M, 290);
-      doc.text('Site Equipment Test Report' + (effCert ? '   \u00b7   ' + effCert : ''), W / 2, 290, { align: 'center' });
-      doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 290, { align: 'right' });
-    };
-
-    stamp();
-    let y = 28;
-    doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(...navy);
-    doc.text('Site Equipment Test Report', W / 2, y, { align: 'center' }); y += 9;
-    doc.setDrawColor(...orange).setLineWidth(0.8).line(M, y, W - M, y); y += 9;
+    let y = TOP + 3;
+    doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...navy);
+    doc.text('Site Equipment Test Report', W / 2, y, { align: 'center' }); y += 6.5;
+    doc.setDrawColor(...orange).setLineWidth(0.8).line(M, y, W - M, y); y += 7;
 
     /* Customer detail pairs — wraps long values and advances y by the tallest
        cell in each row, so a long address can never overlap the next row */
@@ -1031,7 +1048,7 @@ window.BromarAdmin.testtag = {
     y += 2;
 
     /* Page-flow helpers for the standards / requirements text */
-    const ensure = need => { if (y + need > 286) { doc.addPage(); stamp(); y = 26; } };
+    const ensure = need => { if (y + need > BOT) { doc.addPage(); y = TOP; } };
     const para = (txt, size, style, color, indent, gap) => {
       indent = indent || 0; gap = gap == null ? 2 : gap;
       doc.setFont('helvetica', style).setFontSize(size);
@@ -1050,14 +1067,13 @@ window.BromarAdmin.testtag = {
       doc.text('Applicable Standards', M, y); y += 5;
       para(this._ttStandardsIntro, 8.5, 'normal', [40, 49, 60], 0, 2);
       doc.autoTable({
-        startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+        startY: y, margin: tbMargin,
         head: [['Document', 'Description']],
         body: this._ttStandards.map(s => [this._ttAscii(s[0]), this._ttAscii(s[1])]),
         styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: orange, fontSize: 8 },
         alternateRowStyles: { fillColor: [250, 251, 253] },
         tableWidth: W - 2 * M,
         columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.4 }, 1: { cellWidth: (W - 2 * M) * 0.6 } },
-        didDrawPage: stamp,
       });
       y = doc.lastAutoTable.finalY + 8;
 
@@ -1089,7 +1105,7 @@ window.BromarAdmin.testtag = {
           ensure(14);
           para('Tag Colour by Test Period', 9, 'bold', orange, 0, 1.5);
           doc.autoTable({
-            startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+            startY: y, margin: tbMargin,
             head: [r.colourTable.rows.map(c => c[0])],
             body: [r.colourTable.rows.map(c => c[1])],
             styles: { fontSize: 8, cellPadding: 1.8, halign: 'center' },
@@ -1101,7 +1117,6 @@ window.BromarAdmin.testtag = {
                 if (rgb) { d.cell.styles.fillColor = rgb; d.cell.styles.textColor = [255, 255, 255]; d.cell.styles.fontStyle = 'bold'; }
               }
             },
-            didDrawPage: stamp,
           });
           y = doc.lastAutoTable.finalY + 4;
         }
@@ -1109,8 +1124,8 @@ window.BromarAdmin.testtag = {
       y += 2;
     }
 
-    if (f.summary) { doc.addPage(); stamp(); y = 26; }
-    else if (y > 250) { doc.addPage(); stamp(); y = 26; }
+    if (f.summary) { doc.addPage(); y = TOP; }
+    else if (y > BOT - 42) { doc.addPage(); y = TOP; }
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
     doc.text('Results Summary', M, y); y += 5;
 
@@ -1128,7 +1143,7 @@ window.BromarAdmin.testtag = {
     /* Next retest due callout */
     const nextDue = this._ttEarliestDue();
     if (nextDue) {
-      if (y > 268) { doc.addPage(); stamp(); y = 26; }
+      if (y > BOT - 14) { doc.addPage(); y = TOP; }
       doc.setFillColor(252, 243, 234).setDrawColor(...orange);
       doc.roundedRect(M, y, W - 2 * M, 10, 2, 2, 'FD');
       doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...muted);
@@ -1141,22 +1156,21 @@ window.BromarAdmin.testtag = {
     /* Items requiring attention (OOS / Fail) */
     const exceptions = this._ttExceptions();
     if (exceptions.length) {
-      if (y > 240) { doc.addPage(); stamp(); y = 26; }
+      if (y > BOT - 42) { doc.addPage(); y = TOP; }
       doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
       doc.text('Items Requiring Attention', M, y); y += 5;
       doc.autoTable({
-        startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+        startY: y, margin: tbMargin,
         head: [['Location', 'Sub Location', 'Barcode', 'Description', 'Status']],
         body: exceptions.map(a => [a.location || '\u2014', (a.sublocation && a.sublocation !== 'NA' ? a.sublocation : '\u2014'),
           a.barcode || '\u2014', this._ttAscii(a.description || '\u2014'), a.status || a.state]),
         styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: [176, 106, 23], fontSize: 8 },
         alternateRowStyles: { fillColor: [253, 248, 240] },
         columnStyles: { 4: { halign: 'center', textColor: [176, 106, 23], fontStyle: 'bold' } },
-        didDrawPage: stamp,
       });
       y = doc.lastAutoTable.finalY + 8;
     } else {
-      if (y > 270) { doc.addPage(); stamp(); y = 26; }
+      if (y > BOT - 12) { doc.addPage(); y = TOP; }
       doc.setFillColor(225, 245, 233).setDrawColor(180, 220, 195);
       doc.roundedRect(M, y, W - 2 * M, 9, 2, 2, 'FD');
       doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(29, 122, 92);
@@ -1164,17 +1178,16 @@ window.BromarAdmin.testtag = {
       y += 15;
     }
 
-    if (y > 250) { doc.addPage(); stamp(); y = 26; }
+    if (y > BOT - 30) { doc.addPage(); y = TOP; }
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
     doc.text('Location Summary', M, y); y += 5;
     doc.autoTable({
-      startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+      startY: y, margin: tbMargin,
       head: [['Location', 'Sub Location', 'Items', 'Pass', 'Fail', 'OOS', 'Next due']],
       body: boards.map(g => [g.location, g.subsText || '\u2014', g.items.length, g.pass, g.fail, g.oos, g.earliest]),
       styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: orange, fontSize: 8 },
       alternateRowStyles: { fillColor: [250, 251, 253] },
       columnStyles: { 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' } },
-      didDrawPage: stamp,
       didParseCell: d => {
         if (d.section === 'body') {
           if (d.column.index === 4 && d.cell.raw > 0) d.cell.styles.textColor = [192, 57, 43];
@@ -1186,7 +1199,7 @@ window.BromarAdmin.testtag = {
 
     if (f.detail) {
       doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...navy);
-      if (y > 250) { doc.addPage(); stamp(); y = 28; }
+      if (y > BOT - 30) { doc.addPage(); y = TOP; }
       doc.text('Equipment Detail by Location', M, y); y += 4;
       for (const g of boards) {
         let items = g.items;
@@ -1194,7 +1207,7 @@ window.BromarAdmin.testtag = {
         if (!items.length) continue;
         const hStyle = { fillColor: [68, 71, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 };
         doc.autoTable({
-          startY: y + 3, margin: { left: M, right: M, top: 22, bottom: 14 },
+          startY: y + 3, margin: tbMargin,
           head: [[
             { content: g.location + '  (' + g.items.length + ')', colSpan: 2, styles: { ...hStyle, halign: 'left' } },
             { content: g.subsText ? 'Sub Location: ' + g.subsText : '', colSpan: 4, styles: { ...hStyle, halign: 'right', overflow: 'linebreak' } }
@@ -1204,7 +1217,6 @@ window.BromarAdmin.testtag = {
           styles: { fontSize: 7.5, cellPadding: 1.6 }, headStyles: { fillColor: orange, fontSize: 7.5 },
           alternateRowStyles: { fillColor: [250, 251, 253] },
           columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' } },
-          didDrawPage: stamp,
           didParseCell: d => {
             if (d.section === 'body' && d.column.index === 4) {
               const v = String(d.cell.raw).toLowerCase();
@@ -1219,7 +1231,7 @@ window.BromarAdmin.testtag = {
     }
 
     /* ── Compliance / Technician / Important — consistent final page ── */
-    doc.addPage(); stamp(); y = 26;
+    doc.addPage(); y = TOP;
     const noteSection = (heading, bodyTxt) => {
       ensure(16);
       doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
@@ -1235,13 +1247,20 @@ window.BromarAdmin.testtag = {
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
     doc.text('Legend', M, y); y += 5;
     doc.autoTable({
-      startY: y, margin: { left: M, right: M, top: 22, bottom: 14 },
+      startY: y, margin: tbMargin,
       body: this._ttLegend.map(r => [this._ttAscii(r[0]), this._ttAscii(r[1])]),
       styles: { fontSize: 8, cellPadding: 1.6 },
       columnStyles: { 0: { cellWidth: (W - 2 * M) * 0.18, fontStyle: 'bold', textColor: [40, 49, 60] } },
       theme: 'plain', alternateRowStyles: { fillColor: [250, 251, 253] },
-      didDrawPage: stamp,
     });
+
+    /* Kit header + footer on every page (drawn last so the logo lands cleanly) */
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      await RK.drawHeader(doc, {});
+      RK.drawFooter(doc, { title: footerTitle, ref: effCert, pageNo: p });
+    }
 
     const clean = s => String(s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
     let fnameBase = clean(effCert || f.customer || 'report');
@@ -1391,8 +1410,11 @@ window.BromarAdmin.testtag = {
         @media (max-width: 600px) {
           .tt-cards { grid-template-columns: repeat(3, 1fr); }
           .tt-rpt-top { flex-direction: column; gap: 0.5rem; }
-          .tt-rpt-meta { text-align: left; }
+          .tt-rpt-meta { text-align: left; white-space: normal; }
           .tt-cust { grid-template-columns: 1fr; }
+          .tt-sheet { max-width: 100%; overflow-x: hidden; }
+          .tt-tbl { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .tt-tbl thead, .tt-tbl tbody, .tt-tbl tr { width: max-content; min-width: 100%; }
         }
 `;
   },
