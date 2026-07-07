@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.23  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.24  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.23',
+  version: 'V1.24',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -1301,8 +1301,11 @@ window.BromarAdmin.testtag = {
           .co-mobile-meta { display: block; }
         }
 
-        .tt-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
-        .tt-panel-inner { }
+        .tt-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 1.25rem; align-items: start; max-width: 100%; }
+        .tt-panel-inner, .tt-preview-area { min-width: 0; max-width: 100%; }
+        #tt-preview { min-width: 0; max-width: 100%; overflow-x: hidden; }
+        .tt-form-2col > * { min-width: 0; }
+        .tt-form-row input, .tt-form-row textarea, #tt-scope { max-width: 100%; box-sizing: border-box; }
         .tt-drop {
           display: flex; flex-direction: column; align-items: center;
           padding: 1.25rem; border: 2px dashed var(--border); border-radius: var(--radius-sm);
@@ -1404,7 +1407,7 @@ window.BromarAdmin.testtag = {
         .tt-req-records { font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.5rem; line-height: 1.45; }
 
         @media (max-width: 900px) {
-          .tt-layout { grid-template-columns: 1fr; }
+          .tt-layout { grid-template-columns: minmax(0, 1fr); }
           .tt-sheet { padding: 1rem; }
         }
         @media (max-width: 600px) {
