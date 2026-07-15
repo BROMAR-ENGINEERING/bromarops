@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — LOGIN
-  V1.00
+  V1.01
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="152x152" href="assets/icons/graphite-152.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#ea580c">
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
 
   <link rel="stylesheet" href="css/styles.css">
   <style>
@@ -59,9 +59,7 @@
       font-size: 0.9rem;
       margin-bottom: 1.75rem;
     }
-    .form-field {
-      margin-bottom: 1rem;
-    }
+    .form-field { margin-bottom: 1rem; }
     .form-field label {
       display: block;
       font-size: 0.85rem;
@@ -163,11 +161,10 @@
     </div>
   </div>
 
-  <div class="revision-number">V1.00</div>
+  <div class="revision-number">V1.01</div>
 
   <script src="js/auth.js"></script>
   <script>
-    // Theme toggle (standalone — core.js isn't loaded on this page)
     const THEME_KEY = 'bromar_ops_theme';
     function applyTheme(t) {
       document.documentElement.setAttribute('data-theme', t);
