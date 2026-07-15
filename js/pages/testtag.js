@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.26  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.27  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.26',
+  version: 'V1.27',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -184,7 +184,7 @@ window.BromarAdmin.testtag = {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   },
   /* ── Report scope: split one export into per-location or per-date reports ── */
-  _ttScope: { mode: 'all', value: '' },
+  _ttScope: { mode: 'all', values: [] },
   _ttSessionCache: [],
   _ttParseTS(s) {
     const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*(am|pm)?/i);
@@ -212,29 +212,68 @@ window.BromarAdmin.testtag = {
   },
   _ttScopedAssets() {
     const list = (this._ttModel && this._ttModel.assets) || [];
-    const s = this._ttScope || { mode: 'all' };
-    if (s.mode === 'location') return list.filter(a => (a.location || '') === s.value);
-    if (s.mode === 'date') return list.filter(a => (a.tested || '') === s.value);
-    if (s.mode === 'session') { const ss = (this._ttSessionCache || []).find(x => x.key === s.value); return ss ? ss.assets : list; }
+    const s = this._ttScope || { mode: 'all', values: [] };
+    const v = s.values || [];
+    if (s.mode === 'all' || !v.length) return list;
+    if (s.mode === 'location') return list.filter(a => v.includes(a.location || ''));
+    if (s.mode === 'date') return list.filter(a => v.includes(a.tested || ''));
+    if (s.mode === 'session') {
+      const keep = new Set();
+      (this._ttSessionCache || []).filter(x => v.includes(x.key)).forEach(ss => ss.assets.forEach(a => keep.add(a)));
+      return list.filter(a => keep.has(a));
+    }
     return list;
   },
-  _ttScopeToken() {
-    const s = this._ttScope || { mode: 'all' };
-    if (s.mode === 'all' || !s.value) return '';
-    if (s.mode === 'session') {
-      const ss = (this._ttSessionCache || []).find(x => x.key === s.value);
-      if (ss) { const d = ss.from, p = n => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+  _ttScopeIsAll() {
+    const s = this._ttScope || { mode: 'all', values: [] };
+    if (s.mode === 'all') return true;
+    return (s.values || []).length === this._ttScopeOptions(s.mode).length;
+  },
+  _ttScopeOptions(mode) {
+    const assets = (this._ttModel && this._ttModel.assets) || [];
+    const parse = s => { const m = String(s).match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    if (mode === 'location') {
+      return [...new Set(assets.map(a => a.location).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        .map(l => ({ value: l, label: l, count: assets.filter(a => a.location === l).length }));
     }
-    return String(s.value).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    if (mode === 'date') {
+      return [...new Set(assets.map(a => a.tested).filter(Boolean))]
+        .sort((a, b) => { const da = parse(a), db = parse(b); return (da && db) ? da - db : 0; })
+        .map(d => ({ value: d, label: d, count: assets.filter(a => a.tested === d).length }));
+    }
+    if (mode === 'session') {
+      return (this._ttSessionCache || []).map(s => ({ value: s.key, label: s.label.replace(/\s*\(\d+ items\)$/, ''), count: s.assets.length }));
+    }
+    return [];
+  },
+  _ttScopeToken() {
+    const s = this._ttScope || { mode: 'all', values: [] };
+    const v = s.values || [];
+    if (s.mode === 'all' || !v.length || this._ttScopeIsAll()) return '';
+    const clean = x => String(x).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    const tok = val => {
+      if (s.mode === 'session') {
+        const ss = (this._ttSessionCache || []).find(x => x.key === val);
+        if (ss) { const d = ss.from, p = n => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+      }
+      return clean(val);
+    };
+    const toks = v.map(tok).filter(Boolean);
+    if (toks.length <= 2) return toks.join('_');
+    return toks.slice(0, 2).join('_') + '_plus' + (toks.length - 2);
   },
   _ttEffectiveCert(f) {
     const tok = this._ttScopeToken();
     return (f.cert || '') + (tok ? '-' + tok : '');
   },
   _ttScopedRange(f) {
-    const s = this._ttScope || { mode: 'all' };
-    if (s.mode === 'all') return f.range || '\u2014';
-    if (s.mode === 'session') { const ss = (this._ttSessionCache || []).find(x => x.key === s.value); if (ss) return ss.label.replace(/\s*\(\d+ items\)$/, ''); }
+    const s = this._ttScope || { mode: 'all', values: [] };
+    if (s.mode === 'all' || this._ttScopeIsAll()) return f.range || '\u2014';
+    if (s.mode === 'session' && (s.values || []).length === 1) {
+      const ss = (this._ttSessionCache || []).find(x => x.key === s.values[0]);
+      if (ss) return ss.label.replace(/\s*\(\d+ items\)$/, '');
+    }
     const parse = x => { const m = x.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
     const valid = this._ttScopedAssets().map(a => ({ s: a.tested, d: parse(a.tested || '') })).filter(x => x.d);
     if (!valid.length) return f.range || '\u2014';
@@ -251,21 +290,38 @@ window.BromarAdmin.testtag = {
     }).length;
   },
   _ttPopulateScope() {
-    const sel = document.getElementById('tt-scope');
-    if (!sel || !this._ttModel) return;
-    this._ttScope = { mode: 'all', value: '' };
-    const assets = this._ttModel.assets;
-    const locs = [...new Set(assets.map(a => a.location).filter(Boolean))];
-    const parse = s => { const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
-    const dates = [...new Set(assets.map(a => a.tested).filter(Boolean))].sort((a, b) => { const da = parse(a), db = parse(b); return (da && db) ? da - db : 0; });
-    const sessions = this._ttBuildSessions();
-    const attr = s => this._ttEsc(s).replace(/"/g, '&quot;');
-    let html = '<option value="all|">Whole report (all locations)</option>';
-    if (locs.length > 1) html += '<optgroup label="By location">' + locs.map(l => '<option value="location|' + attr(l) + '">Location: ' + this._ttEsc(l) + '</option>').join('') + '</optgroup>';
-    if (dates.length > 1) html += '<optgroup label="By test date">' + dates.map(d => '<option value="date|' + attr(d) + '">Test date: ' + this._ttEsc(d) + '</option>').join('') + '</optgroup>';
-    if (sessions.length > 1) html += '<optgroup label="By time on site">' + sessions.map(s => '<option value="session|' + s.key + '">' + this._ttEsc(s.label) + '</option>').join('') + '</optgroup>';
-    sel.innerHTML = html;
-    sel.value = 'all|';
+    if (!this._ttModel) return;
+    this._ttBuildSessions();
+    this._ttScope = { mode: 'all', values: [] };
+    const modeSel = document.getElementById('tt-scope-mode');
+    if (modeSel) {
+      const dates = this._ttScopeOptions('date').length;
+      const sessions = this._ttScopeOptions('session').length;
+      let opts = '<option value="all">Whole report (all locations)</option>' +
+        '<option value="location">Split by location</option>';
+      if (dates > 1) opts += '<option value="date">Split by test date</option>';
+      if (sessions > 1) opts += '<option value="session">Split by time on site</option>';
+      modeSel.innerHTML = opts;
+      modeSel.value = 'all';
+    }
+    this._ttRenderScopeList();
+  },
+  _ttRenderScopeList() {
+    const wrap = document.getElementById('tt-scope-list');
+    if (!wrap) return;
+    const s = this._ttScope || { mode: 'all', values: [] };
+    if (s.mode === 'all') { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+    const opts = this._ttScopeOptions(s.mode);
+    const attr = x => this._ttEsc(x).replace(/"/g, '&quot;');
+    wrap.style.display = '';
+    wrap.innerHTML =
+      '<div class="tt-scope-actions"><button type="button" class="tt-mini" data-tt-scope-all="1">Select all</button>' +
+      '<button type="button" class="tt-mini" data-tt-scope-none="1">Clear</button>' +
+      '<span class="tt-scope-count">' + (s.values || []).length + ' of ' + opts.length + ' selected</span></div>' +
+      '<div class="tt-scope-items">' + opts.map(o =>
+        '<label class="tt-checkbox tt-scope-item"><input type="checkbox" class="tt-scope-cb" value="' + attr(o.value) + '"' +
+        ((s.values || []).includes(o.value) ? ' checked' : '') + '> ' + this._ttEsc(o.label) +
+        ' <span class="tt-scope-n">' + o.count + '</span></label>').join('') + '</div>';
   },
   _ttEarliestDue() {
     if (!this._ttModel) return null;
@@ -380,10 +436,19 @@ window.BromarAdmin.testtag = {
               </div>
             </div>
             <div class="tt-form-row"><label>Tested By</label><input type="text" id="tt-tester" placeholder="Technician name"></div>
+            <div class="tt-form-2col">
+              <div class="tt-form-row">
+                <label>Licence Type</label>
+                <select id="tt-licence-type" class="tt-select">
+                  <option value="rec">Company REC</option>
+                  <option value="tech">Technician Licence</option>
+                </select>
+              </div>
+              <div class="tt-form-row"><label>Licence / REC No.</label><input type="text" id="tt-licence" value="REC 30340"></div>
+            </div>
 
             <label class="tt-checkbox"><input type="checkbox" id="tt-showtester"> Record test instrument / meter details</label>
             <div id="tt-instrument-wrap" style="display:none">
-              <div class="tt-form-row"><label>Licence / REC No.</label><input type="text" id="tt-licence" value="REC 30340"></div>
               <div class="section-label" style="margin-top:0.75rem">Test Instrument</div>
               <div class="tt-form-row"><label>Instrument (make / model)</label><input type="text" id="tt-instrument" placeholder="e.g. Metrel MI 3309 PAT"></div>
               <div class="tt-form-row"><label>Instrument Serial</label><input type="text" id="tt-instr-serial" placeholder="Serial number"></div>
@@ -392,12 +457,13 @@ window.BromarAdmin.testtag = {
 
             <div class="section-label" style="margin-top:1.25rem">Report Scope</div>
             <div class="tt-form-row">
-              <label>Include in this report</label>
-              <select id="tt-scope" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem">
-                <option value="all|">Whole report (all locations)</option>
+              <label>Split this report</label>
+              <select id="tt-scope-mode" class="tt-select">
+                <option value="all">Whole report (all locations)</option>
               </select>
             </div>
-            <div style="font-size:0.72rem;color:var(--text-secondary);margin:-0.4rem 0 0.2rem">Split one WinPATS export into separate reports by location or test date. Each scope exports with its own cert &amp; filename.</div>
+            <div id="tt-scope-list" style="display:none"></div>
+            <div style="font-size:0.72rem;color:var(--text-secondary);margin:0.3rem 0 0.2rem">Tick the locations or times to include. Each selection exports with its own cert &amp; filename.</div>
 
             <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
             <div class="tt-form-row">
@@ -681,7 +747,7 @@ window.BromarAdmin.testtag = {
     if (!rec || !rec.report_data) { alert('This report has no stored data to re-open.'); return; }
     const rd = rec.report_data;
     this._ttModel = { head: rd.head || {}, stats: rd.stats || {}, assets: rd.assets || [] };
-    this._ttScope = { mode: 'all', value: '' };
+    this._ttScope = { mode: 'all', values: [] };
     this._ttForm = rd.form || null;
     this._ttView = 'build';
     this._ttRenderTestTag(target);
@@ -706,7 +772,7 @@ window.BromarAdmin.testtag = {
     set('tt-customer', f.customer); set('tt-site', f.site); set('tt-address', f.address);
     set('tt-contact', f.contact); set('tt-phone', f.phone); set('tt-email', f.email);
     set('tt-job', f.job); set('tt-range', f.range); set('tt-cert', f.cert); set('tt-tester', f.tester);
-    set('tt-licence', f.licence); set('tt-instrument', f.instrument); set('tt-instr-serial', f.instrSerial); set('tt-instr-cal', f.instrCal);
+    set('tt-licence-type', f.licenceType || 'rec'); set('tt-licence', f.licence); set('tt-instrument', f.instrument); set('tt-instr-serial', f.instrSerial); set('tt-instr-cal', f.instrCal);
     set('tt-insttype', f.instType); set('tt-note', f.note); set('tt-tech-notes', f.techNotes);
     const ck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
     ck('tt-summary', f.summary); ck('tt-detail', f.detail); ck('tt-oosonly', f.oosOnly); ck('tt-showtester', !!f.showTester);
@@ -749,6 +815,7 @@ window.BromarAdmin.testtag = {
       email: g('tt-email').trim(), range: g('tt-range').trim(),
       cert: g('tt-cert').trim(), job: g('tt-job').trim(), tester: g('tt-tester').trim(),
       licence: g('tt-licence').trim(),
+      licenceType: document.getElementById('tt-licence-type')?.value || 'rec',
       instrument: g('tt-instrument').trim(), instrSerial: g('tt-instr-serial').trim(), instrCal: g('tt-instr-cal').trim(),
       instType: g('tt-insttype') || 'commercial',
       summary: document.getElementById('tt-summary')?.checked ?? true,
@@ -1402,6 +1469,15 @@ window.BromarAdmin.testtag = {
         .tt-due-callout strong { color: var(--accent); font-size: 1rem; }
         .tt-due-callout em { color: var(--text-secondary); font-style: normal; font-size: 0.78rem; }
         .tt-legend td.t { font-weight: 600; white-space: nowrap; width: 18%; color: var(--text-primary); }
+        .tt-select { width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); color: var(--text-primary); font-family: 'Outfit', sans-serif; font-size: 0.82rem; box-sizing: border-box; }
+        #tt-scope-list { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); padding: 0.5rem 0.6rem; margin-top: 0.4rem; }
+        .tt-scope-actions { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
+        .tt-mini { font-family: 'Outfit', sans-serif; font-size: 0.68rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; }
+        .tt-mini:hover { border-color: var(--accent); color: var(--accent); }
+        .tt-scope-count { font-size: 0.68rem; color: var(--text-secondary); margin-left: auto; }
+        .tt-scope-items { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+        .tt-scope-item { font-size: 0.78rem; padding: 0.2rem 0; display: flex; align-items: center; gap: 0.45rem; }
+        .tt-scope-n { margin-left: auto; font-size: 0.66rem; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.4rem; }
         .tt-colour { max-width: 360px; }
         .tt-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 0.5rem; vertical-align: -1px; border: 1px solid rgba(0,0,0,0.15); }
         .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
@@ -1474,6 +1550,15 @@ window.BromarAdmin.testtag = {
         if (el) el.value = this._ttGenCert();
         return;
       }
+      if (e.target.closest('[data-tt-scope-all]')) {
+        const mode = (this._ttScope || {}).mode || 'all';
+        this._ttScope = { mode, values: this._ttScopeOptions(mode).map(o => o.value) };
+        this._ttRenderScopeList(); this._ttRenderReport(host); return;
+      }
+      if (e.target.closest('[data-tt-scope-none]')) {
+        this._ttScope = { mode: (this._ttScope || {}).mode || 'all', values: [] };
+        this._ttRenderScopeList(); this._ttRenderReport(host); return;
+      }
       if (e.target.closest('#tt-refresh')) { this._ttRenderReport(host); return; }
       if (e.target.closest('#tt-pdf')) {
         try { this._ttBuildPDF(); } catch (err) { alert('PDF error: ' + err.message); }
@@ -1483,10 +1568,25 @@ window.BromarAdmin.testtag = {
 
     container.addEventListener('change', (e) => {
       if (e.target.matches('#tt-insttype')) this._ttRenderReport(this._host);
-      if (e.target.matches('#tt-scope')) {
-        const v = e.target.value, i = v.indexOf('|');
-        this._ttScope = { mode: v.slice(0, i), value: v.slice(i + 1) };
+      if (e.target.matches('#tt-scope-mode')) {
+        const mode = e.target.value;
+        this._ttScope = { mode, values: mode === 'all' ? [] : this._ttScopeOptions(mode).map(o => o.value) };
+        this._ttRenderScopeList();
         this._ttRenderReport(this._host);
+      }
+      if (e.target.matches('.tt-scope-cb')) {
+        const vals = [...document.querySelectorAll('.tt-scope-cb')].filter(c => c.checked).map(c => c.value);
+        this._ttScope = { mode: (this._ttScope || {}).mode || 'all', values: vals };
+        const cnt = document.querySelector('.tt-scope-count');
+        if (cnt) cnt.textContent = vals.length + ' of ' + document.querySelectorAll('.tt-scope-cb').length + ' selected';
+        this._ttRenderReport(this._host);
+      }
+      if (e.target.matches('#tt-licence-type')) {
+        const inp = document.getElementById('tt-licence');
+        if (inp) {
+          if (e.target.value === 'rec') { inp.value = 'REC 30340'; inp.placeholder = 'REC 30340'; }
+          else { inp.value = ''; inp.placeholder = 'Technician licence no.'; }
+        }
       }
       if (e.target.matches('#tt-showtester')) {
         const iw = document.getElementById('tt-instrument-wrap');
