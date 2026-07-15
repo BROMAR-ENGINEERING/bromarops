@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — AUTH
-   V1.00
+   V1.01
    Supabase session guard. Loaded before core.js.
    Blocks the SPA until session is confirmed; redirects to login.html if not.
    Exposes:
@@ -11,7 +11,7 @@
 
 (async () => {
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzMwMDE0NzYsImV4cCI6MjA0ODU3NzQ3Nn0.JDDipltIsCbNQ_yTn0i0YxpxHbn98zZrJx6PmMbo0O0';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
 
   // Lazy-load Supabase JS via jsDelivr (unpkg fallback)
   await new Promise((resolve, reject) => {
@@ -55,7 +55,6 @@
     }
   };
 
-  // Auto-redirect to login on session expiry
   client.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT' && !onLogin) location.replace('login.html');
   });
