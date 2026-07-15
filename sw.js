@@ -1,14 +1,21 @@
 /* ============================================================
    BROMAR OPS — SERVICE WORKER
+   V1.02
    Strategy: network-first, fall back to cache when offline.
+   - Cache name bumped so old caches get purged on next visit.
+   - Precache uses allSettled so one 404 doesn't kill the whole install.
    ============================================================ */
 
-const CACHE = 'bromar-ops-runtime';
+const CACHE = 'bromar-ops-v1-02';
 
 const PRECACHE_URLS = [
   'index.html',
+  'login.html',
+  'manifest.json',
   'css/styles.css',
+  'js/auth.js',
   'js/core.js',
+  'js/bromar-report-kit.js',
   'js/pages/dashboard.js',
   'js/pages/jobs.js',
   'js/pages/quotes.js',
@@ -22,15 +29,19 @@ const PRECACHE_URLS = [
   'js/pages/tasks.js',
   'js/pages/materials.js',
   'js/pages/admin.js',
-  'js/pages/testtag.js',
-  'manifest.json'
+  'js/pages/testtag.js'
 ];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
-      cache.addAll(PRECACHE_URLS).catch(() => {})
+      // allSettled = one 404 won't abort the whole precache
+      Promise.allSettled(
+        PRECACHE_URLS.map((url) =>
+          cache.add(url).catch((err) => console.warn('[sw] precache skipped:', url, err.message))
+        )
+      )
     )
   );
 });
@@ -50,8 +61,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+        // only cache successful responses
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() =>
