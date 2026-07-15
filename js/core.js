@@ -1,12 +1,14 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
+   V1.14
    Renders sidebar + header + footer once.
    Pages register via window.BromarPages[id] = { title, render, destroy? }
+   Waits for `bromar-auth-ready` before initialising.
    ============================================================ */
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.13';
+  const APP_VERSION = 'V1.14';
 
   function renderVersion(pageVersion, pageId) {
     const coreEl = document.getElementById('core-version');
@@ -35,6 +37,7 @@ const BromarOps = (() => {
   /* ── ICONS ── */
   const ICON_HOME  = '<svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>';
   const ICON_MENU  = '<svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
+  const ICON_OUT   = '<svg viewBox="0 0 24 24"><path d="M17 16l4-4-4-4M21 12H9M13 21H5a2 2 0 01-2-2V5a2 2 0 012-2h8"/></svg>';
   const ICON_THEME = `
     <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -68,6 +71,8 @@ const BromarOps = (() => {
       </a>
     `).join('');
 
+    const userEmail = window.BromarAuth?.user()?.email || '';
+
     return `
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
@@ -76,6 +81,7 @@ const BromarOps = (() => {
           <span class="brand-text">OPS</span>
         </div>
         <nav class="sidebar-nav">${items}</nav>
+        <div class="sidebar-user" id="sidebar-user" title="${userEmail}">${userEmail}</div>
         <div class="sidebar-footer" id="core-version"></div>
       </aside>
       <div class="sidebar-overlay" id="sidebar-overlay"></div>
@@ -88,6 +94,7 @@ const BromarOps = (() => {
             <span class="page-title" id="page-title"></span>
           </div>
           <div class="header-right">
+            <button class="control-btn" id="sign-out" aria-label="Sign out" title="Sign out">${ICON_OUT}</button>
             <button class="control-btn" id="theme-toggle" aria-label="Toggle theme">${ICON_THEME}</button>
           </div>
         </header>
@@ -142,6 +149,9 @@ const BromarOps = (() => {
     renderVersion();
 
     document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+    document.getElementById('sign-out').addEventListener('click', () => {
+      if (confirm('Sign out of Bromar Ops?')) window.BromarAuth?.signOut();
+    });
 
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -161,4 +171,5 @@ const BromarOps = (() => {
   return { init, navigate, toggleTheme, version: APP_VERSION };
 })();
 
-document.addEventListener('DOMContentLoaded', BromarOps.init);
+// Wait for auth before rendering shell
+document.addEventListener('bromar-auth-ready', BromarOps.init);
