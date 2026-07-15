@@ -9,7 +9,7 @@
 
    VERSION V1.01
    (+0.01 per change; major digit only bumps on explicit major change)
-   ============================================================ */
+   =========================================================== */
 
 (function () {
   'use strict';
