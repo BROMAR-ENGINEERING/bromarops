@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.27  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.28  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.27',
+  version: 'V1.28',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -184,8 +184,7 @@ window.BromarAdmin.testtag = {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   },
   /* ── Report scope: split one export into per-location or per-date reports ── */
-  _ttScope: { mode: 'all', values: [] },
-  _ttSessionCache: [],
+  _ttScope: { mode: 'all', values: [], times: {} },
   _ttParseTS(s) {
     const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*(am|pm)?/i);
     if (!m) return null;
@@ -193,22 +192,35 @@ window.BromarAdmin.testtag = {
     if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
     return new Date(+m[3], +m[2] - 1, +m[1], h, +m[5]);
   },
-  _ttBuildSessions(gapMin) {
-    gapMin = gapMin || 120;
-    const withTS = ((this._ttModel && this._ttModel.assets) || [])
-      .map(a => ({ a, t: this._ttParseTS(a.testedAt) })).filter(x => x.t)
-      .sort((x, y) => x.t - y.t);
-    const sessions = [];
-    let cur = null;
-    for (const { a, t } of withTS) {
-      if (!cur || (t - cur.to) > gapMin * 60000) { cur = { from: t, to: t, assets: [a] }; sessions.push(cur); }
-      else { cur.to = t; cur.assets.push(a); }
+  _ttMinsOf(a) {
+    const t = this._ttParseTS(a.testedAt);
+    return t ? t.getHours() * 60 + t.getMinutes() : null;
+  },
+  _ttHHMM(mins) {
+    const p = n => String(n).padStart(2, '0');
+    return p(Math.floor(mins / 60)) + ':' + p(mins % 60);
+  },
+  _ttToMins(hhmm) {
+    const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  },
+  /* Natural min/max tested time for each date in the export */
+  _ttDayBounds() {
+    const out = {};
+    for (const a of ((this._ttModel && this._ttModel.assets) || [])) {
+      const d = a.tested; const mins = this._ttMinsOf(a);
+      if (!d || mins === null) continue;
+      if (!out[d]) out[d] = { min: mins, max: mins };
+      else { if (mins < out[d].min) out[d].min = mins; if (mins > out[d].max) out[d].max = mins; }
     }
-    const fT = d => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    const fD = d => d.toLocaleDateString('en-GB');
-    sessions.forEach((s, i) => { s.key = 'S' + i; s.label = fD(s.from) + ' ' + fT(s.from) + '\u2013' + fT(s.to) + ' (' + s.assets.length + ' items)'; });
-    this._ttSessionCache = sessions;
-    return sessions;
+    return out;
+  },
+  _ttTimesFor(date) {
+    const s = this._ttScope || {};
+    const t = (s.times || {})[date];
+    if (t) return t;
+    const b = this._ttDayBounds()[date];
+    return b ? { from: this._ttHHMM(b.min), to: this._ttHHMM(b.max) } : { from: '00:00', to: '23:59' };
   },
   _ttScopedAssets() {
     const list = (this._ttModel && this._ttModel.assets) || [];
@@ -217,17 +229,33 @@ window.BromarAdmin.testtag = {
     if (s.mode === 'all' || !v.length) return list;
     if (s.mode === 'location') return list.filter(a => v.includes(a.location || ''));
     if (s.mode === 'date') return list.filter(a => v.includes(a.tested || ''));
-    if (s.mode === 'session') {
-      const keep = new Set();
-      (this._ttSessionCache || []).filter(x => v.includes(x.key)).forEach(ss => ss.assets.forEach(a => keep.add(a)));
-      return list.filter(a => keep.has(a));
+    if (s.mode === 'time') {
+      return list.filter(a => {
+        if (!v.includes(a.tested || '')) return false;
+        const mins = this._ttMinsOf(a);
+        if (mins === null) return true;              // no timestamp: keep with its date
+        const t = this._ttTimesFor(a.tested);
+        const lo = this._ttToMins(t.from), hi = this._ttToMins(t.to);
+        if (lo === null || hi === null) return true;
+        return mins >= lo && mins <= hi;
+      });
     }
     return list;
   },
   _ttScopeIsAll() {
     const s = this._ttScope || { mode: 'all', values: [] };
     if (s.mode === 'all') return true;
-    return (s.values || []).length === this._ttScopeOptions(s.mode).length;
+    const opts = this._ttScopeOptions(s.mode);
+    if ((s.values || []).length !== opts.length) return false;
+    if (s.mode === 'time') {
+      const b = this._ttDayBounds();
+      return (s.values || []).every(d => {
+        const t = this._ttTimesFor(d), bd = b[d];
+        if (!bd) return true;
+        return this._ttToMins(t.from) <= bd.min && this._ttToMins(t.to) >= bd.max;
+      });
+    }
+    return true;
   },
   _ttScopeOptions(mode) {
     const assets = (this._ttModel && this._ttModel.assets) || [];
@@ -237,13 +265,10 @@ window.BromarAdmin.testtag = {
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
         .map(l => ({ value: l, label: l, count: assets.filter(a => a.location === l).length }));
     }
-    if (mode === 'date') {
+    if (mode === 'date' || mode === 'time') {
       return [...new Set(assets.map(a => a.tested).filter(Boolean))]
         .sort((a, b) => { const da = parse(a), db = parse(b); return (da && db) ? da - db : 0; })
         .map(d => ({ value: d, label: d, count: assets.filter(a => a.tested === d).length }));
-    }
-    if (mode === 'session') {
-      return (this._ttSessionCache || []).map(s => ({ value: s.key, label: s.label.replace(/\s*\(\d+ items\)$/, ''), count: s.assets.length }));
     }
     return [];
   },
@@ -253,9 +278,9 @@ window.BromarAdmin.testtag = {
     if (s.mode === 'all' || !v.length || this._ttScopeIsAll()) return '';
     const clean = x => String(x).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
     const tok = val => {
-      if (s.mode === 'session') {
-        const ss = (this._ttSessionCache || []).find(x => x.key === val);
-        if (ss) { const d = ss.from, p = n => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+      if (s.mode === 'time') {
+        const t = this._ttTimesFor(val);
+        return clean(val) + '_' + String(t.from).replace(':', '') + '-' + String(t.to).replace(':', '');
       }
       return clean(val);
     };
@@ -270,9 +295,9 @@ window.BromarAdmin.testtag = {
   _ttScopedRange(f) {
     const s = this._ttScope || { mode: 'all', values: [] };
     if (s.mode === 'all' || this._ttScopeIsAll()) return f.range || '\u2014';
-    if (s.mode === 'session' && (s.values || []).length === 1) {
-      const ss = (this._ttSessionCache || []).find(x => x.key === s.values[0]);
-      if (ss) return ss.label.replace(/\s*\(\d+ items\)$/, '');
+    if (s.mode === 'time' && (s.values || []).length === 1) {
+      const d = s.values[0], t = this._ttTimesFor(d);
+      return d + '  ' + t.from + '\u2013' + t.to;
     }
     const parse = x => { const m = x.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
     const valid = this._ttScopedAssets().map(a => ({ s: a.tested, d: parse(a.tested || '') })).filter(x => x.d);
@@ -291,16 +316,15 @@ window.BromarAdmin.testtag = {
   },
   _ttPopulateScope() {
     if (!this._ttModel) return;
-    this._ttBuildSessions();
-    this._ttScope = { mode: 'all', values: [] };
+    this._ttScope = { mode: 'all', values: [], times: {} };
     const modeSel = document.getElementById('tt-scope-mode');
     if (modeSel) {
       const dates = this._ttScopeOptions('date').length;
-      const sessions = this._ttScopeOptions('session').length;
+      const hasTimes = Object.keys(this._ttDayBounds()).length > 0;
       let opts = '<option value="all">Whole report (all locations)</option>' +
         '<option value="location">Split by location</option>';
       if (dates > 1) opts += '<option value="date">Split by test date</option>';
-      if (sessions > 1) opts += '<option value="session">Split by time on site</option>';
+      if (hasTimes) opts += '<option value="time">Split by time on site</option>';
       modeSel.innerHTML = opts;
       modeSel.value = 'all';
     }
@@ -313,15 +337,51 @@ window.BromarAdmin.testtag = {
     if (s.mode === 'all') { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
     const opts = this._ttScopeOptions(s.mode);
     const attr = x => this._ttEsc(x).replace(/"/g, '&quot;');
+    const sel = s.values || [];
     wrap.style.display = '';
+
+    let items;
+    if (s.mode === 'time') {
+      const b = this._ttDayBounds();
+      items = opts.map(o => {
+        const t = this._ttTimesFor(o.value);
+        const bd = b[o.value];
+        const n = this._ttScopedCountForDate(o.value);
+        return '<div class="tt-scope-row' + (sel.includes(o.value) ? '' : ' off') + '">' +
+          '<label class="tt-checkbox tt-scope-item"><input type="checkbox" class="tt-scope-cb" value="' + attr(o.value) + '"' +
+          (sel.includes(o.value) ? ' checked' : '') + '> ' + this._ttEsc(o.label) +
+          '<span class="tt-scope-n">' + n + ' of ' + o.count + '</span></label>' +
+          '<div class="tt-time-row">' +
+          '<input type="time" class="tt-time" data-tt-time="from" data-tt-date="' + attr(o.value) + '" value="' + t.from + '">' +
+          '<span class="tt-time-sep">to</span>' +
+          '<input type="time" class="tt-time" data-tt-time="to" data-tt-date="' + attr(o.value) + '" value="' + t.to + '">' +
+          (bd ? '<button type="button" class="tt-mini" data-tt-time-reset="' + attr(o.value) + '" title="Reset to full day">\u21ba</button>' : '') +
+          '</div></div>';
+      }).join('');
+    } else {
+      items = opts.map(o =>
+        '<label class="tt-checkbox tt-scope-item"><input type="checkbox" class="tt-scope-cb" value="' + attr(o.value) + '"' +
+        (sel.includes(o.value) ? ' checked' : '') + '> ' + this._ttEsc(o.label) +
+        ' <span class="tt-scope-n">' + o.count + '</span></label>').join('');
+    }
+
     wrap.innerHTML =
       '<div class="tt-scope-actions"><button type="button" class="tt-mini" data-tt-scope-all="1">Select all</button>' +
       '<button type="button" class="tt-mini" data-tt-scope-none="1">Clear</button>' +
-      '<span class="tt-scope-count">' + (s.values || []).length + ' of ' + opts.length + ' selected</span></div>' +
-      '<div class="tt-scope-items">' + opts.map(o =>
-        '<label class="tt-checkbox tt-scope-item"><input type="checkbox" class="tt-scope-cb" value="' + attr(o.value) + '"' +
-        ((s.values || []).includes(o.value) ? ' checked' : '') + '> ' + this._ttEsc(o.label) +
-        ' <span class="tt-scope-n">' + o.count + '</span></label>').join('') + '</div>';
+      '<span class="tt-scope-count">' + sel.length + ' of ' + opts.length + ' selected</span></div>' +
+      '<div class="tt-scope-items">' + items + '</div>';
+  },
+  /* how many items on this date fall inside its current time window */
+  _ttScopedCountForDate(date) {
+    const t = this._ttTimesFor(date);
+    const lo = this._ttToMins(t.from), hi = this._ttToMins(t.to);
+    return ((this._ttModel && this._ttModel.assets) || []).filter(a => {
+      if (a.tested !== date) return false;
+      const mins = this._ttMinsOf(a);
+      if (mins === null) return true;
+      if (lo === null || hi === null) return true;
+      return mins >= lo && mins <= hi;
+    }).length;
   },
   _ttEarliestDue() {
     if (!this._ttModel) return null;
@@ -747,7 +807,7 @@ window.BromarAdmin.testtag = {
     if (!rec || !rec.report_data) { alert('This report has no stored data to re-open.'); return; }
     const rd = rec.report_data;
     this._ttModel = { head: rd.head || {}, stats: rd.stats || {}, assets: rd.assets || [] };
-    this._ttScope = { mode: 'all', values: [] };
+    this._ttScope = { mode: 'all', values: [], times: {} };
     this._ttForm = rd.form || null;
     this._ttView = 'build';
     this._ttRenderTestTag(target);
@@ -1478,6 +1538,12 @@ window.BromarAdmin.testtag = {
         .tt-scope-items { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
         .tt-scope-item { font-size: 0.78rem; padding: 0.2rem 0; display: flex; align-items: center; gap: 0.45rem; }
         .tt-scope-n { margin-left: auto; font-size: 0.66rem; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.4rem; }
+        .tt-scope-row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+        .tt-scope-row:last-child { border-bottom: none; }
+        .tt-scope-row.off { opacity: 0.45; }
+        .tt-time-row { display: flex; align-items: center; gap: 0.35rem; margin: 0.25rem 0 0 1.5rem; }
+        .tt-time { font-family: 'Outfit', sans-serif; font-size: 0.74rem; padding: 0.2rem 0.35rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); }
+        .tt-time-sep { font-size: 0.7rem; color: var(--text-secondary); }
         .tt-colour { max-width: 360px; }
         .tt-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 0.5rem; vertical-align: -1px; border: 1px solid rgba(0,0,0,0.15); }
         .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
@@ -1550,13 +1616,20 @@ window.BromarAdmin.testtag = {
         if (el) el.value = this._ttGenCert();
         return;
       }
+      const tReset = e.target.closest('[data-tt-time-reset]');
+      if (tReset) {
+        const d = tReset.dataset.ttTimeReset;
+        const s = this._ttScope || {}; s.times = s.times || {};
+        delete s.times[d]; this._ttScope = s;
+        this._ttRenderScopeList(); this._ttRenderReport(host); return;
+      }
       if (e.target.closest('[data-tt-scope-all]')) {
         const mode = (this._ttScope || {}).mode || 'all';
-        this._ttScope = { mode, values: this._ttScopeOptions(mode).map(o => o.value) };
+        this._ttScope = { mode, values: this._ttScopeOptions(mode).map(o => o.value), times: (this._ttScope || {}).times || {} };
         this._ttRenderScopeList(); this._ttRenderReport(host); return;
       }
       if (e.target.closest('[data-tt-scope-none]')) {
-        this._ttScope = { mode: (this._ttScope || {}).mode || 'all', values: [] };
+        this._ttScope = { mode: (this._ttScope || {}).mode || 'all', values: [], times: (this._ttScope || {}).times || {} };
         this._ttRenderScopeList(); this._ttRenderReport(host); return;
       }
       if (e.target.closest('#tt-refresh')) { this._ttRenderReport(host); return; }
@@ -1570,15 +1643,28 @@ window.BromarAdmin.testtag = {
       if (e.target.matches('#tt-insttype')) this._ttRenderReport(this._host);
       if (e.target.matches('#tt-scope-mode')) {
         const mode = e.target.value;
-        this._ttScope = { mode, values: mode === 'all' ? [] : this._ttScopeOptions(mode).map(o => o.value) };
+        this._ttScope = { mode, values: mode === 'all' ? [] : this._ttScopeOptions(mode).map(o => o.value), times: (this._ttScope || {}).times || {} };
         this._ttRenderScopeList();
         this._ttRenderReport(this._host);
       }
       if (e.target.matches('.tt-scope-cb')) {
         const vals = [...document.querySelectorAll('.tt-scope-cb')].filter(c => c.checked).map(c => c.value);
-        this._ttScope = { mode: (this._ttScope || {}).mode || 'all', values: vals };
+        this._ttScope = { mode: (this._ttScope || {}).mode || 'all', values: vals, times: (this._ttScope || {}).times || {} };
         const cnt = document.querySelector('.tt-scope-count');
         if (cnt) cnt.textContent = vals.length + ' of ' + document.querySelectorAll('.tt-scope-cb').length + ' selected';
+        document.querySelectorAll('.tt-scope-row').forEach(r => {
+          const cb = r.querySelector('.tt-scope-cb');
+          r.classList.toggle('off', !(cb && cb.checked));
+        });
+        this._ttRenderReport(this._host);
+      }
+      if (e.target.matches('.tt-time')) {
+        const date = e.target.dataset.ttDate, which = e.target.dataset.ttTime;
+        const s = this._ttScope || {}; s.times = s.times || {};
+        const cur = this._ttTimesFor(date);
+        s.times[date] = { from: which === 'from' ? e.target.value : cur.from, to: which === 'to' ? e.target.value : cur.to };
+        this._ttScope = s;
+        this._ttRenderScopeList();
         this._ttRenderReport(this._host);
       }
       if (e.target.matches('#tt-licence-type')) {
