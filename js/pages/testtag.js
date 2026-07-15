@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.25  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.26  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.25',
+  version: 'V1.26',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -1198,13 +1198,19 @@ window.BromarAdmin.testtag = {
     y = doc.lastAutoTable.finalY + 8;
 
     if (f.detail) {
+      /* Always start the equipment detail on a fresh page */
+      doc.addPage(); y = TOP;
       doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...navy);
-      if (y > BOT - 30) { doc.addPage(); y = TOP; }
       doc.text('Equipment Detail by Location', M, y); y += 4;
       for (const g of boards) {
         let items = g.items;
         if (f.oosOnly) items = items.filter(a => a.state === 'oos' || a.state === 'fail');
         if (!items.length) continue;
+        /* Keep the block header with at least 3 rows: header rows (~11mm)
+           + 3 body rows (~4.7mm each) must fit, else start a new page. */
+        const rowH = 4.7, headH = 11;
+        const minRows = Math.min(3, items.length);
+        if (y + 3 + headH + minRows * rowH > BOT) { doc.addPage(); y = TOP; }
         const hStyle = { fillColor: [68, 71, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 };
         doc.autoTable({
           startY: y + 3, margin: tbMargin,
@@ -1216,6 +1222,7 @@ window.BromarAdmin.testtag = {
           body: items.map(a => [a.barcode, a.description, a.testPerformed, a.measure, a.status, a.due || '\u2014']),
           styles: { fontSize: 7.5, cellPadding: 1.6 }, headStyles: { fillColor: orange, fontSize: 7.5 },
           alternateRowStyles: { fillColor: [250, 251, 253] },
+          rowPageBreak: 'avoid',
           columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' } },
           didParseCell: d => {
             if (d.section === 'body' && d.column.index === 4) {
@@ -1231,7 +1238,7 @@ window.BromarAdmin.testtag = {
     }
 
     /* ── Compliance / Technician / Important — consistent final page ── */
-    doc.addPage(); y = TOP;
+    doc.addPage(); y = TOP + 4;
     const noteSection = (heading, bodyTxt) => {
       ensure(16);
       doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...navy);
