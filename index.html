@@ -1,3 +1,7 @@
+<!--
+  BROMAR OPS — MAIN SHELL
+  V1.15
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,6 +33,12 @@
 </head>
 <body>
   <div id="app"></div>
+
+  <!-- Auth first: blocks SPA render until session is confirmed -->
+  <script src="js/auth.js"></script>
+
+  <!-- Shared report styling kit (must load before pages that use it) -->
+  <script src="tools/bromar-report-kit.js"></script>
 
   <!-- Page modules -->
   <script src="js/pages/dashboard.js"></script>
