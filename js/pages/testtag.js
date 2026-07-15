@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.24  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.25  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.24',
+  version: 'V1.25',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -45,7 +45,7 @@ window.BromarAdmin.testtag = {
     hdrPhoneRec: 'PH: 9335 5344    REC: 30340'
   },
   _ttLogoColour: 'assets/logo/bromar-logo-colour.png',
-  _ttLogoWhite: 'assets/logo/bromar-logo-reverse-white.png',
+  _ttLogoWhite: 'assets/logo/bromar-logo-white.png',
   _ttLogoDataUrl: null,
   _ttLogoDims: null,
 
@@ -992,7 +992,7 @@ window.BromarAdmin.testtag = {
     if (!this._ttModel) return;
     const RK = window.BromarReportKit;
     if (!RK) { alert('Report kit (bromar-report-kit.js) is not loaded.'); return; }
-    RK.configure({ logoColour: 'assets/logo/bromar-logo-colour.png', logoReverse: 'assets/logo/bromar-logo-reverse-white.png' });
+    RK.configure({ logoColour: 'assets/logo/bromar-logo-colour.png', logoReverse: 'assets/logo/bromar-logo-white.png' });
     await this._ttLoadJsPDF();
     const f = this._ttReadForm();
     const boards = this._ttGroupBoards(this._ttScopedAssets());
