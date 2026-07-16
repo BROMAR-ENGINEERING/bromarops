@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — LOGIN
-  V1.01
+  V1.02
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -36,94 +36,44 @@
       box-shadow: 0 8px 32px var(--shadow);
       animation: fadeIn 0.5s ease backwards;
     }
-    .login-logo {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 1.5rem;
-    }
+    .login-logo { display: flex; justify-content: center; margin-bottom: 1.5rem; }
     .login-logo img { height: 36px; width: auto; }
     .login-logo .light-logo { display: block; }
     .login-logo .dark-logo  { display: none; }
     [data-theme="dark"] .login-logo .light-logo { display: none; }
     [data-theme="dark"] .login-logo .dark-logo  { display: block; }
-    .login-title {
-      text-align: center;
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin-bottom: 0.25rem;
-    }
-    .login-subtitle {
-      text-align: center;
-      color: var(--text-secondary);
-      font-size: 0.9rem;
-      margin-bottom: 1.75rem;
-    }
+    .login-title { text-align: center; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+    .login-subtitle { text-align: center; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.75rem; }
     .form-field { margin-bottom: 1rem; }
-    .form-field label {
-      display: block;
-      font-size: 0.85rem;
-      font-weight: 600;
-      margin-bottom: 0.4rem;
-      color: var(--text-primary);
-    }
+    .form-field label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-primary); }
     .form-field input {
-      width: 100%;
-      padding: 0.75rem 1rem;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--bg-main);
-      color: var(--text-primary);
-      font-family: 'Outfit', sans-serif;
-      outline: none;
+      width: 100%; padding: 0.75rem 1rem;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-main); color: var(--text-primary);
+      font-family: 'Outfit', sans-serif; outline: none;
       transition: border 0.2s, box-shadow 0.2s;
     }
-    .form-field input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
-    }
+    .form-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(234,88,12,0.1); }
     .login-error {
       display: none;
-      background: var(--error-bg);
-      color: var(--error);
+      background: var(--error-bg); color: var(--error);
       border-radius: var(--radius-sm);
-      padding: 0.7rem 0.9rem;
-      font-size: 0.85rem;
-      margin-bottom: 1rem;
+      padding: 0.7rem 0.9rem; font-size: 0.85rem; margin-bottom: 1rem;
     }
     .login-error.show { display: block; }
     .login-btn {
-      width: 100%;
-      padding: 0.9rem;
-      border: none;
+      width: 100%; padding: 0.9rem; border: none;
       border-radius: var(--radius-sm);
       background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
-      color: white;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 600;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      color: white; font-family: 'Outfit', sans-serif;
+      font-weight: 600; font-size: 1rem;
+      cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
       margin-top: 0.5rem;
     }
-    .login-btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(234,88,12,0.3);
-    }
+    .login-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(234,88,12,0.3); }
     .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .login-foot {
-      text-align: center;
-      margin-top: 1.5rem;
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-    }
-    .login-foot a { color: var(--accent); text-decoration: none; }
-    .login-foot a:hover { text-decoration: underline; }
-    .theme-toggle-corner {
-      position: fixed;
-      top: calc(1rem + env(safe-area-inset-top));
-      right: 1rem;
-    }
+    .login-foot { text-align: center; margin-top: 1.5rem; font-size: 0.8rem; color: var(--text-secondary); }
+    .theme-toggle-corner { position: fixed; top: calc(1rem + env(safe-area-inset-top)); right: 1rem; }
   </style>
 </head>
 <body>
@@ -161,7 +111,7 @@
     </div>
   </div>
 
-  <div class="revision-number">V1.01</div>
+  <div class="revision-number">V1.02</div>
 
   <script src="js/auth.js"></script>
   <script>
@@ -189,7 +139,7 @@
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
 
-        const { error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
+        const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
 
         if (error) {
           errEl.textContent = error.message || 'Sign-in failed.';
@@ -198,7 +148,25 @@
           btn.textContent = 'Sign in';
           return;
         }
-        location.replace('index.html');
+
+        // Wait until session is actually confirmed by getSession() before redirecting.
+        // This prevents the race where index.html loads before the session is persisted.
+        let tries = 0;
+        while (tries < 20) {
+          const { data: { session } } = await window.supabaseClient.auth.getSession();
+          if (session) {
+            location.replace('index.html');
+            return;
+          }
+          await new Promise(r => setTimeout(r, 100));
+          tries++;
+        }
+
+        // Fallback: session never confirmed
+        errEl.textContent = 'Signed in but session not confirmed. Please refresh.';
+        errEl.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
       });
     });
   </script>
