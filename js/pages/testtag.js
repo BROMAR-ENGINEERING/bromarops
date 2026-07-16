@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.28  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.29  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.28',
+  version: 'V1.29',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -40,7 +40,7 @@ window.BromarAdmin.testtag = {
     short: 'Bromar Electrical Services',
     addr: 'Western Ave, Westmeadows 3049, Australia',
     phone: '03 9335 5344', web: 'www.bromar.com.au', email: 'admin@bromar.com.au',
-    hdrName: 'Bromar Electrical Services Pty Ltd',
+    hdrName: 'Bromar Electrical Services (Aust)',
     hdrAddr: '2/98-108 Western Ave, Westmeadows 3049',
     hdrPhoneRec: 'PH: 9335 5344    REC: 30340'
   },
@@ -87,7 +87,7 @@ window.BromarAdmin.testtag = {
 
   /* ── Applicable standards (shown at the start of the report) ── */
   _ttStandardsIntro: 'The testing presented in this report was conducted in accordance with relevant Australian standards, Energy Safe Victoria publications, and Work Health and Safety regulations.',
-  _ttImportant: 'This report must be retained for a minimum of 7 years in accordance with AS/NZS 3760:2022. The results recorded reflect the condition of the equipment at the time of testing only. All equipment must be re-inspected and re-tested on or before the due dates listed in this report. Any item marked Out of Service (OOS) has been withdrawn from service and must not be used until it has been inspected, repaired and successfully re-tested by a competent person. This report covers only the equipment listed herein; any equipment not presented for testing is excluded. Retain this document as evidence of compliance and make it available on request to authorised parties.',
+  _ttImportant: 'This report must be retained for a minimum of 7 years in accordance with AS/NZS 3760:2022. The results recorded reflect the condition of the equipment at the time of testing only. Any item marked Out of Service (OOS) has been withdrawn from service and must not be used until it has been inspected, repaired and successfully re-tested by a competent person. This report covers only the equipment listed herein; any equipment not presented for testing is excluded. Retain this document as evidence of compliance and make it available on request to authorised parties.',
   _ttLegend: [
     ['OOS', 'Out of Service — equipment withdrawn from use; not to be used until repaired and re-tested'],
     ['RCD', 'Residual Current Device'],
@@ -478,10 +478,10 @@ window.BromarAdmin.testtag = {
             <div class="tt-form-row"><label>Site Name</label><input type="text" id="tt-site" placeholder="e.g. Dandenong South Plant"></div>
             <div class="tt-form-row"><label>Site Address</label><input type="text" id="tt-address"></div>
             <div class="tt-form-2col">
-              <div class="tt-form-row"><label>Contact</label><input type="text" id="tt-contact"></div>
+              <div class="tt-form-row"><label>Contact <span class="tt-reqd">*</span></label><input type="text" id="tt-contact"></div>
               <div class="tt-form-row"><label>Phone</label><input type="text" id="tt-phone"></div>
             </div>
-            <div class="tt-form-row"><label>Contact Email</label><input type="text" id="tt-email"></div>
+            <div class="tt-form-row"><label>Contact Email <span class="tt-reqd">*</span></label><input type="text" id="tt-email"></div>
             <div class="tt-form-2col">
               <div class="tt-form-row"><label>Job Number</label><input type="text" id="tt-job" placeholder="e.g. 5133"></div>
               <div class="tt-form-row"><label>Date Range</label><input type="text" id="tt-range"></div>
@@ -495,7 +495,7 @@ window.BromarAdmin.testtag = {
                 </button>
               </div>
             </div>
-            <div class="tt-form-row"><label>Tested By</label><input type="text" id="tt-tester" placeholder="Technician name"></div>
+            <div class="tt-form-row"><label>Tested By <span class="tt-reqd">*</span></label><input type="text" id="tt-tester" placeholder="Technician name"></div>
             <div class="tt-form-2col">
               <div class="tt-form-row">
                 <label>Licence Type</label>
@@ -527,7 +527,7 @@ window.BromarAdmin.testtag = {
 
             <div class="section-label" style="margin-top:1.25rem">Standards &amp; Requirements</div>
             <div class="tt-form-row">
-              <label>Installation Type</label>
+              <label>Site Type</label>
               <select id="tt-insttype" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem">
                 <option value="commercial">Commercial / Industrial (AS/NZS 3760)</option>
                 <option value="construction">Construction / Demolition (AS/NZS 3012)</option>
@@ -687,6 +687,7 @@ window.BromarAdmin.testtag = {
     if (!this._ttModel) return;
     const f = this._ttReadForm();
     if (!f.cert) { if (showNote) this._ttFlash('Add a certificate number first.', 'error'); return; }
+    if (showNote && !this._ttValidate(f)) return;
     const effCert = this._ttEffectiveCert(f);
     const assets = this._ttScopedAssets();
     const boards = this._ttGroupBoards(assets);
@@ -726,6 +727,21 @@ window.BromarAdmin.testtag = {
     }
   },
 
+  /* ── Required fields: Tested By, Contact, Contact Email ── */
+  _ttValidate(f) {
+    const missing = [];
+    if (!f.tester) missing.push({ id: 'tt-tester', label: 'Tested By' });
+    if (!f.contact) missing.push({ id: 'tt-contact', label: 'Contact' });
+    if (!f.email) missing.push({ id: 'tt-email', label: 'Contact Email' });
+    document.querySelectorAll('.tt-invalid').forEach(el => el.classList.remove('tt-invalid'));
+    missing.forEach(m => document.getElementById(m.id)?.classList.add('tt-invalid'));
+    if (missing.length) {
+      this._ttFlash('Required: ' + missing.map(m => m.label).join(', '), 'error');
+      document.getElementById(missing[0].id)?.focus();
+      return false;
+    }
+    return true;
+  },
   _ttFlash(msg, type) {
     const el = document.getElementById('tt-save-feedback');
     if (!el) return;
@@ -1117,6 +1133,7 @@ window.BromarAdmin.testtag = {
 
   async _ttBuildPDF() {
     if (!this._ttModel) return;
+    if (!this._ttValidate(this._ttReadForm())) return;
     const RK = window.BromarReportKit;
     if (!RK) { alert('Report kit (bromar-report-kit.js) is not loaded.'); return; }
     RK.configure({ logoColour: 'assets/logo/bromar-logo-colour.png', logoReverse: 'assets/logo/bromar-logo-white.png' });
@@ -1544,6 +1561,8 @@ window.BromarAdmin.testtag = {
         .tt-time-row { display: flex; align-items: center; gap: 0.35rem; margin: 0.25rem 0 0 1.5rem; }
         .tt-time { font-family: 'Outfit', sans-serif; font-size: 0.74rem; padding: 0.2rem 0.35rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); }
         .tt-time-sep { font-size: 0.7rem; color: var(--text-secondary); }
+        .tt-reqd { color: var(--accent); font-weight: 700; margin-left: 0.1rem; }
+        .tt-invalid { border-color: var(--error) !important; box-shadow: 0 0 0 2px rgba(220,38,38,0.12); }
         .tt-colour { max-width: 360px; }
         .tt-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 0.5rem; vertical-align: -1px; border: 1px solid rgba(0,0,0,0.15); }
         .tt-std-intro { font-size: 0.78rem; color: var(--text-primary); margin: 0 0 0.5rem; }
