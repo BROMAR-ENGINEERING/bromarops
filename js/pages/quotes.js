@@ -1,14 +1,15 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.38 — Global markup now defaults to 0% on new quotes (was a
-   silent 25%). Labour sections get an explicit "Client sees"
-   choice: full table / line items without rates / lump sum only.
+   V1.39 — New `nickname` field: a short job description shown
+   beside the quote number in the dashboard list, the preview and
+   the PDF, so a document is identifiable without opening it.
+   Requires: alter table quotes add column if not exists nickname text default '';
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.38',
+  version: 'V1.39',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -87,6 +88,7 @@ window.BromarPages.quotes = {
         docType: r.doc_type,
         rootNumber: r.root_number,
         version: r.version,
+        nickname: r.nickname || '',
         siteName: r.site_name || '',
         client: r.client || '',
         clientEmail: r.client_email || '',
@@ -113,6 +115,7 @@ window.BromarPages.quotes = {
         doc_type: q.docType || 'quote',
         root_number: q.rootNumber,
         version: q.version,
+        nickname: q.nickname || '',
         site_name: q.siteName || '',
         client: q.client || '',
         client_email: q.clientEmail || '',
@@ -396,7 +399,7 @@ window.BromarPages.quotes = {
         <div class="card">
           <div class="quote-toolbar">
             <div class="search-wrap">
-              <input type="text" id="quote-search" class="quote-input" placeholder="Search by number, client, or site…" value="${escape(searchTerm)}">
+              <input type="text" id="quote-search" class="quote-input" placeholder="Search by number, description, client, or site…" value="${escape(searchTerm)}">
             </div>
             <div class="filter-pills">
               ${pill('all','All Statuses')} ${pill('accepted','Accepted','green')} ${pill('pending','Pending','amber')} ${pill('inProgress','In Progress','red')}
@@ -428,7 +431,7 @@ window.BromarPages.quotes = {
         const matchesStatus = filterStatus === 'all' || eff === filterStatus;
         const matchesDoc = filterDocType === 'all' || q.docType === filterDocType;
         const term = searchTerm.toLowerCase();
-        const matchesSearch = !term || displayNumber(q).toLowerCase().includes(term) || q.client.toLowerCase().includes(term) || (q.siteName || '').toLowerCase().includes(term);
+        const matchesSearch = !term || displayNumber(q).toLowerCase().includes(term) || q.client.toLowerCase().includes(term) || (q.siteName || '').toLowerCase().includes(term) || (q.nickname || '').toLowerCase().includes(term);
         return matchesStatus && matchesDoc && matchesSearch;
       }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     }
@@ -468,6 +471,7 @@ window.BromarPages.quotes = {
           <div class="row-main">
             <div class="row-top">
               <span class="row-number">${escape(displayNumber(q))}</span>
+              ${q.nickname ? `<span class="row-nick">${escape(q.nickname)}</span>` : ''}
               ${isEstimate ? '<span class="row-badge badge-est">Estimate</span>' : ''}
               <span class="row-badge badge-${color}">${statusLabel(q)}</span>
               ${convertedBadge}
@@ -520,7 +524,8 @@ window.BromarPages.quotes = {
             <div class="form-row" id="nq-site-row" style="display:none"><label>Site (optional)</label>
               <select id="nq-site" class="quote-input" autocomplete="off"><option value="">— No site / manual —</option></select>
             </div>
-            <div class="form-row"><label>Site Name / Nickname</label><input type="text" id="nq-sitename" class="quote-input" placeholder="e.g. Building A Switchboard Upgrade" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+            <div class="form-row"><label>Short Description</label><input type="text" id="nq-nickname" class="quote-input" placeholder="e.g. Pump Station Upgrade" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+            <div class="form-row"><label>Site Name</label><input type="text" id="nq-sitename" class="quote-input" placeholder="e.g. TYC Somerton" autocomplete="off" autocorrect="off" spellcheck="false"></div>
             <div class="form-row"><label>Prepared By</label>
               <select id="nq-prepby" class="quote-input">
                 <option value="">— Select —</option>
@@ -561,6 +566,7 @@ window.BromarPages.quotes = {
       const collect = () => {
         const q = {
           id: uid(), docType, rootNumber: number, version: 1,
+          nickname: document.getElementById('nq-nickname').value.trim(),
           client: 'Unassigned', clientEmail: '',
           siteName: '', siteContactName: '', siteContactPhone: '', siteContactEmail: '', siteAddress: '',
           preparedBy: document.getElementById('nq-prepby').value,
@@ -621,7 +627,7 @@ window.BromarPages.quotes = {
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar">
             <h1>${escape(displayNumber(q))} ${docTag} ${statusTag}</h1>
-            <p class="subtitle">${escape(q.siteName || q.client)} · ${revLabel} · ${escape(q.preparedBy || 'No preparer')}</p>
+            <p class="subtitle">${escape(q.nickname || q.siteName || q.client)} · ${revLabel} · ${escape(q.preparedBy || 'No preparer')}</p>
           </div>
           <div class="editor-actions">
             <span class="save-indicator" id="save-indicator">Saved</span>
@@ -774,6 +780,9 @@ window.BromarPages.quotes = {
         <div class="panel-head"><h2>Client &amp; Site Details</h2></div>
         <div class="section-label">Document</div>
         <div class="form-grid">
+          <div class="form-row form-row-wide"><label>Short Description</label><input id="d-nickname" class="quote-input" value="${escape(q.nickname || '')}" placeholder="e.g. Pump Station Upgrade" autocomplete="off">
+            <span class="field-hint">Shown beside the quote number in the list and on the PDF.</span>
+          </div>
           <div class="form-row"><label>Document Type</label>
             <select id="d-doctype" class="quote-input">
               <option value="quote" ${q.docType === 'quote' ? 'selected' : ''}>Quote</option>
@@ -818,7 +827,7 @@ window.BromarPages.quotes = {
 
         <div class="section-label">Site</div>
         <div class="form-grid">
-          <div class="form-row"><label>Site Name / Nickname</label><input id="d-sitename" class="quote-input" value="${escape(q.siteName || '')}"></div>
+          <div class="form-row"><label>Site Name</label><input id="d-sitename" class="quote-input" value="${escape(q.siteName || '')}"></div>
           <div class="form-row"><label>Site Address</label><input id="d-siteaddr" class="quote-input" value="${escape(q.siteAddress || '')}"></div>
           <div class="form-row"><label>Site Contact Name</label><input id="d-sitecname" class="quote-input" value="${escape(q.siteContactName || '')}"></div>
           <div class="form-row"><label>Site Contact Phone</label><input id="d-sitecphone" class="quote-input" value="${escape(q.siteContactPhone || '')}"></div>
@@ -977,6 +986,7 @@ window.BromarPages.quotes = {
     function bindDetails(q) {
       const map = {
         'd-doctype': v => q.docType = v,
+        'd-nickname': v => q.nickname = v,
         'd-prepby': v => q.preparedBy = v,
         'd-status': v => q.status = v,
         'd-markup': v => q.globalMarkup = Number(v) || 0,
@@ -1159,7 +1169,7 @@ window.BromarPages.quotes = {
       container.innerHTML = `
         <div class="page-title-wrapper editor-header preview-chrome">
           <button class="btn-secondary" id="back-btn">← Back</button>
-          <div class="editor-titlebar"><h1>Preview</h1><p class="subtitle">${escape(displayNumber(q))} — ${escape(q.siteName || q.client)}</p></div>
+          <div class="editor-titlebar"><h1>Preview</h1><p class="subtitle">${escape(displayNumber(q))} — ${escape(q.nickname || q.siteName || q.client)}</p></div>
           <div class="editor-actions">
             <button class="btn-secondary" id="edit-from-preview">Edit</button>
             <button class="btn-primary" id="export-from-preview">Export PDF</button>
@@ -1211,9 +1221,12 @@ window.BromarPages.quotes = {
             </div>
           </div>
           <div class="doc-number-block">
-            <div>
+            <div class="doc-number-left">
               <div class="doc-type-tag ${isEst ? 'type-est' : 'type-quote'}">${isEst ? 'ESTIMATE' : 'QUOTATION'}</div>
-              <div class="doc-number">${escape(displayNumber(q))}</div>
+              <div class="doc-number-line">
+                <div class="doc-number">${escape(displayNumber(q))}</div>
+                ${q.nickname ? `<div class="doc-desc">${escape(q.nickname)}</div>` : ''}
+              </div>
             </div>
             <div class="doc-number-meta">
               <div><span class="lbl">Prepared by</span> <strong>${escape(q.preparedBy || '—')}</strong></div>
@@ -1286,7 +1299,7 @@ window.BromarPages.quotes = {
       const q = quotes.find(x => x.id === id); if (!q) return;
       if (!q.publishedAt) { toast('Publish the document before emailing.'); return; }
       const label = docLabel(q);
-      const subject = `${label} ${displayNumber(q)} — ${q.siteName || q.client}`;
+      const subject = `${label} ${displayNumber(q)} — ${q.nickname || q.siteName || q.client}`;
       const body =
 `Dear ${q.siteContactName || q.client},
 
@@ -1381,7 +1394,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
       const docNumber = displayNumber(q);
       const docDateStr = formatDate(q.publishedAt || q.createdAt);
       const moduleVersion = window.BromarPages.quotes.version;
-      const footerLeft = `${COMPANY.name} — ${docLabel(q)} ${docNumber}`;
+      const footerLeft = `${COMPANY.name} — ${docLabel(q)} ${docNumber}${q.nickname ? ' · ' + q.nickname : ''}`;
       const sectionsHtml = visible.map(s => {
         const meta = SECTION_TYPES[s.type], d = s.data || {};
         let body = '';
@@ -1431,7 +1444,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         return `<section${splittable}><h3>${escape(s.name)}</h3>${body}</section>`;
       }).join('');
       const logoUrl = new URL(COMPANY.logoLight, window.location.href).href;
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${docLabel(q)} ${docNumber}</title>
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${docLabel(q)} ${docNumber}${q.nickname ? ' — ' + escape(q.nickname) : ''}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap">
 <style>
   /* ── PAGE SETUP ──
@@ -1469,6 +1482,9 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
   .company-ids { color: #9a9aa2; font-size: 7.5pt; margin-top: 2px; }
 
   .number-block { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 12px 0 10px; border-bottom: 1px solid #eee; }
+  .number-left { min-width: 0; }
+  .number-line { display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; }
+  .doc-desc { font-size: 11.5pt; font-weight: 600; color: #5a5a60; letter-spacing: -0.01em; }
   .type-tag { display: inline-block; font-size: 8pt; font-weight: 800; letter-spacing: 0.14em; padding: 3px 9px; border-radius: 3px; color: #fff; background: #ea580c; margin-bottom: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .type-tag.type-est { background: #1a1a1e; }
   .doc-number { font-size: 26pt; font-weight: 800; color: #ea580c; letter-spacing: -0.02em; font-family: 'JetBrains Mono', monospace; line-height: 1; }
@@ -1577,9 +1593,12 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
           </div>
         </div>
         <div class="number-block">
-          <div>
+          <div class="number-left">
             <div class="type-tag ${isEst ? 'type-est' : ''}">${isEst ? 'ESTIMATE' : 'QUOTATION'}</div>
-            <div class="doc-number">${escape(docNumber)}</div>
+            <div class="number-line">
+              <div class="doc-number">${escape(docNumber)}</div>
+              ${q.nickname ? `<div class="doc-desc">${escape(q.nickname)}</div>` : ''}
+            </div>
           </div>
           <div class="number-meta">
             <div><span class="lbl">Prepared by</span><strong>${escape(q.preparedBy || '—')}</strong></div>
@@ -1693,6 +1712,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .row-status { width: 6px; height: 36px; border-radius: 3px; }
         .row-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; flex-wrap: wrap; }
         .row-number { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); }
+        .row-nick { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
         .row-badge { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; }
         .badge-green { background: var(--success-bg); color: var(--success); }
         .badge-amber { background: #fef3c7; color: #92400e; }
@@ -1767,6 +1787,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .preset-btn { padding: 0.5rem 0.9rem; font-size: 0.8rem; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; }
         .form-row { display: flex; flex-direction: column; gap: 0.35rem; }
+        .form-row-wide { grid-column: 1 / -1; }
         .form-row label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
         .hint { font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin-bottom: 0.5rem; }
         .field-hint { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-top: 0.1rem; }
@@ -1834,6 +1855,9 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .doc-company-name { font-weight: 700; font-size: 13.5px; color: #1a1a1e; margin-bottom: 2px; }
         .doc-company-ids { color: #888; font-size: 11px; margin-top: 4px; }
         .doc-number-block { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 22px 0; border-bottom: 1px solid #eee; }
+        .doc-number-left { min-width: 0; }
+        .doc-number-line { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+        .doc-desc { font-size: 16px; font-weight: 600; color: #5a5a60; letter-spacing: -0.01em; }
         .doc-type-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.14em; padding: 4px 12px; border-radius: 4px; color: white; background: #ea580c; margin-bottom: 10px; }
         .doc-type-tag.type-est { background: #1a1a1e; }
         .doc-number { font-size: 34px; font-weight: 800; color: #ea580c; letter-spacing: -0.02em; font-family: 'JetBrains Mono', 'Menlo', monospace; line-height: 1; }
