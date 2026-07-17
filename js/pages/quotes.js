@@ -1,15 +1,15 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.35 — Correct logo asset paths (assets/logo/...) and
-   make preview pricing tables scroll horizontally on mobile.
-   Client & site selection from Supabase (clients,
-   client_sites) populates quote fields. Supabase-backed.
+   V1.36 — Fix silent save failures: resolve the Supabase client
+   lazily at query time (was captured once at render, before the
+   client existed, making every save a silent no-op), and verify
+   every write with .select() so RLS/no-op failures surface.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.35',
+  version: 'V1.36',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -18,7 +18,18 @@ window.BromarPages.quotes = {
     /* ── CONSTANTS ── */
     const QUOTE_PREFIX = 'BQ';
     const QUOTE_PAD = 6;
-    const supabase = window.supabaseClient;
+
+    /* Resolve the Supabase client lazily — never capture it at
+       render time, it may not exist yet. Waits briefly if needed. */
+    function sb() { return window.supabaseClient || null; }
+    async function waitForSupabase(timeoutMs = 8000) {
+      const started = Date.now();
+      while (!window.supabaseClient) {
+        if (Date.now() - started > timeoutMs) return null;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return window.supabaseClient;
+    }
 
     const COMPANY = {
       name: 'Bromar Electrical Services Pty Ltd',
@@ -140,7 +151,8 @@ window.BromarPages.quotes = {
 
     /* ── PERSISTENCE ── */
     async function loadAll() {
-      if (!supabase) { toast('Supabase not available'); return; }
+      const supabase = await waitForSupabase();
+      if (!supabase) { toast('Supabase client unavailable — changes will NOT be saved'); return; }
       try {
         const [qRes, fRes, cRes, sRes] = await Promise.all([
           supabase.from('quotes').select('*').order('created_at', { ascending: false }),
@@ -169,41 +181,57 @@ window.BromarPages.quotes = {
       saveTimer = setTimeout(flushSaves, 500);
     }
     async function flushSaves() {
-      if (!supabase || pendingSaves.size === 0) return;
+      const supabase = sb();
+      if (pendingSaves.size === 0) return;
+      if (!supabase) { toast('Not connected — changes not saved'); return; }
       const batch = Array.from(pendingSaves.values()).map(quoteToRow);
       pendingSaves.clear();
       try {
-        const { error } = await supabase.from('quotes').upsert(batch);
+        const { data, error } = await supabase.from('quotes').upsert(batch).select();
         if (error) throw error;
+        if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
         const el = document.getElementById('save-indicator');
         if (el) { el.textContent = 'Saved'; el.classList.remove('saving'); el.classList.add('saved'); setTimeout(() => el.classList.remove('saved'), 1200); }
       } catch (e) {
         console.error('Save failed', e);
+        const el = document.getElementById('save-indicator');
+        if (el) { el.textContent = 'NOT SAVED'; el.classList.remove('saving', 'saved'); el.classList.add('save-error'); }
         toast('Save failed — check console');
       }
     }
     async function saveQuoteNow(q) {
-      if (!supabase) return;
+      const supabase = sb();
+      if (!supabase) { toast('Not connected — changes not saved'); return false; }
       try {
-        const { error } = await supabase.from('quotes').upsert(quoteToRow(q));
+        const { data, error } = await supabase.from('quotes').upsert(quoteToRow(q)).select();
         if (error) throw error;
-      } catch (e) { console.error(e); toast('Save failed'); }
+        if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
+        return true;
+      } catch (e) {
+        console.error('Save failed', e);
+        toast('Save failed — check console');
+        return false;
+      }
     }
     async function deleteQuoteDB(id) {
-      if (!supabase) return;
+      const supabase = sb();
+      if (!supabase) { toast('Not connected — delete not saved'); return; }
       try {
         const { error } = await supabase.from('quotes').delete().eq('id', id);
         if (error) throw error;
       } catch (e) { console.error(e); toast('Delete failed'); }
     }
     async function saveFavouriteDB(id, fav) {
-      if (!supabase) return;
+      const supabase = sb();
+      if (!supabase) { toast('Not connected — favourite not saved'); return; }
       try {
-        const { error } = await supabase.from('quote_favourites').upsert({ id, name: fav.name, type: fav.type, data: fav.data });
+        const { data, error } = await supabase.from('quote_favourites').upsert({ id, name: fav.name, type: fav.type, data: fav.data }).select();
         if (error) throw error;
+        if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
       } catch (e) { console.error(e); toast('Favourite save failed'); }
     }
     async function deleteFavouriteDB(id) {
+      const supabase = sb();
       if (!supabase) return;
       try {
         const { error } = await supabase.from('quote_favourites').delete().eq('id', id);
@@ -543,12 +571,17 @@ window.BromarPages.quotes = {
         return q;
       };
       document.getElementById('nq-allocate').addEventListener('click', async () => {
-        const q = collect(); q.status = 'allocated'; quotes.push(q); await saveQuoteNow(q); close(); rerender();
+        const q = collect(); q.status = 'allocated';
+        const ok = await saveQuoteNow(q);
+        if (!ok) { toast('Could not save — quote not created.'); return; }
+        quotes.push(q); close(); rerender();
       });
       document.getElementById('nq-build').addEventListener('click', async () => {
         const q = collect(); q.status = 'draft';
         const intro = newSection('introduction'); q.sections.push(intro);
-        quotes.push(q); await saveQuoteNow(q); close();
+        const ok = await saveQuoteNow(q);
+        if (!ok) { toast('Could not save — quote not created.'); return; }
+        quotes.push(q); close();
         activeQuoteId = q.id; activeSectionId = intro.id; view = 'editor'; rerender();
       });
     }
@@ -1483,6 +1516,9 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
     container.innerHTML = '<div class="card"><p class="hint">Loading quotes…</p></div>';
     loadAll().then(rerender);
 
+    // let destroy() flush any debounced edits before the page unmounts
+    window.BromarPages.quotes._flush = flushSaves;
+
     function injectStyles() {
       if (document.getElementById('quotes-page-styles')) return;
       const s = document.createElement('style');
@@ -1552,6 +1588,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .save-indicator { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); padding: 0.4rem 0.7rem; background: var(--card-hover); border-radius: 999px; transition: all 0.3s ease; opacity: 0.7; }
         .save-indicator.saving { color: var(--accent); opacity: 1; }
         .save-indicator.saved { color: var(--success); opacity: 1; }
+        .save-indicator.save-error { color: #fff; background: var(--error); opacity: 1; font-weight: 700; }
         [data-theme="dark"] .save-indicator.saved { color: #4ade80; }
         .builder-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
         .builder-rail { padding: 1rem; position: sticky; top: calc(var(--header-height) + 1rem); align-self: start; max-height: calc(100vh - var(--header-height) - 2rem); overflow-y: auto; }
@@ -1727,6 +1764,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
   },
 
   destroy() {
+    if (typeof this._flush === 'function') { try { this._flush(); } catch (e) { console.warn(e); } }
     const t = document.getElementById('quote-toast');
     if (t) t.remove();
     document.querySelectorAll('.quote-modal-overlay').forEach(el => el.remove());
