@@ -1,15 +1,14 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.36 — Fix silent save failures: resolve the Supabase client
-   lazily at query time (was captured once at render, before the
-   client existed, making every save a silent no-op), and verify
-   every write with .select() so RLS/no-op failures surface.
+   V1.38 — Global markup now defaults to 0% on new quotes (was a
+   silent 25%). Labour sections get an explicit "Client sees"
+   choice: full table / line items without rates / lump sum only.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.36',
+  version: 'V1.38',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -287,7 +286,7 @@ window.BromarPages.quotes = {
         case 'bullets':   return { bullets: [''] };
         case 'scopes':    return { intro: 'Bromar have allowed for the following:', scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
         case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true };
-        case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true };
+        case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true, display: 'full' };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }] };
         default:          return {};
       }
@@ -319,6 +318,16 @@ window.BromarPages.quotes = {
       return cost * (1 + m / 100);
     }
     function labourItemTotal(it) { return (it.qty || 0) * (it.rate || 0); }
+
+    /* Labour visibility to the client:
+       'full'  — Description / Rate / Hours / Total
+       'lines' — Description / Total only (rates & hours hidden)
+       'total' — a single lump sum
+       Falls back to the old showTable boolean for existing quotes. */
+    function labourDisplay(d) {
+      if (d.display) return d.display;
+      return d.showTable === false ? 'total' : 'full';
+    }
     function sectionSellTotal(sec, q) {
       const d = sec.data || {};
       switch (SECTION_TYPES[sec.type].shape) {
@@ -556,7 +565,7 @@ window.BromarPages.quotes = {
           siteName: '', siteContactName: '', siteContactPhone: '', siteContactEmail: '', siteAddress: '',
           preparedBy: document.getElementById('nq-prepby').value,
           createdAt: todayISO(), publishedAt: null,
-          globalMarkup: 25, sections: []
+          globalMarkup: 0, sections: []
         };
         if (clientSel.value === '__manual__') {
           q.client = document.getElementById('nq-client-manual').value.trim() || 'Unassigned';
@@ -782,7 +791,11 @@ window.BromarPages.quotes = {
               ${['draft','allocated','sent','accepted','rejected'].map(s => `<option value="${s}" ${q.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
             </select>
           </div>
-          <div class="form-row"><label>Global Markup (internal) %</label><input id="d-markup" type="number" min="0" step="0.1" class="quote-input" value="${q.globalMarkup || 0}"></div>
+          <div class="form-row"><label>Global Markup (internal) %</label><input id="d-markup" type="number" min="0" step="0.1" class="quote-input" value="${q.globalMarkup || 0}">
+            <span class="field-hint">${Number(q.globalMarkup) > 0
+              ? `Adding <strong>${q.globalMarkup}%</strong> to every material line without its own markup.`
+              : 'No markup applied. Material lines sell at cost unless given their own markup %.'}</span>
+          </div>
         </div>
 
         <div class="section-label">Client / Account</div>
@@ -888,7 +901,13 @@ window.BromarPages.quotes = {
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         case 'labour':
           return `
-            <label class="toggle-lbl" style="margin-bottom:0.75rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            <div class="form-row" style="max-width:340px;margin-bottom:0.85rem"><label>Client sees</label>
+              <select id="f-display" class="quote-input">
+                <option value="full" ${labourDisplay(d) === 'full' ? 'selected' : ''}>Full table — rate, hours &amp; total</option>
+                <option value="lines" ${labourDisplay(d) === 'lines' ? 'selected' : ''}>Line items &amp; totals — hide rate/hours</option>
+                <option value="total" ${labourDisplay(d) === 'total' ? 'selected' : ''}>Lump sum total only</option>
+              </select>
+            </div>
             <div class="items-head lab-head"><span>Description</span><span>Hourly Rate</span><span>Qty (hrs)</span><span>Total</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => labourRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Labour Line</button>
@@ -973,6 +992,17 @@ window.BromarPages.quotes = {
         const el = document.getElementById(id); if (!el) return;
         const ev = el.tagName === 'SELECT' ? 'change' : 'input';
         el.addEventListener(ev, () => { fn(el.value); queueSave(q); refreshRailAmounts(q); });
+      });
+
+      // live-update the markup explanation as it's typed
+      const markupEl = document.getElementById('d-markup');
+      if (markupEl) markupEl.addEventListener('input', () => {
+        const hint = markupEl.parentElement.querySelector('.field-hint');
+        if (!hint) return;
+        const v = Number(markupEl.value) || 0;
+        hint.innerHTML = v > 0
+          ? `Adding <strong>${v}%</strong> to every material line without its own markup.`
+          : 'No markup applied. Material lines sell at cost unless given their own markup %.';
       });
 
       // Client / site pickers — populate fields then re-render
@@ -1100,7 +1130,7 @@ window.BromarPages.quotes = {
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', part: '', price: 0, markup: null, qty: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
       if (meta.shape === 'labour') {
-        get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; queueSave(q); });
+        get('f-display').addEventListener('change', e => { d.display = e.target.value; d.showTable = e.target.value !== 'total'; queueSave(q); });
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(labourItemTotal(d.items[idx])); refreshFoot(); };
         document.querySelectorAll('.lab-row').forEach((row, idx) => {
           row.querySelector('.l-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
@@ -1229,7 +1259,9 @@ window.BromarPages.quotes = {
         case 'labour':
           if (!(d.items || []).length) return '';
           const labTotal = sectionSellTotal(s, q);
-          if (d.showTable === false) body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
+          const labMode = labourDisplay(d);
+          if (labMode === 'total') body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
+          else if (labMode === 'lines') body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="doc-table-total"><td class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
           else body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
           break;
         case 'pcSums':
@@ -1353,6 +1385,7 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
       const sectionsHtml = visible.map(s => {
         const meta = SECTION_TYPES[s.type], d = s.data || {};
         let body = '';
+        let hasTable = false;
         switch (meta.shape) {
           case 'text': if (d.text) body = `<p>${escape(d.text).replace(/\n/g, '<br>')}</p>`; break;
           case 'bullets':
@@ -1364,122 +1397,227 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
           case 'materials':
             if ((d.items || []).length) {
               const tot = sectionSellTotal(s, q);
-              body = d.showTable === false ? `<div class="line"><span>Materials total</span><strong>${fmt(tot)}</strong></div>` : `<table><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}<tr class="ttl"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+              if (d.showTable === false) body = `<div class="line"><span>Materials total</span><strong>${fmt(tot)}</strong></div>`;
+              else {
+                hasTable = true;
+                body = `<table class="data"><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}<tr class="ttl"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+              }
             } break;
           case 'labour':
             if ((d.items || []).length) {
               const tot = sectionSellTotal(s, q);
-              body = d.showTable === false ? `<div class="line"><span>Labour total</span><strong>${fmt(tot)}</strong></div>` : `<table><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="ttl"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+              const mode = labourDisplay(d);
+              if (mode === 'total') body = `<div class="line"><span>Labour total</span><strong>${fmt(tot)}</strong></div>`;
+              else if (mode === 'lines') {
+                hasTable = true;
+                body = `<table class="data"><thead><tr><th>Description</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="ttl"><td class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+              } else {
+                hasTable = true;
+                body = `<table class="data"><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="ttl"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+              }
             } break;
           case 'pcSums':
-            if ((d.items || []).length) body = `<table><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}<tr class="ttl"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table>`;
+            if ((d.items || []).length) {
+              hasTable = true;
+              body = `<table class="data"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}<tr class="ttl"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table>`;
+            }
             break;
         }
         if (!body) return '';
         if (meta.isOption) return `<section class="opt-section ${s.optionSelected ? 'opt-on' : ''}"><div class="opt-head"><h3>${escape(s.name)} ${s.optionSelected ? '<span class="opt-tag">SELECTED</span>' : '<span class="opt-tag opt-tag-off">NOT SELECTED</span>'}</h3><span class="opt-amt">${fmt(sectionSellTotal(s, q))}</span></div>${body}</section>`;
-        return `<section><h3>${escape(s.name)}</h3>${body}</section>`;
+        // tables may legitimately span pages; everything else stays whole
+        const rows = hasTable ? ((s.data.items || []).length) : 0;
+        const splittable = hasTable && rows > 12 ? ' class="splittable"' : '';
+        return `<section${splittable}><h3>${escape(s.name)}</h3>${body}</section>`;
       }).join('');
       const logoUrl = new URL(COMPANY.logoLight, window.location.href).href;
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${docLabel(q)} ${docNumber}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap">
 <style>
-  @page { size: A4; margin: 0; }
+  /* ── PAGE SETUP ──
+     @page margin defines where the orange frame sits. The frame and
+     footer are position:fixed so Chromium repeats them on every page.
+     The .sheet table's thead/tfoot are invisible spacers that reserve
+     that space on every page, so flowing content can never run
+     underneath the frame or the footer. */
+  @page { size: A4; margin: 12mm; }
+
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #e5e5e5; font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #1a1a1e; }
-  .page { width: 210mm; min-height: 297mm; background: white; margin: 8mm auto; padding: 18mm 16mm 24mm; position: relative; border: 1px solid #ddd; box-shadow: 0 4px 18px rgba(0,0,0,0.08); page-break-after: always; }
-  .page:last-child { page-break-after: auto; }
-  .page::before { content: ""; position: absolute; top: 8mm; left: 8mm; right: 8mm; bottom: 14mm; border: 1.5px solid #ea580c; border-radius: 4px; pointer-events: none; }
-  .page-inner { position: relative; padding: 4mm 4mm 0; }
-  .page-footer { position: absolute; bottom: 6mm; left: 16mm; right: 16mm; display: flex; justify-content: space-between; align-items: center; font-size: 8pt; color: #888; border-top: 1px solid #ddd; padding-top: 3mm; }
-  .page-footer strong { color: #ea580c; font-weight: 600; }
-  .page-footer .rev { font-family: "JetBrains Mono", "Menlo", monospace; font-size: 7pt; opacity: 0.7; }
-  .doc-header { margin-bottom: 16px; }
-  .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 14px; border-bottom: 3px solid #ea580c; }
-  .logo img { max-height: 60px; max-width: 200px; display: block; }
-  .company { text-align: right; font-size: 9pt; color: #555; line-height: 1.55; }
-  .company-name { font-weight: 700; font-size: 10.5pt; color: #1a1a1e; margin-bottom: 2px; }
-  .company-ids { color: #888; font-size: 8.5pt; margin-top: 2px; }
-  .number-block { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 16px 0; border-bottom: 1px solid #eee; }
-  .type-tag { display: inline-block; font-size: 8.5pt; font-weight: 800; letter-spacing: 0.14em; padding: 4px 10px; border-radius: 4px; color: white; background: #ea580c; margin-bottom: 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; font-family: 'Outfit', -apple-system, "Segoe UI", Arial, sans-serif; color: #1a1a1e; }
+
+  .paper { position: relative; background: #fff; }
+
+  .frame { border: 1px solid #ea580c; border-radius: 3px; pointer-events: none; z-index: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .sheet { width: 100%; border-collapse: collapse; position: relative; z-index: 1; }
+  .sheet > thead > tr > td,
+  .sheet > tbody > tr > td,
+  .sheet > tfoot > tr > td { border: 0; padding: 0 7mm; vertical-align: top; }
+  .head-space { height: 7mm; }
+  .foot-space { height: 12mm; }
+
+  .foot { display: flex; justify-content: space-between; align-items: center;
+          border-top: 1px solid #e6e6e6; padding-top: 2.5mm;
+          font-size: 7.5pt; color: #999; z-index: 2; }
+  .foot .rev { font-family: 'JetBrains Mono', monospace; font-size: 7pt; }
+
+  /* ── LETTERHEAD ── */
+  .head-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 10px; border-bottom: 2.5px solid #ea580c; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .logo img { max-height: 56px; max-width: 190px; display: block; }
+  .company { text-align: right; font-size: 8.5pt; color: #5a5a60; line-height: 1.5; }
+  .company-name { font-weight: 700; font-size: 10pt; color: #1a1a1e; margin-bottom: 1px; }
+  .company-ids { color: #9a9aa2; font-size: 7.5pt; margin-top: 2px; }
+
+  .number-block { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 12px 0 10px; border-bottom: 1px solid #eee; }
+  .type-tag { display: inline-block; font-size: 8pt; font-weight: 800; letter-spacing: 0.14em; padding: 3px 9px; border-radius: 3px; color: #fff; background: #ea580c; margin-bottom: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .type-tag.type-est { background: #1a1a1e; }
-  .doc-number { font-size: 30pt; font-weight: 800; color: #ea580c; letter-spacing: -0.02em; font-family: "JetBrains Mono", "Menlo", monospace; line-height: 1; }
-  .number-meta { display: flex; gap: 24px; font-size: 9.5pt; padding-top: 16px; }
-  .number-meta .lbl { display: block; color: #888; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.08em; margin-bottom: 2px; font-weight: 600; }
+  .doc-number { font-size: 26pt; font-weight: 800; color: #ea580c; letter-spacing: -0.02em; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+  .number-meta { display: flex; gap: 22px; font-size: 9pt; padding-top: 12px; }
+  .number-meta .lbl { display: block; color: #9a9aa2; text-transform: uppercase; font-size: 7pt; letter-spacing: 0.08em; margin-bottom: 2px; font-weight: 600; }
   .number-meta strong { font-weight: 600; color: #1a1a1e; }
-  .site-block { padding: 12px 0 8px; }
-  .site-name { font-size: 17pt; font-weight: 700; color: #1a1a1e; letter-spacing: -0.02em; margin: 0 0 6px; }
-  .site-details { font-size: 9.5pt; color: #555; line-height: 1.55; }
+
+  .site-block { padding: 11px 0 4px; }
+  .site-name { font-size: 16pt; font-weight: 700; color: #1a1a1e; letter-spacing: -0.02em; margin: 0 0 5px; }
+  .site-details { font-size: 9pt; color: #5a5a60; line-height: 1.5; }
   .site-details strong { color: #1a1a1e; }
-  h3 { font-size: 9.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #ea580c; page-break-after: avoid; }
-  h4 { font-size: 11pt; font-weight: 700; color: #1a1a1e; margin: 12px 0 4px; }
-  p { margin: 6px 0; font-size: 10pt; line-height: 1.55; }
-  ul { padding-left: 18px; margin: 4px 0; }
-  ul li { margin: 3px 0; font-size: 10pt; line-height: 1.55; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9.5pt; page-break-inside: avoid; }
-  th, td { padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }
-  th { background: #faf7f5; font-weight: 700; color: #555; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .ttl td { background: #faf7f5; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .ttl strong { color: #ea580c; }
-  .line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 10pt; }
-  .line strong { color: #ea580c; font-weight: 700; font-family: "JetBrains Mono", monospace; }
-  section { margin: 14px 0; page-break-inside: avoid; }
-  .opt-section { border: 1.5px solid #ea580c; border-radius: 6px; padding: 12px 14px; margin: 14px 0; background: #fff8f3; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── SECTIONS ──
+     Short sections stay whole. A section too tall for one page (long
+     table) is allowed to split, but only at row boundaries, and its
+     column header repeats on the next page. */
+  section { margin: 13px 0 0; break-inside: avoid; page-break-inside: avoid; }
+  section.splittable { break-inside: auto; page-break-inside: auto; }
+
+  h3 { font-size: 9pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin: 0 0 7px; padding-bottom: 3px; border-bottom: 1px solid #ea580c;
+       break-after: avoid; page-break-after: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h4 { font-size: 10.5pt; font-weight: 700; color: #1a1a1e; margin: 10px 0 3px; break-after: avoid; page-break-after: avoid; }
+  p { margin: 5px 0; font-size: 9.5pt; line-height: 1.5; orphans: 3; widows: 3; }
+  ul { padding-left: 16px; margin: 4px 0; }
+  ul li { margin: 2.5px 0; font-size: 9.5pt; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; }
+
+  /* ── TABLES ── */
+  table.data { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 9pt; }
+  table.data thead { display: table-header-group; }
+  table.data tfoot { display: table-row-group; }
+  table.data tr { break-inside: avoid; page-break-inside: avoid; }
+  table.data th, table.data td { padding: 5.5px 8px; border-bottom: 1px solid #eee; text-align: left; }
+  table.data th { background: #faf7f5; font-weight: 700; color: #5a5a60; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.data .ttl td { background: #faf7f5; font-weight: 600; border-bottom: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.data .ttl strong { color: #ea580c; font-family: 'JetBrains Mono', monospace; }
+
+  .line { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #eee; font-size: 9.5pt; break-inside: avoid; }
+  .line strong { color: #ea580c; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+  /* ── OPTIONS ── */
+  .opt-section { border: 1.2px solid #ea580c; border-radius: 5px; padding: 10px 12px; margin: 13px 0 0; background: #fff8f3; break-inside: avoid; page-break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .opt-section.opt-on { background: #fff1e6; }
-  .opt-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #f0d9c5; margin-bottom: 8px; }
+  .opt-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 7px; border-bottom: 1px solid #f0d9c5; margin-bottom: 7px; }
   .opt-head h3 { border: none; padding: 0; margin: 0; }
-  .opt-tag { font-size: 8pt; padding: 2px 8px; background: #16a34a; color: white; border-radius: 999px; margin-left: 8px; vertical-align: middle; letter-spacing: 0.06em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .opt-tag-off { background: #888; }
-  .opt-amt { font-family: "JetBrains Mono", monospace; font-weight: 800; color: #ea580c; font-size: 12pt; }
-  .total-block { margin-top: 24px; padding-top: 16px; border-top: 3px solid #ea580c; page-break-inside: avoid; }
-  .grand-total { display: flex; justify-content: space-between; align-items: baseline; }
-  .grand-total span { font-size: 11pt; color: #555; font-weight: 600; }
-  .grand-total strong { font-family: "JetBrains Mono", monospace; font-size: 22pt; color: #ea580c; font-weight: 800; }
-  .disclaimer { margin-top: 14px; padding: 11px 14px; background: #faf7f5; border-left: 3px solid #ea580c; font-size: 9.5pt; color: #555; font-style: italic; line-height: 1.55; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .fineprint { margin-top: 8px; font-size: 9pt; color: #888; }
-  .pdf-toolbar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: #1a1a1e; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 12px rgba(0,0,0,0.2); font-size: 14px; }
-  .pdf-toolbar button { background: #ea580c; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-left: 8px; }
+  .opt-tag { font-size: 7pt; padding: 2px 7px; background: #16a34a; color: #fff; border-radius: 999px; margin-left: 7px; vertical-align: middle; letter-spacing: 0.06em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .opt-tag-off { background: #9a9aa2; }
+  .opt-amt { font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #ea580c; font-size: 11pt; white-space: nowrap; }
+
+  /* ── TOTAL ── */
+  .total-block { margin-top: 20px; padding-top: 12px; border-top: 2.5px solid #ea580c; break-inside: avoid; page-break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .grand-total { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; }
+  .grand-total span { font-size: 10.5pt; color: #5a5a60; font-weight: 600; }
+  .grand-total strong { font-family: 'JetBrains Mono', monospace; font-size: 20pt; color: #ea580c; font-weight: 800; white-space: nowrap; }
+  .disclaimer { margin-top: 11px; padding: 9px 12px; background: #faf7f5; border-left: 3px solid #ea580c; font-size: 9pt; color: #5a5a60; font-style: italic; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fineprint { margin-top: 7px; font-size: 8.5pt; color: #9a9aa2; }
+
+  /* ── TOOLBAR (screen only) ── */
+  .pdf-toolbar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: #1a1a1e; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 12px rgba(0,0,0,0.2); font-size: 14px; }
+  .pdf-toolbar button { background: #ea580c; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-left: 8px; font-family: 'Outfit', sans-serif; }
   .pdf-toolbar button.secondary { background: #444; }
-  @media print { html, body { background: white; } .page { margin: 0; box-shadow: none; border: none; page-break-after: always; } .page:last-child { page-break-after: auto; } .pdf-toolbar { display: none !important; } }
+
+  /* ── SCREEN: simulate the A4 sheet ── */
+  @media screen {
+    body { background: #e5e5e5; padding: 72px 0 40px; }
+    .paper { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 12mm; box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+    .frame { position: absolute; top: 12mm; left: 12mm; right: 12mm; bottom: 12mm; }
+    .foot { position: absolute; bottom: 12mm; left: 19mm; right: 19mm; }
+  }
+
+  /* ── PRINT: frame + footer repeat on every page ── */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .paper { width: auto; min-height: 0; padding: 0; box-shadow: none; }
+    .frame { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
+    .foot { position: fixed; bottom: 0; left: 7mm; right: 7mm; }
+    .pdf-toolbar { display: none !important; }
+  }
 </style></head><body>
-<div class="pdf-toolbar"><div>Preview — ${docLabel(q)} ${escape(docNumber)}</div><div><button class="secondary" onclick="window.close()">Close</button><button onclick="window.print()">Print / Save as PDF</button></div></div>
-<div style="height: 60px"></div>
-<div class="page">
-  <div class="page-inner">
-    <header class="doc-header">
-      <div class="header-top">
-        <div class="logo"><img src="${escape(logoUrl)}" alt=""></div>
-        <div class="company">
-          <div class="company-name">${escape(COMPANY.name)}</div>
-          <div>${escape(COMPANY.addressLine1)}, ${escape(COMPANY.addressLine2)}</div>
-          <div>Ph: ${escape(COMPANY.phone)} · Fax: ${escape(COMPANY.fax)}</div>
-          <div>${escape(COMPANY.email)}</div>
-          <div class="company-ids">ABN ${escape(COMPANY.abn)} · ACN ${escape(COMPANY.acn)} · REC ${escape(COMPANY.rec)}</div>
+
+<div class="pdf-toolbar">
+  <div>Preview — ${docLabel(q)} ${escape(docNumber)}</div>
+  <div>
+    <button class="secondary" onclick="window.close()">Close</button>
+    <button onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</div>
+
+<div class="paper">
+  <div class="frame"></div>
+
+  <table class="sheet">
+    <thead><tr><td><div class="head-space"></div></td></tr></thead>
+    <tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot>
+    <tbody><tr><td>
+
+      <header>
+        <div class="head-top">
+          <div class="logo"><img src="${escape(logoUrl)}" alt=""></div>
+          <div class="company">
+            <div class="company-name">${escape(COMPANY.name)}</div>
+            <div>${escape(COMPANY.addressLine1)}, ${escape(COMPANY.addressLine2)}</div>
+            <div>Ph: ${escape(COMPANY.phone)} · Fax: ${escape(COMPANY.fax)}</div>
+            <div>${escape(COMPANY.email)}</div>
+            <div class="company-ids">ABN ${escape(COMPANY.abn)} · ACN ${escape(COMPANY.acn)} · REC ${escape(COMPANY.rec)}</div>
+          </div>
         </div>
-      </div>
-      <div class="number-block">
-        <div><div class="type-tag ${isEst ? 'type-est' : ''}">${isEst ? 'ESTIMATE' : 'QUOTATION'}</div><div class="doc-number">${escape(docNumber)}</div></div>
-        <div class="number-meta"><div><span class="lbl">Prepared by</span><strong>${escape(q.preparedBy || '—')}</strong></div><div><span class="lbl">Date</span><strong>${escape(docDateStr)}</strong></div></div>
-      </div>
-      <div class="site-block">
-        <h2 class="site-name">${escape(q.siteName || q.client || 'Untitled')}</h2>
-        <div class="site-details">
-          ${q.client ? `<div><strong>${escape(q.client)}</strong></div>` : ''}
-          ${q.siteContactName ? `<div>Attn: ${escape(q.siteContactName)}</div>` : ''}
-          ${q.siteAddress ? `<div>${escape(q.siteAddress)}</div>` : ''}
-          ${q.siteContactPhone ? `<div>Ph: ${escape(q.siteContactPhone)}</div>` : ''}
-          ${q.siteContactEmail ? `<div>${escape(q.siteContactEmail)}</div>` : ''}
+        <div class="number-block">
+          <div>
+            <div class="type-tag ${isEst ? 'type-est' : ''}">${isEst ? 'ESTIMATE' : 'QUOTATION'}</div>
+            <div class="doc-number">${escape(docNumber)}</div>
+          </div>
+          <div class="number-meta">
+            <div><span class="lbl">Prepared by</span><strong>${escape(q.preparedBy || '—')}</strong></div>
+            <div><span class="lbl">Date</span><strong>${escape(docDateStr)}</strong></div>
+          </div>
         </div>
-      </div>
+        <div class="site-block">
+          <h2 class="site-name">${escape(q.siteName || q.client || 'Untitled')}</h2>
+          <div class="site-details">
+            ${q.client ? `<div><strong>${escape(q.client)}</strong></div>` : ''}
+            ${q.siteContactName ? `<div>Attn: ${escape(q.siteContactName)}</div>` : ''}
+            ${q.siteAddress ? `<div>${escape(q.siteAddress)}</div>` : ''}
+            ${q.siteContactPhone ? `<div>Ph: ${escape(q.siteContactPhone)}</div>` : ''}
+            ${q.siteContactEmail ? `<div>${escape(q.siteContactEmail)}</div>` : ''}
+          </div>
+        </div>
+      </header>
+
       ${sectionsHtml}
+
       <div class="total-block">
-        <div class="grand-total"><span>Total ${isEst ? '(Indicative, ex GST)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong></div>
+        <div class="grand-total">
+          <span>Total ${isEst ? '(Indicative, ex GST)' : '(ex GST)'}</span>
+          <strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>
+        </div>
         ${isEst ? '<p class="disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>' : '<p class="fineprint">Prices exclude GST unless otherwise stated.</p>'}
       </div>
-    </header>
+
+    </td></tr></tbody>
+  </table>
+
+  <div class="foot">
+    <span>${escape(footerLeft)}</span>
+    <span class="rev">${escape(moduleVersion)}</span>
   </div>
-  <div class="page-footer"><span>${escape(footerLeft)}</span><span class="rev">${escape(moduleVersion)}</span></div>
 </div>
-<script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 600); });<\/script>
+
+<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 700); });<\/script>
 </body></html>`;
       const w = window.open('', '_blank');
       if (!w) { toast('Pop-up blocked. Allow pop-ups to export.'); return; }
@@ -1631,6 +1769,8 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .form-row { display: flex; flex-direction: column; gap: 0.35rem; }
         .form-row label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
         .hint { font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin-bottom: 0.5rem; }
+        .field-hint { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-top: 0.1rem; }
+        .field-hint strong { color: var(--accent); font-weight: 700; }
         .hint-inline { font-style: italic; color: var(--text-secondary); font-size: 0.8rem; }
         .section-foot { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); text-align: right; color: var(--text-secondary); font-size: 0.9rem; }
         .section-foot strong { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; margin-left: 0.5rem; }
