@@ -1,15 +1,14 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.39 — New `nickname` field: a short job description shown
-   beside the quote number in the dashboard list, the preview and
-   the PDF, so a document is identifiable without opening it.
-   Requires: alter table quotes add column if not exists nickname text default '';
+   V1.40 — Removed the orange page frame from the PDF, and removed
+   the module version from the PDF footer. The shell's version badge
+   is also hidden while the client-facing preview is open.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.39',
+  version: 'V1.40',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -1448,19 +1447,16 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap">
 <style>
   /* ── PAGE SETUP ──
-     @page margin defines where the orange frame sits. The frame and
-     footer are position:fixed so Chromium repeats them on every page.
+     The footer is position:fixed so Chromium repeats it on every page.
      The .sheet table's thead/tfoot are invisible spacers that reserve
      that space on every page, so flowing content can never run
-     underneath the frame or the footer. */
+     underneath the footer. */
   @page { size: A4; margin: 12mm; }
 
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; font-family: 'Outfit', -apple-system, "Segoe UI", Arial, sans-serif; color: #1a1a1e; }
 
   .paper { position: relative; background: #fff; }
-
-  .frame { border: 1px solid #ea580c; border-radius: 3px; pointer-events: none; z-index: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
   .sheet { width: 100%; border-collapse: collapse; position: relative; z-index: 1; }
   .sheet > thead > tr > td,
