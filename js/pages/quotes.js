@@ -1,15 +1,18 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.45 — Labour sections now use the same column checkboxes as
-   materials (Rate / Hours) instead of a dropdown. Unticking both
-   leaves Description + Total. Existing quotes migrate automatically
-   from the old display setting.
+   V1.46 — Reusable bullet library for every dot-point section
+   (exclusions, inclusions, references, assumptions, scopes):
+   type-to-search quick add, save any line to the library as you
+   write it, and a manage dialog to rename/delete entries.
+   Whole-section favourites can now be renamed too.
+   Library entries live in quote_favourites under type
+   'bullet:<sectionType>', so no schema change is needed.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.45',
+  version: 'V1.46',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -943,12 +946,53 @@ window.BromarPages.quotes = {
           <div class="preset-bar">
             ${sectionFavs.length ? `<select id="fav-load" class="quote-input preset-select"><option value="">Load favourite…</option>${sectionFavs.map(([id, p]) => `<option value="${id}">${escape(p.name)}</option>`).join('')}</select>` : ''}
             ${canSaveFavourite(meta.shape) ? `<button class="btn-secondary preset-btn" id="fav-save">★ Save as favourite</button>` : ''}
-            ${sectionFavs.length ? `<button class="btn-secondary preset-btn" id="fav-delete">Delete favourite</button>` : ''}
+            ${sectionFavs.length ? `<button class="btn-secondary preset-btn" id="fav-rename">Rename</button><button class="btn-secondary preset-btn" id="fav-delete">Delete favourite</button>` : ''}
           </div>` : ''}
         <div class="section-body" id="section-body">${renderSectionBody(sec, q)}</div>
       `;
     }
     function canSaveFavourite(shape) { return ['text', 'bullets', 'scopes', 'materials', 'labour', 'pcSums'].includes(shape); }
+
+    /* ── BULLET LIBRARY ──
+       Individual reusable lines, kept per section type so the
+       exclusions list stays separate from inclusions, etc. Stored in
+       quote_favourites under type 'bullet:<sectionType>'. */
+    const BULLET_NS = 'bullet:';
+    function bulletLibType(sectionType) { return BULLET_NS + sectionType; }
+    function bulletLibFor(sectionType) {
+      const t = bulletLibType(sectionType);
+      return Object.entries(favourites)
+        .filter(([_, p]) => p.type === t)
+        .map(([id, p]) => ({ id, text: (p.data && p.data.text) || p.name || '' }))
+        .filter(e => e.text.trim())
+        .sort((a, b) => a.text.localeCompare(b.text));
+    }
+    function bulletInLib(sectionType, text) {
+      const needle = (text || '').trim().toLowerCase();
+      if (!needle) return null;
+      return bulletLibFor(sectionType).find(e => e.text.trim().toLowerCase() === needle) || null;
+    }
+    async function addBulletToLib(sectionType, text) {
+      const val = (text || '').trim();
+      if (!val) { toast('Nothing to save.'); return false; }
+      if (bulletInLib(sectionType, val)) { toast('Already in the list.'); return false; }
+      const id = 'blt_' + Date.now() + Math.random().toString(36).slice(2, 6);
+      const entry = { name: val.slice(0, 120), type: bulletLibType(sectionType), data: { text: val } };
+      favourites[id] = entry;
+      await saveFavouriteDB(id, entry);
+      toast('Saved to list.');
+      return true;
+    }
+    function quickAddBar(sectionType, listId) {
+      const lib = bulletLibFor(sectionType);
+      return `
+        <div class="quick-bar">
+          <input class="quote-input qa-input" list="${listId}" placeholder="${lib.length ? 'Quick add — start typing to search saved points…' : 'Type a point, then + Add'}" autocomplete="off">
+          <datalist id="${listId}">${lib.map(e => `<option value="${escape(e.text)}"></option>`).join('')}</datalist>
+          <button type="button" class="btn-secondary qa-add">+ Add</button>
+          <button type="button" class="btn-secondary qa-manage" title="Rename or delete saved points">List (${lib.length})</button>
+        </div>`;
+    }
     function renderSectionBody(sec, q) {
       const meta = SECTION_TYPES[sec.type];
       const d = sec.data || {};
@@ -956,13 +1000,14 @@ window.BromarPages.quotes = {
         case 'text':
           return `<textarea class="quote-input quote-textarea" id="f-text" rows="8" placeholder="Enter content…">${escape(d.text || '')}</textarea>`;
         case 'bullets':
-          return `<div class="bullets-list" id="bullets-list">${(d.bullets || ['']).map(b => bulletRow(b)).join('')}</div><button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Bullet</button>`;
+          return `${quickAddBar(sec.type, 'qa-list-' + sec.id)}
+            <div class="bullets-list" id="bullets-list">${(d.bullets || ['']).map(b => bulletRow(b, sec.type)).join('')}</div><button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Blank Bullet</button>`;
         case 'scopes':
           return `
             <div class="form-row" style="margin-bottom:1rem"><label>Introduction</label>
               <input id="f-intro" class="quote-input" value="${escape(d.intro || '')}" placeholder="e.g. Bromar have allowed for the following:">
             </div>
-            <div class="scopes-list" id="scopes-list">${(d.scopes || []).map((sc, i) => scopeCard(sc, i, d.scopes.length)).join('')}</div>
+            <div class="scopes-list" id="scopes-list">${(d.scopes || []).map((sc, i) => scopeCard(sc, i, d.scopes.length, sec.type)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-scope">+ Add Scope</button>`;
         case 'materials': {
           const mc = matColumns(d);
@@ -1004,10 +1049,11 @@ window.BromarPages.quotes = {
         default: return '';
       }
     }
-    function bulletRow(text) {
-      return `<div class="bullet-row"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point"><button class="icon-btn icon-danger bullet-remove">${ICON_TRASH}</button></div>`;
+    function bulletRow(text, sectionType) {
+      const saved = sectionType ? !!bulletInLib(sectionType, text) : false;
+      return `<div class="bullet-row"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point"><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger bullet-remove" title="Remove">${ICON_TRASH}</button></div>`;
     }
-    function scopeCard(sc, i, total) {
+    function scopeCard(sc, i, total, sectionType) {
       return `<div class="scope-card" data-gid="${sc.id}">
         <div class="scope-head">
           <input class="quote-input scope-heading" value="${escape(sc.heading || '')}" placeholder="Scope heading">
@@ -1017,12 +1063,14 @@ window.BromarPages.quotes = {
           </div>
           <button class="icon-btn icon-danger" data-scope="del" title="Remove scope">${ICON_TRASH}</button>
         </div>
-        <div class="scope-bullets">${(sc.bullets || []).map((b, bi) => scopeBulletRow(b, bi)).join('')}</div>
-        <button class="btn-secondary add-btn-sm scope-add">+ Add Bullet</button>
+        ${quickAddBar(sectionType, 'qa-list-' + sc.id)}
+        <div class="scope-bullets">${(sc.bullets || []).map((b, bi) => scopeBulletRow(b, bi, sectionType)).join('')}</div>
+        <button class="btn-secondary add-btn-sm scope-add">+ Add Blank Bullet</button>
       </div>`;
     }
-    function scopeBulletRow(b, bi) {
-      return `<div class="bullet-row scope-bullet" data-bi="${bi}"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(b.text || '')}" placeholder="Item"><label class="toggle-lbl toggle-mini"><input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span></label><button class="icon-btn icon-danger b-remove">${ICON_TRASH}</button></div>`;
+    function scopeBulletRow(b, bi, sectionType) {
+      const saved = sectionType ? !!bulletInLib(sectionType, b.text) : false;
+      return `<div class="bullet-row scope-bullet" data-bi="${bi}"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(b.text || '')}" placeholder="Item"><label class="toggle-lbl toggle-mini"><input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span></label><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger b-remove" title="Remove">${ICON_TRASH}</button></div>`;
     }
     function materialRow(it, gm) {
       return `<div class="line-row mat-row">
@@ -1159,6 +1207,17 @@ window.BromarPages.quotes = {
         await saveFavouriteDB(pid, fav);
         toast(`Favourite "${name}" saved.`); renderEditor();
       });
+      const renameFavBtn = get('fav-rename');
+      if (renameFavBtn) renameFavBtn.addEventListener('click', async () => {
+        const pid = get('fav-load').value;
+        if (!pid) { toast('Select a favourite to rename.'); return; }
+        const current = favourites[pid];
+        const name = prompt('Rename favourite:', current.name);
+        if (!name || !name.trim() || name.trim() === current.name) return;
+        favourites[pid] = { ...current, name: name.trim() };
+        await saveFavouriteDB(pid, favourites[pid]);
+        toast('Favourite renamed.'); renderEditor();
+      });
       const delFavBtn = get('fav-delete');
       if (delFavBtn) delFavBtn.addEventListener('click', async () => {
         const pid = get('fav-load').value;
@@ -1173,9 +1232,33 @@ window.BromarPages.quotes = {
         get('f-text').addEventListener('input', e => { d.text = e.target.value; queueSave(q); });
       }
       if (meta.shape === 'bullets') {
+        // quick add — pick a saved point or type a new one
+        const bar = document.querySelector('.quick-bar');
+        if (bar) {
+          const input = bar.querySelector('.qa-input');
+          const addIt = async () => {
+            const val = input.value.trim();
+            if (!val) { input.focus(); return; }
+            if (d.bullets.length === 1 && !d.bullets[0].trim()) d.bullets[0] = val;
+            else d.bullets.push(val);
+            input.value = '';
+            await saveQuoteNow(q); renderEditor();
+          };
+          bar.querySelector('.qa-add').addEventListener('click', addIt);
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addIt(); } });
+          // picking from the datalist fires input with the full value
+          input.addEventListener('input', () => {
+            if (bulletInLib(sec.type, input.value)) addIt();
+          });
+          bar.querySelector('.qa-manage').addEventListener('click', () => openBulletLibDialog(sec.type));
+        }
         document.querySelectorAll('.bullet-row').forEach((row, idx) => {
           const input = row.querySelector('.bullet-input');
           input.addEventListener('input', () => { d.bullets[idx] = input.value; queueSave(q); });
+          row.querySelector('.bullet-save').addEventListener('click', async () => {
+            const ok = await addBulletToLib(sec.type, d.bullets[idx]);
+            if (ok) renderEditor();
+          });
           row.querySelector('.bullet-remove').addEventListener('click', async () => {
             d.bullets.splice(idx, 1); if (d.bullets.length === 0) d.bullets.push('');
             await saveQuoteNow(q); renderEditor();
@@ -1188,9 +1271,29 @@ window.BromarPages.quotes = {
         document.querySelectorAll('.scope-card').forEach((card, idx) => {
           const sc = d.scopes[idx];
           card.querySelector('.scope-heading').addEventListener('input', e => { sc.heading = e.target.value; queueSave(q); });
+          const bar = card.querySelector('.quick-bar');
+          if (bar) {
+            const input = bar.querySelector('.qa-input');
+            const addIt = async () => {
+              const val = input.value.trim();
+              if (!val) { input.focus(); return; }
+              if (sc.bullets.length === 1 && !sc.bullets[0].text.trim()) sc.bullets[0].text = val;
+              else sc.bullets.push({ text: val, hidden: false });
+              input.value = '';
+              await saveQuoteNow(q); renderEditor();
+            };
+            bar.querySelector('.qa-add').addEventListener('click', addIt);
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addIt(); } });
+            input.addEventListener('input', () => { if (bulletInLib(sec.type, input.value)) addIt(); });
+            bar.querySelector('.qa-manage').addEventListener('click', () => openBulletLibDialog(sec.type));
+          }
           card.querySelectorAll('.scope-bullet').forEach((row, bi) => {
             row.querySelector('.bullet-input').addEventListener('input', e => { sc.bullets[bi].text = e.target.value; queueSave(q); });
             row.querySelector('.b-hide').addEventListener('change', e => { sc.bullets[bi].hidden = e.target.checked; queueSave(q); });
+            row.querySelector('.bullet-save').addEventListener('click', async () => {
+              const ok = await addBulletToLib(sec.type, sc.bullets[bi].text);
+              if (ok) renderEditor();
+            });
             row.querySelector('.b-remove').addEventListener('click', async () => { sc.bullets.splice(bi, 1); if (sc.bullets.length === 0) sc.bullets.push({ text: '', hidden: false }); await saveQuoteNow(q); renderEditor(); });
           });
           card.querySelector('.scope-add').addEventListener('click', async () => { sc.bullets.push({ text: '', hidden: false }); await saveQuoteNow(q); renderEditor(); });
@@ -1418,6 +1521,69 @@ window.BromarPages.quotes = {
         </section>`;
       }
       return `<section class="doc-section"><h3>${escape(s.name)}</h3>${body}</section>`;
+    }
+
+    /* ── BULLET LIBRARY MANAGER ── */
+    function openBulletLibDialog(sectionType) {
+      const render = () => {
+        const lib = bulletLibFor(sectionType);
+        return `
+          <div class="quote-modal">
+            <div class="modal-header"><h2>Saved Points — ${escape(SECTION_TYPES[sectionType].name)}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+            <div class="modal-body">
+              <div class="quick-bar" style="margin-bottom:0.9rem">
+                <input class="quote-input" id="lib-new" placeholder="Add a new saved point…" autocomplete="off">
+                <button type="button" class="btn-secondary" id="lib-add">+ Save</button>
+              </div>
+              ${lib.length ? `<div class="lib-list">${lib.map(e => `
+                <div class="lib-row" data-id="${e.id}">
+                  <span class="bullet-dot">•</span>
+                  <input class="quote-input lib-text" value="${escape(e.text)}">
+                  <button class="icon-btn icon-danger lib-del" title="Delete">${ICON_TRASH}</button>
+                </div>`).join('')}</div>
+                <p class="hint" style="margin-top:0.75rem">Edit any line to rename it. Changes save when you click away.</p>`
+                : '<div class="empty-state">No saved points yet. Add one above, or use the ★ on any bullet.</div>'}
+            </div>
+          </div>`;
+      };
+      const dialog = document.createElement('div');
+      dialog.className = 'quote-modal-overlay';
+      dialog.innerHTML = render();
+      document.body.appendChild(dialog);
+
+      const close = () => { dialog.remove(); renderEditor(); };
+      const rebuild = () => { dialog.innerHTML = render(); bind(); };
+
+      function bind() {
+        dialog.querySelector('#modal-close').addEventListener('click', close);
+        const newInput = dialog.querySelector('#lib-new');
+        const addNew = async () => {
+          const ok = await addBulletToLib(sectionType, newInput.value);
+          if (ok) rebuild();
+        };
+        dialog.querySelector('#lib-add').addEventListener('click', addNew);
+        newInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addNew(); } });
+
+        dialog.querySelectorAll('.lib-row').forEach(row => {
+          const id = row.dataset.id;
+          const txt = row.querySelector('.lib-text');
+          txt.addEventListener('change', async () => {
+            const val = txt.value.trim();
+            if (!val) { toast('Point cannot be blank.'); rebuild(); return; }
+            favourites[id] = { name: val.slice(0, 120), type: bulletLibType(sectionType), data: { text: val } };
+            await saveFavouriteDB(id, favourites[id]);
+            toast('Renamed.');
+          });
+          row.querySelector('.lib-del').addEventListener('click', async () => {
+            if (!confirm('Delete this saved point?')) return;
+            delete favourites[id];
+            await deleteFavouriteDB(id);
+            rebuild();
+          });
+        });
+      }
+      bind();
+      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
     }
 
     /* ── RENUMBER ──
@@ -1856,6 +2022,8 @@ ${q.preparedBy || COMPANY.name}`;
     const ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
     const ICON_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const ICON_TOTALS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4l-7 8v4l-4 2v-6L3 7V3z"/></svg>';
+    const ICON_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+    const ICON_STAR_FILL = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
     const ICON_HASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>';
     const ICON_CONVERT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>';
 
@@ -1995,8 +2163,16 @@ ${q.preparedBy || COMPANY.name}`;
         .section-foot strong { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; margin-left: 0.5rem; }
         .add-btn-sm { font-size: 0.8rem; padding: 0.45rem 0.9rem; margin-top: 0.5rem; }
         .bullets-list { display: flex; flex-direction: column; gap: 0.4rem; }
-        .bullet-row { display: grid; grid-template-columns: 16px 1fr 34px; gap: 0.5rem; align-items: center; }
-        .bullet-row.scope-bullet { grid-template-columns: 16px 1fr auto 34px; }
+        .quick-bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding: 0.55rem 0.7rem; margin-bottom: 0.75rem; background: var(--card-hover); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+        .quick-bar .qa-input, .quick-bar #lib-new { flex: 1; min-width: 180px; }
+        .quick-bar .btn-secondary { padding: 0.5rem 0.9rem; font-size: 0.8rem; white-space: nowrap; }
+        .bullet-save { color: var(--text-secondary); }
+        .bullet-save:hover { color: var(--accent); }
+        .bullet-save.is-saved { color: var(--accent); }
+        .lib-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 46vh; overflow-y: auto; }
+        .lib-row { display: grid; grid-template-columns: 16px 1fr 34px; gap: 0.5rem; align-items: center; }
+        .bullet-row { display: grid; grid-template-columns: 16px 1fr 34px 34px; gap: 0.5rem; align-items: center; }
+        .bullet-row.scope-bullet { grid-template-columns: 16px 1fr auto 34px 34px; }
         .bullet-dot { color: var(--accent); font-weight: 700; text-align: center; }
         .scopes-list { display: flex; flex-direction: column; gap: 0.75rem; }
         .scope-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-main); padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
