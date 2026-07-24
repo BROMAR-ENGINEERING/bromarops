@@ -1,14 +1,14 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.43 — Material sections get per-column client visibility:
-   Part #, Unit price and Qty can each be hidden from the client
-   independently. Internal editing always shows every column.
+   V1.44 — Renumber action on each dashboard row, so an existing
+   quote's number can be changed without opening it. Applies to all
+   revisions sharing that root number.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.43',
+  version: 'V1.44',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -467,6 +467,7 @@ window.BromarPages.quotes = {
           e.stopPropagation();
           const id = el.dataset.id, action = el.dataset.action;
           if (action === 'edit') openEditor(id);
+          else if (action === 'renumber') openRenumberDialog(id);
           else if (action === 'preview') openPreview(id);
           else if (action === 'newVersion') newVersion(id);
           else if (action === 'convertEstimate') convertEstimateToQuote(id);
@@ -496,7 +497,7 @@ window.BromarPages.quotes = {
           <div class="row-status stat-${color}"></div>
           <div class="row-main">
             <div class="row-top">
-              <span class="row-number">${escape(displayNumber(q))}</span>
+              <span class="row-number" data-action="renumber" data-id="${q.id}" title="Click to change number">${escape(displayNumber(q))}</span>
               ${q.nickname ? `<span class="row-nick">${escape(q.nickname)}</span>` : ''}
               ${isEstimate ? '<span class="row-badge badge-est">Estimate</span>' : ''}
               <span class="row-badge badge-${color}">${statusLabel(q)}</span>
@@ -514,6 +515,7 @@ window.BromarPages.quotes = {
           <div class="row-actions">
             <button class="icon-btn" data-action="preview" data-id="${q.id}" title="Preview">${ICON_EYE}</button>
             <button class="icon-btn" data-action="edit" data-id="${q.id}" title="Edit">${ICON_EDIT}</button>
+            <button class="icon-btn" data-action="renumber" data-id="${q.id}" title="Change number">${ICON_HASH}</button>
             ${isPublished ? `<button class="icon-btn" data-action="email" data-id="${q.id}" title="Email">${ICON_MAIL}</button>` : ''}
             ${isEstimate ? `<button class="icon-btn" data-action="convertEstimate" data-id="${q.id}" title="Convert to Quote">${ICON_CONVERT}</button>` : `<button class="icon-btn" data-action="newVersion" data-id="${q.id}" title="New revision">${ICON_COPY}</button>`}
             ${q.status === 'accepted' && isPublished && q.docType === 'quote' ? `<button class="icon-btn" data-action="convert" data-id="${q.id}" title="Convert to job">${ICON_CHECK}</button>` : ''}
@@ -1395,6 +1397,61 @@ window.BromarPages.quotes = {
       return `<section class="doc-section"><h3>${escape(s.name)}</h3>${body}</section>`;
     }
 
+    /* ── RENUMBER ──
+       Changes the root number. Any revisions sharing that root number
+       move with it, so BQ000001 / BQ000001-R1 stay a matched set. */
+    function openRenumberDialog(id) {
+      const q = quotes.find(x => x.id === id); if (!q) return;
+      const family = quotes.filter(x => x.rootNumber === q.rootNumber);
+      const dialog = document.createElement('div');
+      dialog.className = 'quote-modal-overlay';
+      dialog.innerHTML = `
+        <div class="quote-modal quote-modal-sm">
+          <div class="modal-header"><h2>Change ${docLabel(q)} Number</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-body">
+            <div class="form-row"><label>Current</label><input class="quote-input" value="${escape(q.rootNumber)}" readonly></div>
+            <div class="form-row"><label>New Number</label>
+              <input id="rn-number" class="quote-input" value="${escape(q.rootNumber)}" autocomplete="off" spellcheck="false" placeholder="e.g. 24-1087">
+              <span class="field-hint">Use any format from your register.</span>
+            </div>
+            ${family.length > 1 ? `<p class="hint">This number has <strong>${family.length} revisions</strong>. All of them will be renumbered together.</p>` : ''}
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" id="rn-cancel">Cancel</button>
+            <button class="btn-primary" id="rn-save">Save Number</button>
+          </div>
+        </div>`;
+      document.body.appendChild(dialog);
+      const close = () => dialog.remove();
+      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+      document.getElementById('modal-close').addEventListener('click', close);
+      document.getElementById('rn-cancel').addEventListener('click', close);
+
+      const input = document.getElementById('rn-number');
+      input.focus(); input.select();
+
+      const save = async () => {
+        const val = input.value.trim();
+        if (!val) { toast('Enter a quote number.'); input.focus(); return; }
+        if (val === q.rootNumber) { close(); return; }
+        const clash = quotes.some(x => x.rootNumber === val);
+        if (clash) { toast(`${val} is already in use.`); input.focus(); return; }
+        const old = q.rootNumber;
+        family.forEach(x => { x.rootNumber = val; });
+        const results = await Promise.all(family.map(x => saveQuoteNow(x)));
+        if (results.some(r => !r)) {
+          family.forEach(x => { x.rootNumber = old; });
+          toast('Renumber failed — reverted.');
+          return;
+        }
+        close();
+        toast(`${old} → ${val}`);
+        rerender();
+      };
+      document.getElementById('rn-save').addEventListener('click', save);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+    }
+
     /* ── EMAIL ── */
     function openEmailDialog(id) {
       const q = quotes.find(x => x.id === id); if (!q) return;
@@ -1769,6 +1826,7 @@ ${q.preparedBy || COMPANY.name}`;
     const ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
     const ICON_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const ICON_TOTALS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4l-7 8v4l-4 2v-6L3 7V3z"/></svg>';
+    const ICON_HASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>';
     const ICON_CONVERT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>';
 
     /* ── STYLES ── */
@@ -1816,7 +1874,9 @@ ${q.preparedBy || COMPANY.name}`;
         .quote-row:hover { background: var(--card-hover); border-color: var(--accent); }
         .row-status { width: 6px; height: 36px; border-radius: 3px; }
         .row-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; flex-wrap: wrap; }
-        .row-number { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); }
+        .row-number { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); cursor: pointer; border-bottom: 1px dashed transparent; }
+        .row-number:hover { border-bottom-color: var(--accent); }
+        .quote-modal-sm { max-width: 460px; }
         .row-nick { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
         .row-badge { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; }
         .badge-green { background: var(--success-bg); color: var(--success); }
