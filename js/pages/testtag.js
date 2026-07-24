@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.29  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.30  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.29',
+  version: 'V1.30',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -168,7 +168,8 @@ window.BromarAdmin.testtag = {
     const p = n => String(n).padStart(2, '0');
     const ymd = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
     const job = (document.getElementById('tt-job')?.value || '').trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    return 'BRO-TT-' + ymd + '-' + (job || (p(d.getHours()) + p(d.getMinutes())));
+    /* No job number -> no trailing segment (never invent one) */
+    return 'BRO-TT_' + ymd + (job ? '_' + job : '');
   },
 
   /* Strip HTML + map non-Latin chars so jsPDF's standard fonts render cleanly */
@@ -530,7 +531,7 @@ window.BromarAdmin.testtag = {
               <label>Site Type</label>
               <select id="tt-insttype" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem">
                 <option value="commercial">Commercial / Industrial (AS/NZS 3760)</option>
-                <option value="construction">Construction / Demolition (AS/NZS 3012)</option>
+                <option value="construction" selected>Construction / Demolition (AS/NZS 3012)</option>
               </select>
             </div>
             <label class="tt-checkbox"><input type="checkbox" id="tt-summary" checked> Include standards table &amp; requirements summary</label>
@@ -863,6 +864,8 @@ window.BromarAdmin.testtag = {
     set('tt-customer', h.customer); set('tt-address', h.address); set('tt-contact', h.contact);
     set('tt-phone', h.phone); set('tt-email', h.email); set('tt-range', h.range);
     set('tt-site', h.site || h.customer);
+    /* New upload: clear any job number carried over from the previous report */
+    set('tt-job', '');
     /* Generate a clean Bromar cert number rather than reuse the WinPATS one */
     const certEl = document.getElementById('tt-cert');
     if (certEl) certEl.value = this._ttGenCert();
@@ -893,7 +896,7 @@ window.BromarAdmin.testtag = {
       licence: g('tt-licence').trim(),
       licenceType: document.getElementById('tt-licence-type')?.value || 'rec',
       instrument: g('tt-instrument').trim(), instrSerial: g('tt-instr-serial').trim(), instrCal: g('tt-instr-cal').trim(),
-      instType: g('tt-insttype') || 'commercial',
+      instType: g('tt-insttype') || 'construction',
       summary: document.getElementById('tt-summary')?.checked ?? true,
       note: g('tt-note').trim(),
       techNotes: g('tt-tech-notes').trim(),
@@ -1702,7 +1705,7 @@ window.BromarAdmin.testtag = {
     container.addEventListener('input', (e) => {
       if (e.target.matches('#tt-job')) {
         const cert = document.getElementById('tt-cert');
-        if (cert && (!cert.value.trim() || /^BRO-TT-/.test(cert.value.trim()))) {
+        if (cert && (!cert.value.trim() || /^BRO-TT[-_]/.test(cert.value.trim()))) {
           cert.value = this._ttGenCert();
         }
       }
