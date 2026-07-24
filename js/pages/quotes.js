@@ -1,14 +1,15 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.44 — Renumber action on each dashboard row, so an existing
-   quote's number can be changed without opening it. Applies to all
-   revisions sharing that root number.
+   V1.45 — Labour sections now use the same column checkboxes as
+   materials (Rate / Hours) instead of a dropdown. Unticking both
+   leaves Description + Total. Existing quotes migrate automatically
+   from the old display setting.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.44',
+  version: 'V1.45',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -295,7 +296,7 @@ window.BromarPages.quotes = {
         case 'bullets':   return { bullets: [''] };
         case 'scopes':    return { intro: 'Bromar have allowed for the following:', scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
         case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true, columns: { part: true, unit: true, qty: true } };
-        case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true, display: 'full' };
+        case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true, columns: { rate: true, hours: true } };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }] };
         default:          return {};
       }
@@ -340,14 +341,14 @@ window.BromarPages.quotes = {
       };
     }
 
-    /* Labour visibility to the client:
-       'full'  — Description / Rate / Hours / Total
-       'lines' — Description / Total only (rates & hours hidden)
-       'total' — a single lump sum
-       Falls back to the old showTable boolean for existing quotes. */
-    function labourDisplay(d) {
-      if (d.display) return d.display;
-      return d.showTable === false ? 'total' : 'full';
+    /* Which labour columns the client sees. Description and Total are
+       always shown. Migrates quotes built with the old 'display'
+       dropdown: 'lines' hid both rate and hours. */
+    function labColumns(d) {
+      const c = d.columns;
+      if (c) return { rate: c.rate !== false, hours: c.hours !== false };
+      if (d.display === 'lines') return { rate: false, hours: false };
+      return { rate: true, hours: true };
     }
     function sectionSellTotal(sec, q) {
       const d = sec.data || {};
@@ -979,19 +980,21 @@ window.BromarPages.quotes = {
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Material</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         }
-        case 'labour':
+        case 'labour': {
+          const lc = labColumns(d);
           return `
-            <div class="form-row" style="max-width:340px;margin-bottom:0.85rem"><label>Client sees</label>
-              <select id="f-display" class="quote-input">
-                <option value="full" ${labourDisplay(d) === 'full' ? 'selected' : ''}>Full table — rate, hours &amp; total</option>
-                <option value="lines" ${labourDisplay(d) === 'lines' ? 'selected' : ''}>Line items &amp; totals — hide rate/hours</option>
-                <option value="total" ${labourDisplay(d) === 'total' ? 'selected' : ''}>Lump sum total only</option>
-              </select>
+            <label class="toggle-lbl" style="margin-bottom:0.6rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            <div class="col-bar">
+              <span class="col-bar-label">Client sees columns</span>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="rate" ${lc.rate ? 'checked' : ''}><span>Hourly rate</span></label>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="hours" ${lc.hours ? 'checked' : ''}><span>Hours</span></label>
+              <span class="col-bar-note">Description &amp; Total always shown</span>
             </div>
             <div class="items-head lab-head"><span>Description</span><span>Hourly Rate</span><span>Qty (hrs)</span><span>Total</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => labourRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Labour Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
+        }
         case 'pcSums':
           return `
             <div class="items-head pc-head"><span>Description</span><span>Amount</span><span></span></div>
@@ -1215,6 +1218,7 @@ window.BromarPages.quotes = {
             queueSave(q);
           });
         });
+
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(materialItemTotal(d.items[idx], q.globalMarkup)); refreshFoot(); };
         document.querySelectorAll('.mat-row').forEach((row, idx) => {
           row.querySelector('.m-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
@@ -1227,7 +1231,15 @@ window.BromarPages.quotes = {
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', part: '', price: 0, markup: null, qty: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
       if (meta.shape === 'labour') {
-        get('f-display').addEventListener('change', e => { d.display = e.target.value; d.showTable = e.target.value !== 'total'; queueSave(q); });
+        get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; queueSave(q); });
+        document.querySelectorAll('.f-col').forEach(cb => {
+          cb.addEventListener('change', () => {
+            d.columns = d.columns || {};
+            d.columns[cb.dataset.col] = cb.checked;
+            delete d.display;
+            queueSave(q);
+          });
+        });
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(labourItemTotal(d.items[idx])); refreshFoot(); };
         document.querySelectorAll('.lab-row').forEach((row, idx) => {
           row.querySelector('.l-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
@@ -1375,10 +1387,21 @@ window.BromarPages.quotes = {
         case 'labour':
           if (!(d.items || []).length) return '';
           const labTotal = sectionSellTotal(s, q);
-          const labMode = labourDisplay(d);
-          if (labMode === 'total') body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
-          else if (labMode === 'lines') body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="doc-table-total"><td class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
-          else body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
+          if (d.showTable === false) body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
+          else {
+            const lc = labColumns(d);
+            const lhead = ['<th>Description</th>']
+              .concat(lc.rate ? ['<th class="num">Rate</th>'] : [])
+              .concat(lc.hours ? ['<th class="num">Hours</th>'] : [])
+              .concat(['<th class="num">Total</th>']).join('');
+            const lspan = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0);
+            const lrows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
+              .concat(lc.rate ? ['<td class="num">' + fmt(it.rate) + '</td>'] : [])
+              .concat(lc.hours ? ['<td class="num">' + it.qty + '</td>'] : [])
+              .concat(['<td class="num">' + fmt(labourItemTotal(it)) + '</td>'])
+              .join('')).map(r => `<tr>${r}</tr>`).join('');
+            body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr>${lhead}</tr></thead><tbody>${lrows}<tr class="doc-table-total"><td colspan="${lspan}" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
+          }
           break;
         case 'pcSums':
           if (!(d.items || []).length) return '';
@@ -1589,14 +1612,21 @@ ${q.preparedBy || COMPANY.name}`;
           case 'labour':
             if ((d.items || []).length) {
               const tot = sectionSellTotal(s, q);
-              const mode = labourDisplay(d);
-              if (mode === 'total') body = `<div class="line"><span>Labour total</span><strong>${fmt(tot)}</strong></div>`;
-              else if (mode === 'lines') {
+              if (d.showTable === false) body = `<div class="line"><span>Labour total</span><strong>${fmt(tot)}</strong></div>`;
+              else {
                 hasTable = true;
-                body = `<table class="data"><thead><tr><th>Description</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="ttl"><td class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-              } else {
-                hasTable = true;
-                body = `<table class="data"><thead><tr><th>Description</th><th class="num">Rate</th><th class="num">Hours</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.rate)}</td><td class="num">${it.qty}</td><td class="num">${fmt(labourItemTotal(it))}</td></tr>`).join('')}<tr class="ttl"><td colspan="3" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+                const lc = labColumns(d);
+                const head = ['<th>Description</th>']
+                  .concat(lc.rate ? ['<th class="num">Rate</th>'] : [])
+                  .concat(lc.hours ? ['<th class="num">Hours</th>'] : [])
+                  .concat(['<th class="num">Total</th>']).join('');
+                const span = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0);
+                const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
+                  .concat(lc.rate ? ['<td class="num">' + fmt(it.rate) + '</td>'] : [])
+                  .concat(lc.hours ? ['<td class="num">' + it.qty + '</td>'] : [])
+                  .concat(['<td class="num">' + fmt(labourItemTotal(it)) + '</td>'])
+                  .join('')).map(r => `<tr>${r}</tr>`).join('');
+                body = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="ttl"><td colspan="${span}" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
               }
             } break;
           case 'pcSums':
