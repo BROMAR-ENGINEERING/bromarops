@@ -1,14 +1,14 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.40 — Removed the orange page frame from the PDF, and removed
-   the module version from the PDF footer. The shell's version badge
-   is also hidden while the client-facing preview is open.
+   V1.43 — Material sections get per-column client visibility:
+   Part #, Unit price and Qty can each be hidden from the client
+   independently. Internal editing always shows every column.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.40',
+  version: 'V1.43',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -31,7 +31,7 @@ window.BromarPages.quotes = {
     }
 
     const COMPANY = {
-      name: 'Bromar Electrical Services Pty Ltd',
+      name: 'Bromar Electrical Services (Aust)',
       addressLine1: '2/98-108 Western Ave',
       addressLine2: 'Westmeadows, Vic 3049',
       phone: '+61 3 9335 5344',
@@ -244,10 +244,17 @@ window.BromarPages.quotes = {
     function uid() { return 'q' + Date.now() + Math.random().toString(36).slice(2, 7); }
     function sid() { return 's' + Date.now() + Math.random().toString(36).slice(2, 7); }
     function gid() { return 'g' + Date.now() + Math.random().toString(36).slice(2, 7); }
+    /* Only strict BQ###### numbers feed the auto sequence — manually
+       entered / migrated numbers are ignored so they can't skew it. */
     function nextRootNumber() {
-      const nums = quotes.map(q => parseInt((q.rootNumber || '').replace(QUOTE_PREFIX, ''), 10)).filter(n => !isNaN(n));
+      const re = new RegExp('^' + QUOTE_PREFIX + '(\\d+)$');
+      const nums = quotes.map(q => { const m = re.exec(q.rootNumber || ''); return m ? parseInt(m[1], 10) : NaN; }).filter(n => !isNaN(n));
       const next = (nums.length ? Math.max(...nums) : 0) + 1;
       return QUOTE_PREFIX + String(next).padStart(QUOTE_PAD, '0');
+    }
+    function numberInUse(num, exceptId) {
+      const n = (num || '').trim().toLowerCase();
+      return quotes.some(q => q.id !== exceptId && (q.rootNumber || '').trim().toLowerCase() === n && q.version === 1);
     }
     function displayNumber(q) { return q.version > 1 ? `${q.rootNumber}-R${q.version - 1}` : q.rootNumber; }
     function docLabel(q) { return q.docType === 'estimate' ? 'Estimate' : 'Quote'; }
@@ -287,7 +294,7 @@ window.BromarPages.quotes = {
         case 'text':      return { text: '' };
         case 'bullets':   return { bullets: [''] };
         case 'scopes':    return { intro: 'Bromar have allowed for the following:', scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
-        case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true };
+        case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true, columns: { part: true, unit: true, qty: true } };
         case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true, display: 'full' };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }] };
         default:          return {};
@@ -320,6 +327,18 @@ window.BromarPages.quotes = {
       return cost * (1 + m / 100);
     }
     function labourItemTotal(it) { return (it.qty || 0) * (it.rate || 0); }
+
+    /* Which material columns the client sees. Description and Total
+       are always shown; the rest are optional. Defaults to all on for
+       quotes created before this was configurable. */
+    function matColumns(d) {
+      const c = d.columns || {};
+      return {
+        part: c.part !== false,
+        unit: c.unit !== false,
+        qty:  c.qty  !== false
+      };
+    }
 
     /* Labour visibility to the client:
        'full'  — Description / Rate / Hours / Total
@@ -372,6 +391,13 @@ window.BromarPages.quotes = {
       }, 0);
     }
 
+    /* The shell shows a version badge bottom-right on every page.
+       Hide it over the client-facing preview, restore it elsewhere. */
+    function setVersionBadge(visible) {
+      const el = document.getElementById('app-version');
+      if (el) el.style.display = visible ? '' : 'none';
+    }
+
     /* ── RENDER ROUTER ── */
     function rerender() {
       if (view === 'editor') renderEditor();
@@ -381,6 +407,7 @@ window.BromarPages.quotes = {
 
     /* ── DASHBOARD ── */
     function renderDashboard() {
+      setVersionBadge(true);
       const counts = { accepted: 0, pending: 0, inProgress: 0, rejected: 0 };
       quotes.forEach(q => { counts[effectiveStatus(q)]++; });
       const filtered = filterQuotes();
@@ -511,7 +538,11 @@ window.BromarPages.quotes = {
         <div class="quote-modal">
           <div class="modal-header"><h2>New ${label}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
           <div class="modal-body">
-            <div class="form-row"><label>${label} Number</label><input type="text" id="nq-number" class="quote-input" value="${number}" readonly autocomplete="off"></div>
+            <div class="form-row"><label>${label} Number</label>
+              <input type="text" id="nq-number" class="quote-input" value="${number}" readonly autocomplete="off" autocorrect="off" spellcheck="false">
+              <label class="toggle-lbl" style="margin-top:0.4rem"><input type="checkbox" id="nq-manual-number"><span>Enter our own number (migration)</span></label>
+              <span class="field-hint" id="nq-number-hint">Auto-generated from the BQ sequence.</span>
+            </div>
             <div class="form-row"><label>Client / Account</label>
               <select id="nq-client" class="quote-input" autocomplete="off">
                 <option value="">— Select client —</option>
@@ -547,6 +578,24 @@ window.BromarPages.quotes = {
       const siteRow = document.getElementById('nq-site-row');
       const siteSel = document.getElementById('nq-site');
       const siteNameInput = document.getElementById('nq-sitename');
+      const numberInput = document.getElementById('nq-number');
+      const manualNumCb = document.getElementById('nq-manual-number');
+      const numberHint = document.getElementById('nq-number-hint');
+
+      manualNumCb.addEventListener('change', () => {
+        if (manualNumCb.checked) {
+          numberInput.readOnly = false;
+          numberInput.value = '';
+          numberInput.placeholder = 'e.g. 24-1087';
+          numberHint.textContent = 'Using your own number. The BQ sequence is left untouched.';
+          numberInput.focus();
+        } else {
+          numberInput.readOnly = true;
+          numberInput.value = number;
+          numberInput.placeholder = '';
+          numberHint.textContent = 'Auto-generated from the BQ sequence.';
+        }
+      });
 
       clientSel.addEventListener('change', () => {
         if (clientSel.value === '__manual__') { manualRow.style.display = ''; siteRow.style.display = 'none'; return; }
@@ -564,7 +613,7 @@ window.BromarPages.quotes = {
 
       const collect = () => {
         const q = {
-          id: uid(), docType, rootNumber: number, version: 1,
+          id: uid(), docType, rootNumber: (numberInput.value || '').trim() || number, version: 1,
           nickname: document.getElementById('nq-nickname').value.trim(),
           client: 'Unassigned', clientEmail: '',
           siteName: '', siteContactName: '', siteContactPhone: '', siteContactEmail: '', siteAddress: '',
@@ -584,13 +633,21 @@ window.BromarPages.quotes = {
         if (nick) q.siteName = nick;
         return q;
       };
+      const validNumber = () => {
+        const val = (numberInput.value || '').trim();
+        if (!val) { toast('Enter a quote number.'); numberInput.focus(); return false; }
+        if (numberInUse(val)) { toast(`${val} is already used by another document.`); numberInput.focus(); return false; }
+        return true;
+      };
       document.getElementById('nq-allocate').addEventListener('click', async () => {
+        if (!validNumber()) return;
         const q = collect(); q.status = 'allocated';
         const ok = await saveQuoteNow(q);
         if (!ok) { toast('Could not save — quote not created.'); return; }
         quotes.push(q); close(); rerender();
       });
       document.getElementById('nq-build').addEventListener('click', async () => {
+        if (!validNumber()) return;
         const q = collect(); q.status = 'draft';
         const intro = newSection('introduction'); q.sections.push(intro);
         const ok = await saveQuoteNow(q);
@@ -611,6 +668,7 @@ window.BromarPages.quotes = {
     function backToDashboard() { activeQuoteId = null; view = 'dashboard'; rerender(); }
 
     function renderEditor() {
+      setVersionBadge(true);
       const q = quotes.find(x => x.id === activeQuoteId);
       if (!q) { backToDashboard(); return; }
       const isPublished = !!q.publishedAt;
@@ -779,6 +837,9 @@ window.BromarPages.quotes = {
         <div class="panel-head"><h2>Client &amp; Site Details</h2></div>
         <div class="section-label">Document</div>
         <div class="form-grid">
+          <div class="form-row"><label>${docLabel(q)} Number</label><input id="d-rootnumber" class="quote-input" value="${escape(q.rootNumber || '')}" autocomplete="off" spellcheck="false">
+            <span class="field-hint">${q.version > 1 ? `Revision <strong>R${q.version - 1}</strong> — shows as ${escape(displayNumber(q))}.` : 'Editable during migration from the old system.'}</span>
+          </div>
           <div class="form-row form-row-wide"><label>Short Description</label><input id="d-nickname" class="quote-input" value="${escape(q.nickname || '')}" placeholder="e.g. Pump Station Upgrade" autocomplete="off">
             <span class="field-hint">Shown beside the quote number in the list and on the PDF.</span>
           </div>
@@ -900,13 +961,22 @@ window.BromarPages.quotes = {
             </div>
             <div class="scopes-list" id="scopes-list">${(d.scopes || []).map((sc, i) => scopeCard(sc, i, d.scopes.length)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-scope">+ Add Scope</button>`;
-        case 'materials':
+        case 'materials': {
+          const mc = matColumns(d);
           return `
-            <label class="toggle-lbl" style="margin-bottom:0.75rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            <label class="toggle-lbl" style="margin-bottom:0.6rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            <div class="col-bar">
+              <span class="col-bar-label">Client sees columns</span>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="part" ${mc.part ? 'checked' : ''}><span>Part #</span></label>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="unit" ${mc.unit ? 'checked' : ''}><span>Unit price</span></label>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="qty" ${mc.qty ? 'checked' : ''}><span>Qty</span></label>
+              <span class="col-bar-note">Description &amp; Total always shown</span>
+            </div>
             <div class="items-head mat-head"><span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => materialRow(it, q.globalMarkup)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Material</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
+        }
         case 'labour':
           return `
             <div class="form-row" style="max-width:340px;margin-bottom:0.85rem"><label>Client sees</label>
@@ -1012,6 +1082,15 @@ window.BromarPages.quotes = {
         hint.innerHTML = v > 0
           ? `Adding <strong>${v}%</strong> to every material line without its own markup.`
           : 'No markup applied. Material lines sell at cost unless given their own markup %.';
+      });
+
+      // Quote number — editable during migration, guarded against clashes
+      const rootEl = document.getElementById('d-rootnumber');
+      if (rootEl) rootEl.addEventListener('change', () => {
+        const val = rootEl.value.trim();
+        if (!val) { toast('Quote number cannot be blank.'); rootEl.value = q.rootNumber; return; }
+        if (numberInUse(val, q.id)) { toast(`${val} is already used by another document.`); rootEl.value = q.rootNumber; return; }
+        q.rootNumber = val; queueSave(q); renderEditor();
       });
 
       // Client / site pickers — populate fields then re-render
@@ -1127,6 +1206,13 @@ window.BromarPages.quotes = {
       }
       if (meta.shape === 'materials') {
         get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; queueSave(q); });
+        document.querySelectorAll('.f-col').forEach(cb => {
+          cb.addEventListener('change', () => {
+            d.columns = d.columns || {};
+            d.columns[cb.dataset.col] = cb.checked;
+            queueSave(q);
+          });
+        });
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(materialItemTotal(d.items[idx], q.globalMarkup)); refreshFoot(); };
         document.querySelectorAll('.mat-row').forEach((row, idx) => {
           row.querySelector('.m-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
@@ -1163,6 +1249,7 @@ window.BromarPages.quotes = {
     function renderPreview() {
       const q = quotes.find(x => x.id === activeQuoteId);
       if (!q) { backToDashboard(); return; }
+      setVersionBadge(false);
       const visible = (q.sections || []).filter(s => s.show && !s.internal);
       const canAccept = q.docType === 'quote';
       container.innerHTML = `
@@ -1266,7 +1353,22 @@ window.BromarPages.quotes = {
           if (!(d.items || []).length) return '';
           const matTotal = sectionSellTotal(s, q);
           if (d.showTable === false) body = `<div class="doc-line"><span>Materials total</span><strong>${fmt(matTotal)}</strong></div>`;
-          else body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}<tr class="doc-table-total"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr></tbody></table></div>`;
+          else {
+            const mc = matColumns(d);
+            const head = ['<th>Description</th>']
+              .concat(mc.part ? ['<th>Part #</th>'] : [])
+              .concat(mc.unit ? ['<th class="num">Unit</th>'] : [])
+              .concat(mc.qty ? ['<th class="num">Qty</th>'] : [])
+              .concat(['<th class="num">Total</th>']).join('');
+            const span = 1 + (mc.part ? 1 : 0) + (mc.unit ? 1 : 0) + (mc.qty ? 1 : 0);
+            const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
+              .concat(mc.part ? ['<td>' + escape(it.part || '—') + '</td>'] : [])
+              .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup)) + '</td>'] : [])
+              .concat(mc.qty ? ['<td class="num">' + it.qty + '</td>'] : [])
+              .concat(['<td class="num">' + fmt(materialItemTotal(it, q.globalMarkup)) + '</td>'])
+              .join('')).map(r => `<tr>${r}</tr>`).join('');
+            body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="doc-table-total"><td colspan="${span}" class="num">Subtotal</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr></tbody></table></div>`;
+          }
           break;
         case 'labour':
           if (!(d.items || []).length) return '';
@@ -1309,7 +1411,7 @@ Total: ${fmt(quoteTotal(q))}
 Let me know if you have any questions.
 
 Kind regards,
-${q.preparedBy || 'Bromar Electrical Services'}`;
+${q.preparedBy || COMPANY.name}`;
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
       dialog.innerHTML = `
@@ -1392,7 +1494,6 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
       const isEst = q.docType === 'estimate';
       const docNumber = displayNumber(q);
       const docDateStr = formatDate(q.publishedAt || q.createdAt);
-      const moduleVersion = window.BromarPages.quotes.version;
       const footerLeft = `${COMPANY.name} — ${docLabel(q)} ${docNumber}${q.nickname ? ' · ' + q.nickname : ''}`;
       const sectionsHtml = visible.map(s => {
         const meta = SECTION_TYPES[s.type], d = s.data || {};
@@ -1412,7 +1513,20 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
               if (d.showTable === false) body = `<div class="line"><span>Materials total</span><strong>${fmt(tot)}</strong></div>`;
               else {
                 hasTable = true;
-                body = `<table class="data"><thead><tr><th>Description</th><th>Part #</th><th class="num">Unit</th><th class="num">Qty</th><th class="num">Total</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td>${escape(it.part || '—')}</td><td class="num">${fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup))}</td><td class="num">${it.qty}</td><td class="num">${fmt(materialItemTotal(it, q.globalMarkup))}</td></tr>`).join('')}<tr class="ttl"><td colspan="4" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+                const mc = matColumns(d);
+                const head = ['<th>Description</th>']
+                  .concat(mc.part ? ['<th>Part #</th>'] : [])
+                  .concat(mc.unit ? ['<th class="num">Unit</th>'] : [])
+                  .concat(mc.qty ? ['<th class="num">Qty</th>'] : [])
+                  .concat(['<th class="num">Total</th>']).join('');
+                const span = 1 + (mc.part ? 1 : 0) + (mc.unit ? 1 : 0) + (mc.qty ? 1 : 0);
+                const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
+                  .concat(mc.part ? ['<td>' + escape(it.part || '—') + '</td>'] : [])
+                  .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup)) + '</td>'] : [])
+                  .concat(mc.qty ? ['<td class="num">' + it.qty + '</td>'] : [])
+                  .concat(['<td class="num">' + fmt(materialItemTotal(it, q.globalMarkup)) + '</td>'])
+                  .join('')).map(r => `<tr>${r}</tr>`).join('');
+                body = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="ttl"><td colspan="${span}" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
               }
             } break;
           case 'labour':
@@ -1468,7 +1582,6 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
   .foot { display: flex; justify-content: space-between; align-items: center;
           border-top: 1px solid #e6e6e6; padding-top: 2.5mm;
           font-size: 7.5pt; color: #999; z-index: 2; }
-  .foot .rev { font-family: 'JetBrains Mono', monospace; font-size: 7pt; }
 
   /* ── LETTERHEAD ── */
   .head-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 10px; border-bottom: 2.5px solid #ea580c; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1547,15 +1660,13 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
   @media screen {
     body { background: #e5e5e5; padding: 72px 0 40px; }
     .paper { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 12mm; box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
-    .frame { position: absolute; top: 12mm; left: 12mm; right: 12mm; bottom: 12mm; }
     .foot { position: absolute; bottom: 12mm; left: 19mm; right: 19mm; }
   }
 
-  /* ── PRINT: frame + footer repeat on every page ── */
+  /* ── PRINT: footer repeats on every page ── */
   @media print {
     body { background: #fff; padding: 0; }
     .paper { width: auto; min-height: 0; padding: 0; box-shadow: none; }
-    .frame { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
     .foot { position: fixed; bottom: 0; left: 7mm; right: 7mm; }
     .pdf-toolbar { display: none !important; }
   }
@@ -1570,7 +1681,6 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
 </div>
 
 <div class="paper">
-  <div class="frame"></div>
 
   <table class="sheet">
     <thead><tr><td><div class="head-space"></div></td></tr></thead>
@@ -1628,7 +1738,6 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
 
   <div class="foot">
     <span>${escape(footerLeft)}</span>
-    <span class="rev">${escape(moduleVersion)}</span>
   </div>
 </div>
 
@@ -1779,6 +1888,9 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
         .toggle-lbl input { accent-color: var(--accent); }
         .toggle-mini { font-size: 0.72rem; }
         .preset-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; align-items: center; padding: 0.5rem 0.75rem; background: var(--card-hover); border-radius: var(--radius-sm); }
+        .col-bar { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: center; padding: 0.55rem 0.8rem; margin-bottom: 0.85rem; background: var(--card-hover); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+        .col-bar-label { font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+        .col-bar-note { font-size: 0.72rem; color: var(--text-secondary); font-style: italic; margin-left: auto; }
         .preset-select { max-width: 240px; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
         .preset-btn { padding: 0.5rem 0.9rem; font-size: 0.8rem; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; }
@@ -1925,6 +2037,8 @@ ${q.preparedBy || 'Bromar Electrical Services'}`;
 
   destroy() {
     if (typeof this._flush === 'function') { try { this._flush(); } catch (e) { console.warn(e); } }
+    const v = document.getElementById('app-version');
+    if (v) v.style.display = '';
     const t = document.getElementById('quote-toast');
     if (t) t.remove();
     document.querySelectorAll('.quote-modal-overlay').forEach(el => el.remove());
