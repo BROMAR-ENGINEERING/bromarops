@@ -1,18 +1,16 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.46 — Reusable bullet library for every dot-point section
-   (exclusions, inclusions, references, assumptions, scopes):
-   type-to-search quick add, save any line to the library as you
-   write it, and a manage dialog to rename/delete entries.
-   Whole-section favourites can now be renamed too.
-   Library entries live in quote_favourites under type
-   'bullet:<sectionType>', so no schema change is needed.
+   V1.48 — New "Costing Summary" section: pick which existing
+   Material/Labour/PC-Sum/Travel costing sections to summarise, and
+   it renders a totals-only table. Hide the detailed tables from the
+   client ("Show to client" off) while the summary shows the figures.
+   Priced sections still count toward the grand total exactly once.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.46',
+  version: 'V1.48',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -57,6 +55,7 @@ window.BromarPages.quotes = {
       description:    { name: 'Description',                 priced: false, shape: 'text' },
       materials:      { name: 'Material Costing',            priced: true,  shape: 'materials' },
       labour:         { name: 'Labour Costing',              priced: true,  shape: 'labour' },
+      costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
       notes:          { name: 'Internal Notes',              priced: false, shape: 'text', internalOnly: true },
       optionMaterials:{ name: 'Option — Materials',          priced: true,  shape: 'materials', isOption: true },
       optionLabour:   { name: 'Option — Labour',             priced: true,  shape: 'labour', isOption: true },
@@ -72,7 +71,7 @@ window.BromarPages.quotes = {
 
     /* ── STATE ── */
     let quotes = [];
-    let favourites = {};
+    let prebuilts = {};
     let clients = [];
     let sites = [];
     let view = 'dashboard';
@@ -168,8 +167,8 @@ window.BromarPages.quotes = {
         if (qRes.error) throw qRes.error;
         if (fRes.error) throw fRes.error;
         quotes = (qRes.data || []).map(rowToQuote);
-        favourites = {};
-        (fRes.data || []).forEach(f => { favourites[f.id] = { name: f.name, type: f.type, data: f.data }; });
+        prebuilts = {};
+        (fRes.data || []).forEach(f => { prebuilts[f.id] = { name: f.name, type: f.type, data: f.data }; });
         clients = cRes.error ? [] : (cRes.data || []);
         sites = sRes.error ? [] : (sRes.data || []);
       } catch (e) {
@@ -226,22 +225,22 @@ window.BromarPages.quotes = {
         if (error) throw error;
       } catch (e) { console.error(e); toast('Delete failed'); }
     }
-    async function saveFavouriteDB(id, fav) {
+    async function savePrebuiltDB(id, fav) {
       const supabase = sb();
-      if (!supabase) { toast('Not connected — favourite not saved'); return; }
+      if (!supabase) { toast('Not connected — prebuilt not saved'); return; }
       try {
         const { data, error } = await supabase.from('quote_favourites').upsert({ id, name: fav.name, type: fav.type, data: fav.data }).select();
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
-      } catch (e) { console.error(e); toast('Favourite save failed'); }
+      } catch (e) { console.error(e); toast('Prebuilt save failed'); }
     }
-    async function deleteFavouriteDB(id) {
+    async function deletePrebuiltDB(id) {
       const supabase = sb();
       if (!supabase) return;
       try {
         const { error } = await supabase.from('quote_favourites').delete().eq('id', id);
         if (error) throw error;
-      } catch (e) { console.error(e); toast('Favourite delete failed'); }
+      } catch (e) { console.error(e); toast('Prebuilt delete failed'); }
     }
 
     /* ── HELPERS ── */
@@ -301,6 +300,7 @@ window.BromarPages.quotes = {
         case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true, columns: { part: true, unit: true, qty: true } };
         case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true, columns: { rate: true, hours: true } };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }] };
+        case 'summary':   return { selectedIds: [], showTotal: true };
         default:          return {};
       }
     }
@@ -331,6 +331,24 @@ window.BromarPages.quotes = {
       return cost * (1 + m / 100);
     }
     function labourItemTotal(it) { return (it.qty || 0) * (it.rate || 0); }
+
+    /* Priced, non-option sections a Costing Summary can reference. */
+    function summaryEligible(q, exceptId) {
+      return (q.sections || []).filter(x => {
+        const m = SECTION_TYPES[x.type];
+        return x.id !== exceptId && m && m.priced && !m.isOption;
+      });
+    }
+    function summaryTotal(sec, q) {
+      const sel = (sec.data && sec.data.selectedIds) || [];
+      return summaryEligible(q, sec.id)
+        .filter(x => sel.includes(x.id))
+        .reduce((s, x) => s + sectionSellTotal(x, q), 0);
+    }
+    function summaryRows(sec, q) {
+      const sel = (sec.data && sec.data.selectedIds) || [];
+      return summaryEligible(q, sec.id).filter(x => sel.includes(x.id));
+    }
 
     /* Which material columns the client sees. Description and Total
        are always shown; the rest are optional. Defaults to all on for
@@ -797,7 +815,7 @@ window.BromarPages.quotes = {
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour','optionMaterials','optionLabour','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','optionMaterials','optionLabour','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -806,8 +824,8 @@ window.BromarPages.quotes = {
             <div class="section-grid">
               ${order.map(type => {
                 const meta = SECTION_TYPES[type];
-                const tagCls = meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info');
-                const tag = meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info'));
+                const tagCls = meta.shape === 'summary' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info'));
+                const tag = meta.shape === 'summary' ? 'Summary' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info')));
                 return `<button class="section-pick" data-type="${type}"><span class="pick-name">${meta.name}</span><span class="pick-tag ${tagCls}">${tag}</span></button>`;
               }).join('')}
             </div>
@@ -928,7 +946,7 @@ window.BromarPages.quotes = {
     }
     function renderSectionPanel(q, sec) {
       const meta = SECTION_TYPES[sec.type];
-      const sectionFavs = Object.entries(favourites).filter(([_, p]) => p.type === sec.type);
+      const sectionPrebuilts = Object.entries(prebuilts).filter(([_, p]) => p.type === sec.type);
       return `
         <div class="panel-head">
           <div class="panel-head-left">
@@ -942,16 +960,23 @@ window.BromarPages.quotes = {
             `}
           </div>
         </div>
-        ${sectionFavs.length || canSaveFavourite(meta.shape) ? `
+        ${sectionPrebuilts.length || canSavePrebuilt(meta.shape) ? `
           <div class="preset-bar">
-            ${sectionFavs.length ? `<select id="fav-load" class="quote-input preset-select"><option value="">Load favourite…</option>${sectionFavs.map(([id, p]) => `<option value="${id}">${escape(p.name)}</option>`).join('')}</select>` : ''}
-            ${canSaveFavourite(meta.shape) ? `<button class="btn-secondary preset-btn" id="fav-save">★ Save as favourite</button>` : ''}
-            ${sectionFavs.length ? `<button class="btn-secondary preset-btn" id="fav-rename">Rename</button><button class="btn-secondary preset-btn" id="fav-delete">Delete favourite</button>` : ''}
+            <span class="col-bar-label">Prebuilts</span>
+            ${sectionPrebuilts.length ? `<select id="pb-select" class="quote-input preset-select">
+              <option value="">— Choose a prebuilt —</option>
+              ${sectionPrebuilts.map(([id, p]) => `<option value="${id}">${escape(p.name)}</option>`).join('')}
+            </select>
+            <button class="btn-secondary preset-btn" id="pb-apply" disabled>Apply</button>
+            <button class="btn-secondary preset-btn" id="pb-update" disabled title="Overwrite this prebuilt with the section as it is now">Update</button>
+            <button class="btn-secondary preset-btn" id="pb-rename" disabled>Rename</button>
+            <button class="btn-secondary preset-btn icon-danger-btn" id="pb-delete" disabled>Delete</button>` : '<span class="col-bar-note" style="margin-left:0">None saved yet</span>'}
+            ${canSavePrebuilt(meta.shape) ? `<button class="btn-secondary preset-btn pb-new" id="pb-save">+ Save as new</button>` : ''}
           </div>` : ''}
         <div class="section-body" id="section-body">${renderSectionBody(sec, q)}</div>
       `;
     }
-    function canSaveFavourite(shape) { return ['text', 'bullets', 'scopes', 'materials', 'labour', 'pcSums'].includes(shape); }
+    function canSavePrebuilt(shape) { return ['text', 'bullets', 'scopes', 'materials', 'labour', 'pcSums'].includes(shape); }
 
     /* ── BULLET LIBRARY ──
        Individual reusable lines, kept per section type so the
@@ -961,7 +986,7 @@ window.BromarPages.quotes = {
     function bulletLibType(sectionType) { return BULLET_NS + sectionType; }
     function bulletLibFor(sectionType) {
       const t = bulletLibType(sectionType);
-      return Object.entries(favourites)
+      return Object.entries(prebuilts)
         .filter(([_, p]) => p.type === t)
         .map(([id, p]) => ({ id, text: (p.data && p.data.text) || p.name || '' }))
         .filter(e => e.text.trim())
@@ -978,19 +1003,32 @@ window.BromarPages.quotes = {
       if (bulletInLib(sectionType, val)) { toast('Already in the list.'); return false; }
       const id = 'blt_' + Date.now() + Math.random().toString(36).slice(2, 6);
       const entry = { name: val.slice(0, 120), type: bulletLibType(sectionType), data: { text: val } };
-      favourites[id] = entry;
-      await saveFavouriteDB(id, entry);
+      prebuilts[id] = entry;
+      await savePrebuiltDB(id, entry);
       toast('Saved to list.');
       return true;
     }
     function quickAddBar(sectionType, listId) {
       const lib = bulletLibFor(sectionType);
+      if (!lib.length) {
+        return `
+          <div class="pick-wrap">
+            <div class="pick-head">
+              <span class="col-bar-label">Saved points</span>
+              <button type="button" class="btn-secondary preset-btn qa-manage">Manage (0)</button>
+            </div>
+            <div class="pick-empty">None saved yet — write a point below and press its ${'\u2605'} to save it here.</div>
+          </div>`;
+      }
       return `
-        <div class="quick-bar">
-          <input class="quote-input qa-input" list="${listId}" placeholder="${lib.length ? 'Quick add — start typing to search saved points…' : 'Type a point, then + Add'}" autocomplete="off">
-          <datalist id="${listId}">${lib.map(e => `<option value="${escape(e.text)}"></option>`).join('')}</datalist>
-          <button type="button" class="btn-secondary qa-add">+ Add</button>
-          <button type="button" class="btn-secondary qa-manage" title="Rename or delete saved points">List (${lib.length})</button>
+        <div class="pick-wrap">
+          <div class="pick-head">
+            <span class="col-bar-label">Saved points — click to add</span>
+            <button type="button" class="btn-secondary preset-btn qa-manage">Manage (${lib.length})</button>
+          </div>
+          <div class="pick-list">
+            ${lib.map(e => `<button type="button" class="pick-item" data-text="${escape(e.text)}"><span class="pick-plus">+</span><span class="pick-text">${escape(e.text)}</span></button>`).join('')}
+          </div>
         </div>`;
     }
     function renderSectionBody(sec, q) {
@@ -1046,6 +1084,24 @@ window.BromarPages.quotes = {
             <div class="items-list" id="items-list">${(d.items || []).map(it => pcRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
+        case 'summary': {
+          const eligible = summaryEligible(q, sec.id);
+          const sel = d.selectedIds || [];
+          return `
+            <p class="hint">Tick the costing sections to include. Hide each detailed table from the client with its "Show to client" toggle — this summary then shows only the totals. The grand total is unaffected.</p>
+            <label class="toggle-lbl" style="margin-bottom:0.85rem"><input type="checkbox" id="f-show-total" ${d.showTotal !== false ? 'checked' : ''}><span>Show summary total row</span></label>
+            ${eligible.length ? `<div class="summary-pick" id="summary-pick">
+              ${eligible.map(x => {
+                const hidden = !x.show || x.internal;
+                return `<label class="summary-pick-row">
+                  <input type="checkbox" class="sum-sel" data-id="${x.id}" ${sel.includes(x.id) ? 'checked' : ''}>
+                  <span class="sum-name">${escape(x.name)}${hidden ? '<span class="sum-flag">hidden from client</span>' : '<span class="sum-flag sum-flag-shown">shown to client</span>'}</span>
+                  <span class="sum-amt">${fmt(sectionSellTotal(x, q))}</span>
+                </label>`;
+              }).join('')}
+            </div>` : '<p class="hint">No costing sections in this quote yet. Add Material or Labour Costing first, then come back here.</p>'}
+            <div class="section-foot">Summary total <strong>${fmt(summaryTotal(sec, q))}</strong></div>`;
+        }
         default: return '';
       }
     }
@@ -1190,42 +1246,65 @@ window.BromarPages.quotes = {
       const intEl = get('s-internal');
       if (intEl) intEl.addEventListener('change', async e => { sec.internal = e.target.checked; await saveQuoteNow(q); renderEditor(); });
 
-      const loadSel = get('fav-load');
-      if (loadSel) loadSel.addEventListener('change', async () => {
-        const pid = loadSel.value; if (!pid) return;
-        const p = favourites[pid]; if (!p) return;
-        sec.data = JSON.parse(JSON.stringify(p.data));
-        if (p.data && p.data.scopes) sec.data.scopes.forEach(sc => sc.id = gid());
-        await saveQuoteNow(q); renderEditor();
-      });
-      const saveFavBtn = get('fav-save');
-      if (saveFavBtn) saveFavBtn.addEventListener('click', async () => {
-        const name = prompt(`Save current "${meta.name}" as favourite. Name:`); if (!name) return;
-        const pid = 'fav_' + Date.now();
-        const fav = { name: name.trim(), type: sec.type, data: JSON.parse(JSON.stringify(sec.data)) };
-        favourites[pid] = fav;
-        await saveFavouriteDB(pid, fav);
-        toast(`Favourite "${name}" saved.`); renderEditor();
-      });
-      const renameFavBtn = get('fav-rename');
-      if (renameFavBtn) renameFavBtn.addEventListener('click', async () => {
-        const pid = get('fav-load').value;
-        if (!pid) { toast('Select a favourite to rename.'); return; }
-        const current = favourites[pid];
-        const name = prompt('Rename favourite:', current.name);
-        if (!name || !name.trim() || name.trim() === current.name) return;
-        favourites[pid] = { ...current, name: name.trim() };
-        await saveFavouriteDB(pid, favourites[pid]);
-        toast('Favourite renamed.'); renderEditor();
-      });
-      const delFavBtn = get('fav-delete');
-      if (delFavBtn) delFavBtn.addEventListener('click', async () => {
-        const pid = get('fav-load').value;
-        if (!pid) { toast('Select a favourite to delete.'); return; }
-        if (!confirm(`Delete favourite "${favourites[pid].name}"?`)) return;
-        delete favourites[pid];
-        await deleteFavouriteDB(pid);
-        renderEditor();
+      /* ── PREBUILTS ──
+         Selecting only selects. Apply / Update / Rename / Delete are
+         explicit, so the dropdown keeps its value and the destructive
+         actions always know which prebuilt is targeted. */
+      const pbSel = get('pb-select');
+      if (pbSel) {
+        const pbApply = get('pb-apply'), pbUpdate = get('pb-update');
+        const pbRename = get('pb-rename'), pbDelete = get('pb-delete');
+        const setEnabled = () => {
+          const on = !!pbSel.value;
+          [pbApply, pbUpdate, pbRename, pbDelete].forEach(b => { if (b) b.disabled = !on; });
+        };
+        pbSel.addEventListener('change', setEnabled);
+        setEnabled();
+
+        pbApply.addEventListener('click', async () => {
+          const p = prebuilts[pbSel.value]; if (!p) return;
+          const hasContent = JSON.stringify(sec.data) !== JSON.stringify(defaultData(meta.shape));
+          if (hasContent && !confirm(`Replace this section's content with "${p.name}"?`)) return;
+          sec.data = JSON.parse(JSON.stringify(p.data));
+          if (sec.data && sec.data.scopes) sec.data.scopes.forEach(sc => sc.id = gid());
+          await saveQuoteNow(q);
+          toast(`Applied "${p.name}".`); renderEditor();
+        });
+
+        pbUpdate.addEventListener('click', async () => {
+          const pid = pbSel.value, p = prebuilts[pid]; if (!p) return;
+          if (!confirm(`Overwrite "${p.name}" with this section as it is now?`)) return;
+          prebuilts[pid] = { ...p, data: JSON.parse(JSON.stringify(sec.data)) };
+          await savePrebuiltDB(pid, prebuilts[pid]);
+          toast(`"${p.name}" updated.`);
+        });
+
+        pbRename.addEventListener('click', async () => {
+          const pid = pbSel.value, p = prebuilts[pid]; if (!p) return;
+          const name = prompt('Rename prebuilt:', p.name);
+          if (!name || !name.trim() || name.trim() === p.name) return;
+          prebuilts[pid] = { ...p, name: name.trim() };
+          await savePrebuiltDB(pid, prebuilts[pid]);
+          toast('Prebuilt renamed.'); renderEditor();
+        });
+
+        pbDelete.addEventListener('click', async () => {
+          const pid = pbSel.value, p = prebuilts[pid]; if (!p) return;
+          if (!confirm(`Delete prebuilt "${p.name}"? This cannot be undone.`)) return;
+          delete prebuilts[pid];
+          await deletePrebuiltDB(pid);
+          toast('Prebuilt deleted.'); renderEditor();
+        });
+      }
+
+      const pbSaveBtn = get('pb-save');
+      if (pbSaveBtn) pbSaveBtn.addEventListener('click', async () => {
+        const name = prompt(`Save this ${meta.name} as a new prebuilt. Name:`); if (!name || !name.trim()) return;
+        const pid = 'pb_' + Date.now() + Math.random().toString(36).slice(2, 6);
+        const entry = { name: name.trim(), type: sec.type, data: JSON.parse(JSON.stringify(sec.data)) };
+        prebuilts[pid] = entry;
+        await savePrebuiltDB(pid, entry);
+        toast(`Prebuilt "${name.trim()}" saved.`); renderEditor();
       });
 
       if (meta.shape === 'text') {
@@ -1233,22 +1312,15 @@ window.BromarPages.quotes = {
       }
       if (meta.shape === 'bullets') {
         // quick add — pick a saved point or type a new one
-        const bar = document.querySelector('.quick-bar');
+        const bar = document.querySelector('.pick-wrap');
         if (bar) {
-          const input = bar.querySelector('.qa-input');
-          const addIt = async () => {
-            const val = input.value.trim();
-            if (!val) { input.focus(); return; }
-            if (d.bullets.length === 1 && !d.bullets[0].trim()) d.bullets[0] = val;
-            else d.bullets.push(val);
-            input.value = '';
-            await saveQuoteNow(q); renderEditor();
-          };
-          bar.querySelector('.qa-add').addEventListener('click', addIt);
-          input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addIt(); } });
-          // picking from the datalist fires input with the full value
-          input.addEventListener('input', () => {
-            if (bulletInLib(sec.type, input.value)) addIt();
+          bar.querySelectorAll('.pick-item').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const val = btn.dataset.text;
+              if (d.bullets.length === 1 && !d.bullets[0].trim()) d.bullets[0] = val;
+              else d.bullets.push(val);
+              await saveQuoteNow(q); renderEditor();
+            });
           });
           bar.querySelector('.qa-manage').addEventListener('click', () => openBulletLibDialog(sec.type));
         }
@@ -1271,20 +1343,16 @@ window.BromarPages.quotes = {
         document.querySelectorAll('.scope-card').forEach((card, idx) => {
           const sc = d.scopes[idx];
           card.querySelector('.scope-heading').addEventListener('input', e => { sc.heading = e.target.value; queueSave(q); });
-          const bar = card.querySelector('.quick-bar');
+          const bar = card.querySelector('.pick-wrap');
           if (bar) {
-            const input = bar.querySelector('.qa-input');
-            const addIt = async () => {
-              const val = input.value.trim();
-              if (!val) { input.focus(); return; }
-              if (sc.bullets.length === 1 && !sc.bullets[0].text.trim()) sc.bullets[0].text = val;
-              else sc.bullets.push({ text: val, hidden: false });
-              input.value = '';
-              await saveQuoteNow(q); renderEditor();
-            };
-            bar.querySelector('.qa-add').addEventListener('click', addIt);
-            input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addIt(); } });
-            input.addEventListener('input', () => { if (bulletInLib(sec.type, input.value)) addIt(); });
+            bar.querySelectorAll('.pick-item').forEach(btn => {
+              btn.addEventListener('click', async () => {
+                const val = btn.dataset.text;
+                if (sc.bullets.length === 1 && !sc.bullets[0].text.trim()) sc.bullets[0].text = val;
+                else sc.bullets.push({ text: val, hidden: false });
+                await saveQuoteNow(q); renderEditor();
+              });
+            });
             bar.querySelector('.qa-manage').addEventListener('click', () => openBulletLibDialog(sec.type));
           }
           card.querySelectorAll('.scope-bullet').forEach((row, bi) => {
@@ -1359,6 +1427,20 @@ window.BromarPages.quotes = {
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
         });
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', amount: 0 }); await saveQuoteNow(q); renderEditor(); });
+      }
+      if (meta.shape === 'summary') {
+        const st = get('f-show-total');
+        if (st) st.addEventListener('change', e => { d.showTotal = e.target.checked; queueSave(q); });
+        document.querySelectorAll('.sum-sel').forEach(cb => {
+          cb.addEventListener('change', () => {
+            d.selectedIds = d.selectedIds || [];
+            if (cb.checked) { if (!d.selectedIds.includes(cb.dataset.id)) d.selectedIds.push(cb.dataset.id); }
+            else d.selectedIds = d.selectedIds.filter(id => id !== cb.dataset.id);
+            queueSave(q);
+            const foot = document.querySelector('#section-body .section-foot strong');
+            if (foot) foot.textContent = fmt(summaryTotal(sec, q));
+          });
+        });
       }
     }
 
@@ -1509,6 +1591,12 @@ window.BromarPages.quotes = {
         case 'pcSums':
           if (!(d.items || []).length) return '';
           body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}<tr class="doc-table-total"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table></div>`; break;
+        case 'summary': {
+          const rows = summaryRows(s, q);
+          if (!rows.length) return '';
+          body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="doc-table-total"><td class="num">Total</td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table></div>`;
+          break;
+        }
       }
       if (!body) return '';
       if (meta.isOption) {
@@ -1531,7 +1619,7 @@ window.BromarPages.quotes = {
           <div class="quote-modal">
             <div class="modal-header"><h2>Saved Points — ${escape(SECTION_TYPES[sectionType].name)}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
             <div class="modal-body">
-              <div class="quick-bar" style="margin-bottom:0.9rem">
+              <div class="lib-add-bar">
                 <input class="quote-input" id="lib-new" placeholder="Add a new saved point…" autocomplete="off">
                 <button type="button" class="btn-secondary" id="lib-add">+ Save</button>
               </div>
@@ -1570,14 +1658,14 @@ window.BromarPages.quotes = {
           txt.addEventListener('change', async () => {
             const val = txt.value.trim();
             if (!val) { toast('Point cannot be blank.'); rebuild(); return; }
-            favourites[id] = { name: val.slice(0, 120), type: bulletLibType(sectionType), data: { text: val } };
-            await saveFavouriteDB(id, favourites[id]);
+            prebuilts[id] = { name: val.slice(0, 120), type: bulletLibType(sectionType), data: { text: val } };
+            await savePrebuiltDB(id, prebuilts[id]);
             toast('Renamed.');
           });
           row.querySelector('.lib-del').addEventListener('click', async () => {
             if (!confirm('Delete this saved point?')) return;
-            delete favourites[id];
-            await deleteFavouriteDB(id);
+            delete prebuilts[id];
+            await deletePrebuiltDB(id);
             rebuild();
           });
         });
@@ -1801,6 +1889,14 @@ ${q.preparedBy || COMPANY.name}`;
               body = `<table class="data"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${d.items.map(it => `<tr><td>${escape(it.desc)}</td><td class="num">${fmt(it.amount)}</td></tr>`).join('')}<tr class="ttl"><td class="num">Subtotal</td><td class="num"><strong>${fmt(sectionSellTotal(s, q))}</strong></td></tr></tbody></table>`;
             }
             break;
+          case 'summary': {
+            const rows = summaryRows(s, q);
+            if (rows.length) {
+              hasTable = true;
+              body = `<table class="data"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="ttl"><td class="num">Total</td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table>`;
+            }
+            break;
+          }
         }
         if (!body) return '';
         if (meta.isOption) return `<section class="opt-section ${s.optionSelected ? 'opt-on' : ''}"><div class="opt-head"><h3>${escape(s.name)} ${s.optionSelected ? '<span class="opt-tag">SELECTED</span>' : '<span class="opt-tag opt-tag-off">NOT SELECTED</span>'}</h3><span class="opt-amt">${fmt(sectionSellTotal(s, q))}</span></div>${body}</section>`;
@@ -2149,6 +2245,14 @@ ${q.preparedBy || COMPANY.name}`;
         .col-bar { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: center; padding: 0.55rem 0.8rem; margin-bottom: 0.85rem; background: var(--card-hover); border: 1px solid var(--border); border-radius: var(--radius-sm); }
         .col-bar-label { font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
         .col-bar-note { font-size: 0.72rem; color: var(--text-secondary); font-style: italic; margin-left: auto; }
+        .summary-pick { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
+        .summary-pick-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 0.5rem; align-items: center; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); cursor: pointer; }
+        .summary-pick-row:hover { border-color: var(--accent); background: var(--card-hover); }
+        .summary-pick-row input { accent-color: var(--accent); width: 18px; height: 18px; }
+        .sum-name { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .sum-flag { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.1rem 0.4rem; border-radius: 999px; background: rgba(99,99,105,0.15); color: var(--text-secondary); }
+        .sum-flag-shown { background: rgba(234,88,12,0.12); color: var(--accent); }
+        .sum-amt { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--text-primary); }
         .preset-select { max-width: 240px; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
         .preset-btn { padding: 0.5rem 0.9rem; font-size: 0.8rem; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; }
@@ -2163,9 +2267,23 @@ ${q.preparedBy || COMPANY.name}`;
         .section-foot strong { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; margin-left: 0.5rem; }
         .add-btn-sm { font-size: 0.8rem; padding: 0.45rem 0.9rem; margin-top: 0.5rem; }
         .bullets-list { display: flex; flex-direction: column; gap: 0.4rem; }
-        .quick-bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding: 0.55rem 0.7rem; margin-bottom: 0.75rem; background: var(--card-hover); border: 1px solid var(--border); border-radius: var(--radius-sm); }
-        .quick-bar .qa-input, .quick-bar #lib-new { flex: 1; min-width: 180px; }
-        .quick-bar .btn-secondary { padding: 0.5rem 0.9rem; font-size: 0.8rem; white-space: nowrap; }
+        .pick-wrap { margin-bottom: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-hover); overflow: hidden; }
+        .pick-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); }
+        .pick-empty { padding: 0.7rem; font-size: 0.8rem; color: var(--text-secondary); font-style: italic; }
+        .pick-list { display: flex; flex-direction: column; max-height: 190px; overflow-y: auto; }
+        .pick-item { display: flex; align-items: flex-start; gap: 0.55rem; width: 100%; text-align: left; padding: 0.5rem 0.7rem; background: transparent; border: none; border-bottom: 1px solid var(--border); cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.88rem; color: var(--text-primary); transition: background 0.15s ease; }
+        .pick-item:last-child { border-bottom: none; }
+        .pick-item:hover { background: var(--bg-secondary); }
+        .pick-item:hover .pick-plus { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .pick-plus { flex-shrink: 0; width: 18px; height: 18px; line-height: 16px; text-align: center; border: 1px solid var(--border); border-radius: 5px; font-weight: 700; font-size: 0.8rem; color: var(--text-secondary); transition: all 0.15s ease; }
+        .pick-text { flex: 1; min-width: 0; line-height: 1.4; }
+        .lib-add-bar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.9rem; }
+        .lib-add-bar .quote-input { flex: 1; }
+        .lib-add-bar .btn-secondary { padding: 0.5rem 0.9rem; font-size: 0.8rem; white-space: nowrap; }
+        .icon-danger-btn:hover { color: var(--error) !important; border-color: var(--error) !important; }
+        .pb-new { margin-left: auto; }
+        .preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .preset-btn:disabled:hover { background: transparent; color: var(--text-secondary); border-color: var(--border); }
         .bullet-save { color: var(--text-secondary); }
         .bullet-save:hover { color: var(--accent); }
         .bullet-save.is-saved { color: var(--accent); }
