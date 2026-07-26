@@ -1,16 +1,23 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.48 — New "Costing Summary" section: pick which existing
-   Material/Labour/PC-Sum/Travel costing sections to summarise, and
-   it renders a totals-only table. Hide the detailed tables from the
-   client ("Show to client" off) while the summary shows the figures.
-   Priced sections still count toward the grand total exactly once.
+   V1.49 — Costing model overhaul:
+   • Labour lines now Hours × Days × Workers (hours default 8), with
+     per-column client visibility.
+   • Every priced section has two dropdowns: client visibility
+     (Full table / Total only / Summary only) and allocation
+     (Quote total / Section-summary only).
+   • Costing Summary picks its member sections (each section in one
+     summary only) and can roll up into the grand total as a stage.
+   • Bottom block: optional grand total + per-stage breakdown.
+   • Publish warns (doesn't block) about unassigned/hidden costings.
+   • Preview back arrow returns to the quote editor.
+   • Section rail rebuilt as full-width tiles with hover controls.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.48',
+  version: 'V1.49',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -297,9 +304,9 @@ window.BromarPages.quotes = {
         case 'text':      return { text: '' };
         case 'bullets':   return { bullets: [''] };
         case 'scopes':    return { intro: 'Bromar have allowed for the following:', scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
-        case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], showTable: true, columns: { part: true, unit: true, qty: true } };
-        case 'labour':    return { items: [{ desc: '', rate: 0, qty: 1 }], showTable: true, columns: { rate: true, hours: true } };
-        case 'pcSums':    return { items: [{ desc: '', amount: 0 }] };
+        case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], columns: { part: true, unit: true, qty: true }, clientView: 'full', alloc: 'grand' };
+        case 'labour':    return { items: [{ desc: '', rate: 0, hours: 8, days: 1, workers: 1 }], columns: { rate: true, hours: true, days: true, workers: true }, clientView: 'full', alloc: 'grand' };
+        case 'pcSums':    return { items: [{ desc: '', amount: 0 }], clientView: 'full', alloc: 'grand' };
         case 'summary':   return { selectedIds: [], showTotal: true };
         default:          return {};
       }
@@ -330,14 +337,56 @@ window.BromarPages.quotes = {
       const m = (it.markup === null || it.markup === undefined || it.markup === '') ? Number(gm || 0) : Number(it.markup);
       return cost * (1 + m / 100);
     }
-    function labourItemTotal(it) { return (it.qty || 0) * (it.rate || 0); }
+    /* A labour line's hours = Hours x Days x Workers (each defaulting
+       to 1, hours to 8). Old lines used a single `qty` (hours) — treat
+       that as hours with days/workers = 1. */
+    function labourHours(it) {
+      if (it.hours === undefined && it.qty !== undefined) return Number(it.qty) || 0;
+      const h = it.hours === undefined ? 0 : Number(it.hours) || 0;
+      const d = it.days === undefined ? 1 : Number(it.days) || 0;
+      const w = it.workers === undefined ? 1 : Number(it.workers) || 0;
+      return h * d * w;
+    }
+    function labourItemTotal(it) { return labourHours(it) * (Number(it.rate) || 0); }
+
+    /* ── COSTING VIEW & ALLOCATION ──
+       view: 'full'    → show the line-item table to the client
+             'total'   → show a single total line to the client
+             'summary' → client sees it only inside a Costing Summary
+       alloc: 'grand'   → feeds the quote grand total
+              'section' → excluded from grand total; must live in a summary
+       Migrates old data: show=false → 'total', internal=true → 'summary'. */
+    function costView(sec) {
+      const d = sec.data || {};
+      if (d.clientView) return d.clientView;
+      if (sec.internal) return 'summary';
+      if (d.showTable === false) return 'total';
+      return 'full';
+    }
+    function costAlloc(sec) {
+      const d = sec.data || {};
+      return d.alloc || 'grand';
+    }
+    /* Does this section render directly in the client document?
+       Priced costings set to 'summary' view are hidden here — they
+       appear only inside their Costing Summary. */
+    function clientVisible(sec) {
+      if (SECTION_TYPES[sec.type].internalOnly) return false;
+      if (isPricedSection(sec)) return costView(sec) !== 'summary';
+      return sec.show && !sec.internal;
+    }
+    function isPricedSection(sec) {
+      const m = SECTION_TYPES[sec.type];
+      return m && m.priced && !m.isOption;
+    }
 
     /* Priced, non-option sections a Costing Summary can reference. */
     function summaryEligible(q, exceptId) {
-      return (q.sections || []).filter(x => {
-        const m = SECTION_TYPES[x.type];
-        return x.id !== exceptId && m && m.priced && !m.isOption;
-      });
+      return (q.sections || []).filter(x => x.id !== exceptId && isPricedSection(x));
+    }
+    /* Which summary (if any) a section is assigned to. One summary only. */
+    function summaryOf(q, sectionId) {
+      return (q.sections || []).find(x => x.type === 'costingSummary' && ((x.data && x.data.selectedIds) || []).includes(sectionId)) || null;
     }
     function summaryTotal(sec, q) {
       const sel = (sec.data && sec.data.selectedIds) || [];
@@ -363,13 +412,16 @@ window.BromarPages.quotes = {
     }
 
     /* Which labour columns the client sees. Description and Total are
-       always shown. Migrates quotes built with the old 'display'
-       dropdown: 'lines' hid both rate and hours. */
+       always shown. Migrates old 2-column / 'display' data. */
     function labColumns(d) {
-      const c = d.columns;
-      if (c) return { rate: c.rate !== false, hours: c.hours !== false };
-      if (d.display === 'lines') return { rate: false, hours: false };
-      return { rate: true, hours: true };
+      const c = d.columns || {};
+      const legacyLines = d.display === 'lines';
+      return {
+        rate:    legacyLines ? false : c.rate    !== false,
+        hours:   legacyLines ? false : c.hours   !== false,
+        days:    c.days    !== false,
+        workers: c.workers !== false
+      };
     }
     function sectionSellTotal(sec, q) {
       const d = sec.data || {};
@@ -389,26 +441,69 @@ window.BromarPages.quotes = {
         default: return 0;
       }
     }
+    /* Base grand total = priced non-option sections allocated to the
+       grand total ('grand'). Sections allocated to 'section' live only
+       in their summary and are excluded here. */
     function quoteBaseTotal(q) {
       return (q.sections || []).reduce((s, sec) => {
-        const m = SECTION_TYPES[sec.type];
-        if (!m.priced || m.isOption || sec.internal) return s;
+        if (!isPricedSection(sec)) return s;
+        if (costAlloc(sec) !== 'grand') return s;
         return s + sectionSellTotal(sec, q);
       }, 0);
     }
     function quoteOptionsTotal(q, includeAll = false) {
       return (q.sections || []).reduce((s, sec) => {
         const m = SECTION_TYPES[sec.type];
-        if (!m.priced || !m.isOption || sec.internal) return s;
+        if (!m.priced || !m.isOption) return s;
         if (!includeAll && !sec.optionSelected) return s;
         return s + sectionSellTotal(sec, q);
       }, 0);
     }
     function quoteTotal(q, opts = {}) { return quoteBaseTotal(q) + quoteOptionsTotal(q, !opts.clientView); }
+
+    /* Stage lines = each Costing Summary that is shown to the client,
+       with its total. Used in the grand-total block breakdown. */
+    function stageLines(q) {
+      return (q.sections || [])
+        .filter(x => x.type === 'costingSummary' && x.show && !x.internal)
+        .map(x => ({ name: x.name, total: summaryTotal(x, q) }));
+    }
+
+    /* Costings that will not reach the client anywhere: set to
+       'summary' view but not placed in any (client-shown) summary, or
+       allocated to 'section' with no home. Returns section objects. */
+    function orphanCostings(q) {
+      return (q.sections || []).filter(sec => {
+        if (!isPricedSection(sec)) return false;
+        const view = costView(sec), alloc = costAlloc(sec);
+        const inSummary = summaryOf(q, sec.id);
+        const summaryShown = inSummary && inSummary.show && !inSummary.internal;
+        // shown directly to the client → fine
+        if (view !== 'summary' && alloc === 'grand') return false;
+        if (view !== 'summary' && alloc === 'section') return summaryShown ? false : true;
+        // view === 'summary' → must be in a client-shown summary
+        return summaryShown ? false : true;
+      });
+    }
+    /* True when at least one section is set to 'summary' view but no
+       Costing Summary section exists at all. */
+    function needsSummary(q) {
+      const wantsSummary = (q.sections || []).some(sec => isPricedSection(sec) && (costView(sec) === 'summary' || costAlloc(sec) === 'section'));
+      const hasSummary = (q.sections || []).some(x => x.type === 'costingSummary');
+      return wantsSummary && !hasSummary;
+    }
+    /* Is there anything actually allocated to the grand total? */
+    function hasGrandAllocation(q) {
+      return (q.sections || []).some(sec =>
+        (isPricedSection(sec) && costAlloc(sec) === 'grand') ||
+        (SECTION_TYPES[sec.type].isOption)
+      );
+    }
+
     function quoteCost(q) {
       return (q.sections || []).reduce((s, sec) => {
         const m = SECTION_TYPES[sec.type];
-        if (!m.priced || sec.internal) return s;
+        if (!m.priced) return s;
         return s + sectionCostTotal(sec);
       }, 0);
     }
@@ -746,14 +841,23 @@ window.BromarPages.quotes = {
       const isActive = activeSectionId === s.id;
       const amount = meta.priced ? sectionSellTotal(s, q) : null;
       const flags = [];
-      if (s.internal || !s.show) flags.push('<span class="rail-flag" title="Internal-only">int</span>');
+      if (isPricedSection(s)) {
+        const v = costView(s);
+        if (v === 'total') flags.push('<span class="rail-flag" title="Client sees total only">total</span>');
+        else if (v === 'summary') flags.push('<span class="rail-flag" title="Client sees it only in a Costing Summary">summary</span>');
+        if (costAlloc(s) === 'section') flags.push('<span class="rail-flag rail-flag-warn" title="Excluded from grand total">off-total</span>');
+      } else if (s.internal || !s.show) {
+        flags.push('<span class="rail-flag" title="Internal-only">int</span>');
+      }
       if (meta.isOption) flags.push('<span class="rail-flag rail-flag-opt" title="Option">opt</span>');
       return `
-        <div class="rail-row ${isActive ? 'active' : ''}" data-sid="${s.id}">
-          <button class="rail-item rail-item-section" data-sid="${s.id}">
+        <div class="rail-tile ${isActive ? 'active' : ''}" data-sid="${s.id}">
+          <button class="rail-tile-btn rail-item-section" data-sid="${s.id}">
             <span class="rail-name">${escape(s.name || meta.name || 'Section')}</span>
-            ${amount !== null ? `<span class="rail-amt">${fmt(amount)}</span>` : ''}
-            ${flags.join('')}
+            <span class="rail-meta">
+              ${amount !== null ? `<span class="rail-amt">${fmt(amount)}</span>` : ''}
+              ${flags.join('')}
+            </span>
           </button>
           <div class="rail-controls">
             <button class="icon-btn rail-mini" data-rail="up" data-sid="${s.id}" ${idx === 0 ? 'disabled' : ''} title="Move up">${ICON_UP}</button>
@@ -769,6 +873,22 @@ window.BromarPages.quotes = {
       get('preview-btn').addEventListener('click', async () => { await flushSaves(); openPreview(q.id); });
       const pubBtn = get('publish-btn');
       if (pubBtn) pubBtn.addEventListener('click', async () => {
+        const orphans = orphanCostings(q);
+        const wantSummary = needsSummary(q);
+        if (orphans.length || wantSummary) {
+          const lines = [];
+          if (orphans.length) {
+            lines.push('These costings won\'t appear anywhere the client can see:');
+            orphans.forEach(o => lines.push('  • ' + (o.name || SECTION_TYPES[o.type].name)));
+          }
+          if (wantSummary) {
+            if (lines.length) lines.push('');
+            lines.push('A section is set to "Costing summary only" but no Costing Summary has been added yet.');
+          }
+          lines.push('');
+          lines.push('Publish anyway?');
+          if (!confirm(lines.join('\n'))) return;
+        }
         q.publishedAt = todayISO();
         if (q.status === 'draft' || q.status === 'allocated') q.status = 'sent';
         await saveQuoteNow(q); toast(`${displayNumber(q)} published.`); renderEditor();
@@ -783,7 +903,7 @@ window.BromarPages.quotes = {
       if (emailBtn) emailBtn.addEventListener('click', () => openEmailDialog(q.id));
     }
     function bindRail(q) {
-      document.querySelectorAll('.rail-item').forEach(el => {
+      document.querySelectorAll('.rail-item, .rail-tile-btn').forEach(el => {
         el.addEventListener('click', () => { activeSectionId = el.dataset.sid; renderEditor(); });
       });
       document.querySelectorAll('[data-rail]').forEach(el => {
@@ -954,10 +1074,12 @@ window.BromarPages.quotes = {
             <span class="type-pill ${meta.isOption ? 'type-pill-opt' : ''}">${meta.name}</span>
           </div>
           <div class="panel-head-right">
-            ${meta.internalOnly ? '<span class="hint-inline">Always internal-only</span>' : `
+            ${meta.internalOnly ? '<span class="hint-inline">Always internal-only</span>'
+              : (isPricedSection(sec) ? '<span class="hint-inline">Client view set below</span>'
+              : `
               <label class="toggle-lbl"><input type="checkbox" id="s-show" ${sec.show ? 'checked' : ''}><span>Show to client</span></label>
               <label class="toggle-lbl"><input type="checkbox" id="s-internal" ${sec.internal ? 'checked' : ''}><span>Internal only</span></label>
-            `}
+            `)}
           </div>
         </div>
         ${sectionPrebuilts.length || canSavePrebuilt(meta.shape) ? `
@@ -1031,6 +1153,39 @@ window.BromarPages.quotes = {
           </div>
         </div>`;
     }
+    /* Two dropdowns shared by every priced costing section. */
+    function costingControls(sec, q) {
+      const view = costView(sec);
+      const alloc = costAlloc(sec);
+      const assignedTo = summaryOf(q, sec.id);
+      const warn = (view === 'summary' || alloc === 'section') && !assignedTo;
+      return `
+        <div class="cost-ctrl">
+          <div class="cost-ctrl-row">
+            <label class="cost-ctrl-field"><span>Client sees</span>
+              <select class="quote-input cost-view">
+                <option value="full" ${view === 'full' ? 'selected' : ''}>Full table</option>
+                <option value="total" ${view === 'total' ? 'selected' : ''}>Total only</option>
+                <option value="summary" ${view === 'summary' ? 'selected' : ''}>In costing summary only</option>
+              </select>
+            </label>
+            <label class="cost-ctrl-field"><span>Costing goes to</span>
+              <select class="quote-input cost-alloc">
+                <option value="grand" ${alloc === 'grand' ? 'selected' : ''}>Quote grand total</option>
+                <option value="section" ${alloc === 'section' ? 'selected' : ''}>Its section / summary only</option>
+              </select>
+            </label>
+          </div>
+          <div class="cost-ctrl-note ${warn ? 'cost-warn' : ''}">
+            ${assignedTo
+              ? `In summary: <strong>${escape(assignedTo.name)}</strong>`
+              : (warn
+                  ? 'Not in any Costing Summary yet — add one and include this section, or it will not appear on the quote.'
+                  : 'Feeds the grand total at the bottom of the quote.')}
+          </div>
+        </div>`;
+    }
+
     function renderSectionBody(sec, q) {
       const meta = SECTION_TYPES[sec.type];
       const d = sec.data || {};
@@ -1050,7 +1205,7 @@ window.BromarPages.quotes = {
         case 'materials': {
           const mc = matColumns(d);
           return `
-            <label class="toggle-lbl" style="margin-bottom:0.6rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            ${costingControls(sec, q)}
             <div class="col-bar">
               <span class="col-bar-label">Client sees columns</span>
               <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="part" ${mc.part ? 'checked' : ''}><span>Part #</span></label>
@@ -1066,20 +1221,23 @@ window.BromarPages.quotes = {
         case 'labour': {
           const lc = labColumns(d);
           return `
-            <label class="toggle-lbl" style="margin-bottom:0.6rem"><input type="checkbox" id="f-show-table" ${d.showTable !== false ? 'checked' : ''}><span>Show table to client (otherwise total only)</span></label>
+            ${costingControls(sec, q)}
             <div class="col-bar">
               <span class="col-bar-label">Client sees columns</span>
               <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="rate" ${lc.rate ? 'checked' : ''}><span>Hourly rate</span></label>
               <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="hours" ${lc.hours ? 'checked' : ''}><span>Hours</span></label>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="days" ${lc.days ? 'checked' : ''}><span>Days</span></label>
+              <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="workers" ${lc.workers ? 'checked' : ''}><span>Workers</span></label>
               <span class="col-bar-note">Description &amp; Total always shown</span>
             </div>
-            <div class="items-head lab-head"><span>Description</span><span>Hourly Rate</span><span>Qty (hrs)</span><span>Total</span><span></span></div>
+            <div class="items-head lab-head"><span>Description</span><span>Rate</span><span>Hrs/day</span><span>Days</span><span>Workers</span><span>Total hrs</span><span>Total</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => labourRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Labour Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         }
         case 'pcSums':
           return `
+            ${costingControls(sec, q)}
             <div class="items-head pc-head"><span>Description</span><span>Amount</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => pcRow(it)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Line</button>
@@ -1088,14 +1246,20 @@ window.BromarPages.quotes = {
           const eligible = summaryEligible(q, sec.id);
           const sel = d.selectedIds || [];
           return `
-            <p class="hint">Tick the costing sections to include. Hide each detailed table from the client with its "Show to client" toggle — this summary then shows only the totals. The grand total is unaffected.</p>
-            <label class="toggle-lbl" style="margin-bottom:0.85rem"><input type="checkbox" id="f-show-total" ${d.showTotal !== false ? 'checked' : ''}><span>Show summary total row</span></label>
+            <p class="hint">Tick the costing sections this summary totals. A section can belong to one summary only. Set each costing's "Client sees" to <em>In costing summary only</em> so the client sees just this breakdown.</p>
+            <div class="col-bar">
+              <label class="toggle-lbl"><input type="checkbox" id="f-show-total" ${d.showTotal !== false ? 'checked' : ''}><span>Show this summary's total row</span></label>
+              <label class="toggle-lbl"><input type="checkbox" id="f-rollup" ${d.rollup ? 'checked' : ''}><span>Also list as a stage in the grand-total block</span></label>
+            </div>
             ${eligible.length ? `<div class="summary-pick" id="summary-pick">
               ${eligible.map(x => {
-                const hidden = !x.show || x.internal;
-                return `<label class="summary-pick-row">
-                  <input type="checkbox" class="sum-sel" data-id="${x.id}" ${sel.includes(x.id) ? 'checked' : ''}>
-                  <span class="sum-name">${escape(x.name)}${hidden ? '<span class="sum-flag">hidden from client</span>' : '<span class="sum-flag sum-flag-shown">shown to client</span>'}</span>
+                const owner = summaryOf(q, x.id);
+                const takenElsewhere = owner && owner.id !== sec.id;
+                const view = costView(x);
+                const viewLbl = view === 'full' ? 'full table' : (view === 'total' ? 'total only' : 'summary only');
+                return `<label class="summary-pick-row ${takenElsewhere ? 'is-disabled' : ''}">
+                  <input type="checkbox" class="sum-sel" data-id="${x.id}" ${sel.includes(x.id) ? 'checked' : ''} ${takenElsewhere ? 'disabled' : ''}>
+                  <span class="sum-name">${escape(x.name)}<span class="sum-flag">${viewLbl}</span>${takenElsewhere ? `<span class="sum-flag cost-warn-flag">in ${escape(owner.name)}</span>` : ''}</span>
                   <span class="sum-amt">${fmt(sectionSellTotal(x, q))}</span>
                 </label>`;
               }).join('')}
@@ -1139,10 +1303,16 @@ window.BromarPages.quotes = {
         <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
     }
     function labourRow(it) {
+      const hrs = it.hours === undefined ? (it.qty ?? 0) : it.hours;
+      const days = it.days === undefined ? 1 : it.days;
+      const workers = it.workers === undefined ? 1 : it.workers;
       return `<div class="line-row lab-row">
         <input class="quote-input l-desc" value="${escape(it.desc || '')}" placeholder="Description / task">
         <input class="quote-input l-rate" type="number" min="0" step="0.01" value="${it.rate || 0}">
-        <input class="quote-input l-qty" type="number" min="0" step="0.01" value="${it.qty || 0}">
+        <input class="quote-input l-hours" type="number" min="0" step="0.25" value="${hrs}">
+        <input class="quote-input l-days" type="number" min="0" step="0.5" value="${days}">
+        <input class="quote-input l-workers" type="number" min="0" step="1" value="${workers}">
+        <div class="li-hrs">${labourHours(it)}</div>
         <div class="li-total">${fmt(labourItemTotal(it))}</div>
         <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
     }
@@ -1380,8 +1550,26 @@ window.BromarPages.quotes = {
           await saveQuoteNow(q); renderEditor();
         });
       }
+      // shared costing-controls (view + allocation dropdowns)
+      const bindCostControls = () => {
+        const vSel = document.querySelector('.cost-view');
+        if (vSel) vSel.addEventListener('change', async () => {
+          d.clientView = vSel.value;
+          // keep the legacy fields roughly in sync for any old readers
+          sec.show = vSel.value !== 'summary';
+          sec.internal = vSel.value === 'summary';
+          d.showTable = vSel.value === 'full';
+          await saveQuoteNow(q); renderEditor();
+        });
+        const aSel = document.querySelector('.cost-alloc');
+        if (aSel) aSel.addEventListener('change', async () => {
+          d.alloc = aSel.value;
+          await saveQuoteNow(q); renderEditor();
+        });
+      };
+
       if (meta.shape === 'materials') {
-        get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; queueSave(q); });
+        bindCostControls();
         document.querySelectorAll('.f-col').forEach(cb => {
           cb.addEventListener('change', () => {
             d.columns = d.columns || {};
@@ -1389,7 +1577,6 @@ window.BromarPages.quotes = {
             queueSave(q);
           });
         });
-
         const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(materialItemTotal(d.items[idx], q.globalMarkup)); refreshFoot(); };
         document.querySelectorAll('.mat-row').forEach((row, idx) => {
           row.querySelector('.m-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
@@ -1402,7 +1589,7 @@ window.BromarPages.quotes = {
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', part: '', price: 0, markup: null, qty: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
       if (meta.shape === 'labour') {
-        get('f-show-table').addEventListener('change', e => { d.showTable = e.target.checked; queueSave(q); });
+        bindCostControls();
         document.querySelectorAll('.f-col').forEach(cb => {
           cb.addEventListener('change', () => {
             d.columns = d.columns || {};
@@ -1411,16 +1598,25 @@ window.BromarPages.quotes = {
             queueSave(q);
           });
         });
-        const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(labourItemTotal(d.items[idx])); refreshFoot(); };
+        const refreshItem = (row, idx) => {
+          row.querySelector('.li-hrs').textContent = labourHours(d.items[idx]);
+          row.querySelector('.li-total').textContent = fmt(labourItemTotal(d.items[idx]));
+          refreshFoot();
+        };
         document.querySelectorAll('.lab-row').forEach((row, idx) => {
-          row.querySelector('.l-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
-          row.querySelector('.l-rate').addEventListener('input', e => { d.items[idx].rate = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
-          row.querySelector('.l-qty').addEventListener('input', e => { d.items[idx].qty = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          const it = d.items[idx];
+          if (it.hours === undefined) { it.hours = it.qty ?? 0; it.days = it.days ?? 1; it.workers = it.workers ?? 1; delete it.qty; }
+          row.querySelector('.l-desc').addEventListener('input', e => { it.desc = e.target.value; queueSave(q); });
+          row.querySelector('.l-rate').addEventListener('input', e => { it.rate = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          row.querySelector('.l-hours').addEventListener('input', e => { it.hours = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          row.querySelector('.l-days').addEventListener('input', e => { it.days = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          row.querySelector('.l-workers').addEventListener('input', e => { it.workers = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
         });
-        get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', rate: 0, qty: 1 }); await saveQuoteNow(q); renderEditor(); });
+        get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', rate: 0, hours: 8, days: 1, workers: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
       if (meta.shape === 'pcSums') {
+        bindCostControls();
         document.querySelectorAll('.pc-row').forEach((row, idx) => {
           row.querySelector('.pc-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
           row.querySelector('.pc-amount').addEventListener('input', e => { d.items[idx].amount = Number(e.target.value) || 0; queueSave(q); refreshFoot(); });
@@ -1431,14 +1627,14 @@ window.BromarPages.quotes = {
       if (meta.shape === 'summary') {
         const st = get('f-show-total');
         if (st) st.addEventListener('change', e => { d.showTotal = e.target.checked; queueSave(q); });
+        const roll = get('f-rollup');
+        if (roll) roll.addEventListener('change', e => { d.rollup = e.target.checked; queueSave(q); });
         document.querySelectorAll('.sum-sel').forEach(cb => {
-          cb.addEventListener('change', () => {
+          cb.addEventListener('change', async () => {
             d.selectedIds = d.selectedIds || [];
             if (cb.checked) { if (!d.selectedIds.includes(cb.dataset.id)) d.selectedIds.push(cb.dataset.id); }
             else d.selectedIds = d.selectedIds.filter(id => id !== cb.dataset.id);
-            queueSave(q);
-            const foot = document.querySelector('#section-body .section-foot strong');
-            if (foot) foot.textContent = fmt(summaryTotal(sec, q));
+            await saveQuoteNow(q); renderEditor();
           });
         });
       }
@@ -1449,7 +1645,7 @@ window.BromarPages.quotes = {
       const q = quotes.find(x => x.id === activeQuoteId);
       if (!q) { backToDashboard(); return; }
       setVersionBadge(false);
-      const visible = (q.sections || []).filter(s => s.show && !s.internal);
+      const visible = (q.sections || []).filter(clientVisible);
       const canAccept = q.docType === 'quote';
       container.innerHTML = `
         <div class="page-title-wrapper editor-header preview-chrome">
@@ -1465,16 +1661,17 @@ window.BromarPages.quotes = {
           <div class="doc-content">
             ${visible.map(s => renderPreviewSection(s, q)).join('')}
             <div class="doc-total-block">
-              <div class="doc-total-row" id="preview-total"><span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong></div>
+              ${stageBlockRows(q).map(st => `<div class="doc-stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
+              ${hasGrandAllocation(q) ? `<div class="doc-total-row" id="preview-total"><span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong></div>` : ''}
               ${q.docType === 'estimate'
                 ? '<p class="doc-disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>'
-                : '<p class="doc-fineprint">Total updates as you select or deselect options above. Prices exclude GST unless otherwise stated.</p>'}
+                : '<p class="doc-fineprint">Prices exclude GST unless otherwise stated.</p>'}
             </div>
             ${canAccept ? `<div class="doc-approval"><button class="btn-secondary" id="reject-btn">Decline</button><button class="btn-primary" id="approve-btn">Accept Quote</button></div>` : ''}
           </div>
         </div>
       `;
-      document.getElementById('back-btn').addEventListener('click', backToDashboard);
+      document.getElementById('back-btn').addEventListener('click', () => openEditor(q.id));
       document.getElementById('edit-from-preview').addEventListener('click', () => openEditor(q.id));
       document.getElementById('export-from-preview').addEventListener('click', () => exportPDF(q));
       document.querySelectorAll('.option-toggle').forEach(cb => {
@@ -1482,7 +1679,8 @@ window.BromarPages.quotes = {
           const secId = cb.dataset.secId;
           const sec = q.sections.find(s => s.id === secId); if (!sec) return;
           sec.optionSelected = cb.checked; await saveQuoteNow(q);
-          document.getElementById('preview-total').innerHTML = `<span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>`;
+          const pt = document.getElementById('preview-total');
+          if (pt) pt.innerHTML = `<span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>`;
           const card = cb.closest('.doc-option'); if (card) card.classList.toggle('opt-selected', cb.checked);
         });
       });
@@ -1551,7 +1749,7 @@ window.BromarPages.quotes = {
         case 'materials':
           if (!(d.items || []).length) return '';
           const matTotal = sectionSellTotal(s, q);
-          if (d.showTable === false) body = `<div class="doc-line"><span>Materials total</span><strong>${fmt(matTotal)}</strong></div>`;
+          if (costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(matTotal)}</strong></div>`;
           else {
             const mc = matColumns(d);
             const head = ['<th>Description</th>']
@@ -1572,17 +1770,21 @@ window.BromarPages.quotes = {
         case 'labour':
           if (!(d.items || []).length) return '';
           const labTotal = sectionSellTotal(s, q);
-          if (d.showTable === false) body = `<div class="doc-line"><span>Labour total</span><strong>${fmt(labTotal)}</strong></div>`;
+          if (costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(labTotal)}</strong></div>`;
           else {
             const lc = labColumns(d);
             const lhead = ['<th>Description</th>']
               .concat(lc.rate ? ['<th class="num">Rate</th>'] : [])
-              .concat(lc.hours ? ['<th class="num">Hours</th>'] : [])
+              .concat(lc.hours ? ['<th class="num">Hrs</th>'] : [])
+              .concat(lc.days ? ['<th class="num">Days</th>'] : [])
+              .concat(lc.workers ? ['<th class="num">Workers</th>'] : [])
               .concat(['<th class="num">Total</th>']).join('');
-            const lspan = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0);
+            const lspan = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0) + (lc.days ? 1 : 0) + (lc.workers ? 1 : 0);
             const lrows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
               .concat(lc.rate ? ['<td class="num">' + fmt(it.rate) + '</td>'] : [])
-              .concat(lc.hours ? ['<td class="num">' + it.qty + '</td>'] : [])
+              .concat(lc.hours ? ['<td class="num">' + (it.hours === undefined ? (it.qty ?? 0) : it.hours) + '</td>'] : [])
+              .concat(lc.days ? ['<td class="num">' + (it.days === undefined ? 1 : it.days) + '</td>'] : [])
+              .concat(lc.workers ? ['<td class="num">' + (it.workers === undefined ? 1 : it.workers) + '</td>'] : [])
               .concat(['<td class="num">' + fmt(labourItemTotal(it)) + '</td>'])
               .join('')).map(r => `<tr>${r}</tr>`).join('');
             body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr>${lhead}</tr></thead><tbody>${lrows}<tr class="doc-table-total"><td colspan="${lspan}" class="num">Subtotal</td><td class="num"><strong>${fmt(labTotal)}</strong></td></tr></tbody></table></div>`;
@@ -1824,7 +2026,7 @@ ${q.preparedBy || COMPANY.name}`;
 
     /* ── PDF EXPORT ── */
     function exportPDF(q) {
-      const visible = (q.sections || []).filter(s => s.show && !s.internal);
+      const visible = (q.sections || []).filter(clientVisible);
       const isEst = q.docType === 'estimate';
       const docNumber = displayNumber(q);
       const docDateStr = formatDate(q.publishedAt || q.createdAt);
@@ -1844,7 +2046,7 @@ ${q.preparedBy || COMPANY.name}`;
           case 'materials':
             if ((d.items || []).length) {
               const tot = sectionSellTotal(s, q);
-              if (d.showTable === false) body = `<div class="line"><span>Materials total</span><strong>${fmt(tot)}</strong></div>`;
+              if (costView(s) === 'total') body = `<div class="line"><span>${escape(s.name)}</span><strong>${fmt(tot)}</strong></div>`;
               else {
                 hasTable = true;
                 const mc = matColumns(d);
@@ -1866,18 +2068,22 @@ ${q.preparedBy || COMPANY.name}`;
           case 'labour':
             if ((d.items || []).length) {
               const tot = sectionSellTotal(s, q);
-              if (d.showTable === false) body = `<div class="line"><span>Labour total</span><strong>${fmt(tot)}</strong></div>`;
+              if (costView(s) === 'total') body = `<div class="line"><span>${escape(s.name)}</span><strong>${fmt(tot)}</strong></div>`;
               else {
                 hasTable = true;
                 const lc = labColumns(d);
                 const head = ['<th>Description</th>']
                   .concat(lc.rate ? ['<th class="num">Rate</th>'] : [])
-                  .concat(lc.hours ? ['<th class="num">Hours</th>'] : [])
+                  .concat(lc.hours ? ['<th class="num">Hrs</th>'] : [])
+                  .concat(lc.days ? ['<th class="num">Days</th>'] : [])
+                  .concat(lc.workers ? ['<th class="num">Workers</th>'] : [])
                   .concat(['<th class="num">Total</th>']).join('');
-                const span = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0);
+                const span = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0) + (lc.days ? 1 : 0) + (lc.workers ? 1 : 0);
                 const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
                   .concat(lc.rate ? ['<td class="num">' + fmt(it.rate) + '</td>'] : [])
-                  .concat(lc.hours ? ['<td class="num">' + it.qty + '</td>'] : [])
+                  .concat(lc.hours ? ['<td class="num">' + (it.hours === undefined ? (it.qty ?? 0) : it.hours) + '</td>'] : [])
+                  .concat(lc.days ? ['<td class="num">' + (it.days === undefined ? 1 : it.days) + '</td>'] : [])
+                  .concat(lc.workers ? ['<td class="num">' + (it.workers === undefined ? 1 : it.workers) + '</td>'] : [])
                   .concat(['<td class="num">' + fmt(labourItemTotal(it)) + '</td>'])
                   .join('')).map(r => `<tr>${r}</tr>`).join('');
                 body = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="ttl"><td colspan="${span}" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
@@ -2214,10 +2420,23 @@ ${q.preparedBy || COMPANY.name}`;
         .rail-label { font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.4rem 0.5rem; }
         .rail-list { display: flex; flex-direction: column; gap: 0.25rem; }
         .rail-empty { font-size: 0.8rem; color: var(--text-secondary); padding: 0.5rem; font-style: italic; }
-        .rail-row { position: relative; display: flex; align-items: center; gap: 2px; }
-        .rail-row:hover .rail-controls { opacity: 1; }
-        .rail-item { flex: 1; display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.88rem; text-align: left; min-width: 0; transition: all 0.2s ease; }
-        .rail-item:hover { background: var(--card-hover); }
+        .rail-tile { position: relative; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); margin-bottom: 0.4rem; transition: all 0.2s ease; }
+        .rail-tile:hover { border-color: var(--accent); }
+        .rail-tile:hover .rail-controls { opacity: 1; pointer-events: auto; }
+        .rail-tile.active { border-color: var(--accent); background: var(--card-hover); box-shadow: 0 0 0 1px var(--accent); }
+        .rail-tile-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; width: 100%; padding: 0.6rem 0.7rem; background: transparent; border: none; color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; text-align: left; }
+        .rail-tile.active .rail-name { color: var(--accent); }
+        .rail-name { font-size: 0.86rem; font-weight: 600; line-height: 1.3; white-space: normal; word-break: break-word; }
+        .rail-meta { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+        .rail-amt { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); }
+        .rail-tile.active .rail-amt { color: var(--accent); }
+        .rail-flag { font-size: 0.62rem; padding: 1px 5px; background: rgba(99,99,105,0.2); color: var(--text-secondary); border-radius: 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+        .rail-flag-opt { background: rgba(234,88,12,0.15); color: var(--accent); }
+        .rail-flag-warn { background: rgba(220,38,38,0.15); color: var(--error); }
+        .rail-controls { position: absolute; top: 4px; right: 4px; display: flex; gap: 1px; opacity: 0; pointer-events: none; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 1px; transition: opacity 0.2s ease; }
+        .rail-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.6rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-main); color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.88rem; text-align: left; margin-bottom: 0.4rem; transition: all 0.2s ease; }
+        .rail-item .rail-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rail-item:hover { background: var(--card-hover); border-color: var(--accent); }
         .rail-item.active { background: var(--card-hover); border-color: var(--accent); color: var(--accent); font-weight: 600; }
         .rail-icon { display: flex; flex-shrink: 0; color: var(--text-secondary); }
         .rail-icon svg { width: 16px; height: 16px; }
@@ -2300,12 +2519,13 @@ ${q.preparedBy || COMPANY.name}`;
         .scope-bullets { display: flex; flex-direction: column; gap: 0.4rem; }
         .items-head { display: grid; gap: 0.4rem; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0.4rem 0.4rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
         .items-head.mat-head { grid-template-columns: 1.5fr 1fr 90px 70px 70px 90px 34px; }
-        .items-head.lab-head { grid-template-columns: 1fr 100px 80px 100px 34px; }
+        .items-head.lab-head { grid-template-columns: 1.4fr 78px 70px 60px 66px 66px 84px 34px; }
         .items-head.pc-head  { grid-template-columns: 1fr 120px 34px; }
         .items-list { display: flex; flex-direction: column; gap: 0.4rem; }
         .line-row { display: grid; gap: 0.4rem; align-items: center; }
         .line-row.mat-row { grid-template-columns: 1.5fr 1fr 90px 70px 70px 90px 34px; }
-        .line-row.lab-row { grid-template-columns: 1fr 100px 80px 100px 34px; }
+        .line-row.lab-row { grid-template-columns: 1.4fr 78px 70px 60px 66px 66px 84px 34px; }
+        .li-hrs { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; text-align: right; color: var(--text-secondary); padding-right: 0.3rem; }
         .line-row.pc-row  { grid-template-columns: 1fr 120px 34px; }
         .li-total { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; text-align: right; color: var(--text-secondary); padding-right: 0.3rem; }
         .m-markup { background: rgba(234, 88, 12, 0.04); }
@@ -2401,7 +2621,7 @@ ${q.preparedBy || COMPANY.name}`;
           .quote-row { grid-template-columns: 6px 1fr; grid-template-areas: "status main" ". total" ". actions"; row-gap: 0.5rem; }
           .row-status { grid-area: status; } .row-main { grid-area: main; } .row-total { grid-area: total; text-align: left; } .row-actions { grid-area: actions; }
           .items-head.mat-head, .line-row.mat-row { grid-template-columns: 1fr 1fr 80px 60px 60px 80px 34px; font-size: 0.8rem; }
-          .items-head.lab-head, .line-row.lab-row { grid-template-columns: 1fr 80px 70px 80px 34px; font-size: 0.85rem; }
+          .items-head.lab-head, .line-row.lab-row { grid-template-columns: 1.2fr 64px 56px 50px 56px 56px 72px 34px; font-size: 0.78rem; }
           .section-grid { grid-template-columns: 1fr; }
           .doc-page { padding: 32px 20px; overflow-x: hidden; }
           .doc-content { overflow-x: hidden; }
@@ -2412,7 +2632,7 @@ ${q.preparedBy || COMPANY.name}`;
           .doc-number-block { flex-direction: column; gap: 16px; }
           .doc-number { font-size: 28px; }
           .doc-number-meta { padding-top: 0; gap: 20px; }
-          .rail-controls { opacity: 1; }
+          .rail-controls { opacity: 1; pointer-events: auto; position: static; margin: 0 0.5rem 0.5rem; justify-content: flex-end; }
         }
       `;
       document.head.appendChild(s);
