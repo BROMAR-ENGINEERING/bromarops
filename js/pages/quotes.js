@@ -12,12 +12,15 @@
    • Publish warns (doesn't block) about unassigned/hidden costings.
    • Preview back arrow returns to the quote editor.
    • Section rail rebuilt as full-width tiles with hover controls.
+   V1.50 — Fix: Preview crashed on a missing helper (stageBlockRows →
+   stageLines). PDF total block now matches preview: per-stage rows
+   plus an optional grand total.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.49',
+  version: 'V1.50',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -1661,7 +1664,7 @@ window.BromarPages.quotes = {
           <div class="doc-content">
             ${visible.map(s => renderPreviewSection(s, q)).join('')}
             <div class="doc-total-block">
-              ${stageBlockRows(q).map(st => `<div class="doc-stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
+              ${stageLines(q).map(st => `<div class="doc-stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
               ${hasGrandAllocation(q) ? `<div class="doc-total-row" id="preview-total"><span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong></div>` : ''}
               ${q.docType === 'estimate'
                 ? '<p class="doc-disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>'
@@ -2200,6 +2203,10 @@ ${q.preparedBy || COMPANY.name}`;
 
   /* ── TOTAL ── */
   .total-block { margin-top: 20px; padding-top: 12px; border-top: 2.5px solid #ea580c; break-inside: avoid; page-break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .stage-row { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; padding: 5px 0; border-bottom: 1px solid #eee; font-size: 10pt; }
+  .stage-row span { color: #1a1a1e; font-weight: 600; }
+  .stage-row strong { font-family: 'JetBrains Mono', monospace; color: #ea580c; font-weight: 700; white-space: nowrap; }
+  .stage-row + .grand-total { margin-top: 8px; }
   .grand-total { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; }
   .grand-total span { font-size: 10.5pt; color: #5a5a60; font-weight: 600; }
   .grand-total strong { font-family: 'JetBrains Mono', monospace; font-size: 20pt; color: #ea580c; font-weight: 800; white-space: nowrap; }
@@ -2281,10 +2288,11 @@ ${q.preparedBy || COMPANY.name}`;
       ${sectionsHtml}
 
       <div class="total-block">
-        <div class="grand-total">
+        ${stageLines(q).map(st => `<div class="stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
+        ${hasGrandAllocation(q) ? `<div class="grand-total">
           <span>Total ${isEst ? '(Indicative, ex GST)' : '(ex GST)'}</span>
           <strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>
-        </div>
+        </div>` : ''}
         ${isEst ? '<p class="disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>' : '<p class="fineprint">Prices exclude GST unless otherwise stated.</p>'}
       </div>
 
@@ -2605,6 +2613,10 @@ ${q.preparedBy || COMPANY.name}`;
         .doc-option-head h3 { margin: 0; padding: 0; border: none; font-size: 13px; }
         .doc-option-amt { font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #ea580c; font-size: 16px; }
         .doc-total-block { margin-top: 32px; padding-top: 18px; border-top: 3px solid #ea580c; }
+        .doc-stage-row { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+        .doc-stage-row span { color: #1a1a1e; font-weight: 600; }
+        .doc-stage-row strong { font-family: 'JetBrains Mono', monospace; color: #ea580c; font-weight: 700; }
+        .doc-stage-row + .doc-total-row { margin-top: 10px; }
         .doc-total-row { display: flex; justify-content: space-between; align-items: baseline; }
         .doc-total-row span { font-size: 14px; color: #555; font-weight: 600; }
         .doc-total-row strong { font-family: 'JetBrains Mono', monospace; font-size: 28px; color: #ea580c; font-weight: 800; }
