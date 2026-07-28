@@ -15,12 +15,15 @@
    V1.50 — Fix: Preview crashed on a missing helper (stageBlockRows →
    stageLines). PDF total block now matches preview: per-stage rows
    plus an optional grand total.
+   V1.51 — Fix: dialogs no longer close when you drag-select text and
+   release on the backdrop (close now needs mousedown+mouseup both on
+   the backdrop). New Quote gains a client search box.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.50',
+  version: 'V1.51',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -666,7 +669,8 @@ window.BromarPages.quotes = {
               <span class="field-hint" id="nq-number-hint">Auto-generated from the BQ sequence.</span>
             </div>
             <div class="form-row"><label>Client / Account</label>
-              <select id="nq-client" class="quote-input" autocomplete="off">
+              <input type="text" id="nq-client-search" class="quote-input" placeholder="Search clients…" autocomplete="off" spellcheck="false" style="margin-bottom:0.4rem">
+              <select id="nq-client" class="quote-input" size="1" autocomplete="off">
                 <option value="">— Select client —</option>
                 ${clients.map(c => `<option value="${escape(c.id)}">${escape(c.name)}</option>`).join('')}
                 <option value="__manual__">+ Manual entry…</option>
@@ -692,10 +696,28 @@ window.BromarPages.quotes = {
         </div>`;
       document.body.appendChild(dialog);
       const close = () => dialog.remove();
-      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
       document.getElementById('modal-close').addEventListener('click', close);
 
       const clientSel = document.getElementById('nq-client');
+      const clientSearch = document.getElementById('nq-client-search');
+      if (clientSearch) {
+        clientSearch.addEventListener('input', () => {
+          const term = clientSearch.value.trim().toLowerCase();
+          const matches = term ? clients.filter(c => (c.name || '').toLowerCase().includes(term)) : clients;
+          clientSel.innerHTML = '<option value="">— Select client —</option>'
+            + matches.map(c => `<option value="${escape(c.id)}">${escape(c.name)}</option>`).join('')
+            + '<option value="__manual__">+ Manual entry…</option>';
+          // auto-select when the search narrows to exactly one client
+          if (term && matches.length === 1) { clientSel.value = matches[0].id; }
+          clientSel.dispatchEvent(new Event('change'));
+        });
+        clientSearch.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); if (clientSel.options.length > 1) { clientSel.selectedIndex = 1; clientSel.dispatchEvent(new Event('change')); } }
+        });
+      }
       const manualRow = document.getElementById('nq-manual-row');
       const siteRow = document.getElementById('nq-site-row');
       const siteSel = document.getElementById('nq-site');
@@ -956,7 +978,9 @@ window.BromarPages.quotes = {
         </div>`;
       document.body.appendChild(dialog);
       const close = () => dialog.remove();
-      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
       document.getElementById('modal-close').addEventListener('click', close);
       dialog.querySelectorAll('.section-pick').forEach(el => {
         el.addEventListener('click', async () => {
@@ -1876,7 +1900,9 @@ window.BromarPages.quotes = {
         });
       }
       bind();
-      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
     }
 
     /* ── RENUMBER ──
@@ -1905,7 +1931,9 @@ window.BromarPages.quotes = {
         </div>`;
       document.body.appendChild(dialog);
       const close = () => dialog.remove();
-      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
       document.getElementById('modal-close').addEventListener('click', close);
       document.getElementById('rn-cancel').addEventListener('click', close);
 
@@ -1969,7 +1997,9 @@ ${q.preparedBy || COMPANY.name}`;
         </div>`;
       document.body.appendChild(dialog);
       const close = () => dialog.remove();
-      dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
       document.getElementById('modal-close').addEventListener('click', close);
       document.getElementById('em-pdf').addEventListener('click', () => exportPDF(q));
       document.getElementById('em-send').addEventListener('click', async () => {
