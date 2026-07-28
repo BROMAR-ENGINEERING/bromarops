@@ -18,12 +18,14 @@
    V1.51 — Fix: dialogs no longer close when you drag-select text and
    release on the backdrop (close now needs mousedown+mouseup both on
    the backdrop). New Quote gains a client search box.
+   V1.52 — PDF bullet lists now show orange disc markers. Removed the
+   Option — Materials and Option — Labour section types.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.51',
+  version: 'V1.52',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -70,8 +72,6 @@ window.BromarPages.quotes = {
       labour:         { name: 'Labour Costing',              priced: true,  shape: 'labour' },
       costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
       notes:          { name: 'Internal Notes',              priced: false, shape: 'text', internalOnly: true },
-      optionMaterials:{ name: 'Option — Materials',          priced: true,  shape: 'materials', isOption: true },
-      optionLabour:   { name: 'Option — Labour',             priced: true,  shape: 'labour', isOption: true },
       exclusions:     { name: 'Exclusions',                  priced: false, shape: 'bullets' },
       inclusions:     { name: 'Inclusions',                  priced: false, shape: 'bullets' },
       conclusion:     { name: 'Conclusion',                  priced: false, shape: 'text' },
@@ -317,18 +317,7 @@ window.BromarPages.quotes = {
         default:          return {};
       }
     }
-    function renumberOptions(q) {
-      let m = 0, l = 0;
-      (q.sections || []).forEach(s => {
-        if (s.type === 'optionMaterials') {
-          m++;
-          if (/^Option \d+ — Materials$/.test(s.name) || s.name === 'Option — Materials') s.name = `Option ${m} — Materials`;
-        } else if (s.type === 'optionLabour') {
-          l++;
-          if (/^Option \d+ — Labour$/.test(s.name) || s.name === 'Option — Labour') s.name = `Option ${l} — Labour`;
-        }
-      });
-    }
+    function renumberOptions(q) { /* option sections removed in V1.52 */ }
     function renumberScopes(sec) {
       if (sec.type !== 'scopeOfWorks') return;
       (sec.data.scopes || []).forEach((sc, i) => {
@@ -960,7 +949,7 @@ window.BromarPages.quotes = {
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','optionMaterials','optionLabour','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -2205,8 +2194,9 @@ ${q.preparedBy || COMPANY.name}`;
        break-after: avoid; page-break-after: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   h4 { font-size: 10.5pt; font-weight: 700; color: #1a1a1e; margin: 10px 0 3px; break-after: avoid; page-break-after: avoid; }
   p { margin: 5px 0; font-size: 9.5pt; line-height: 1.5; orphans: 3; widows: 3; }
-  ul { padding-left: 16px; margin: 4px 0; }
-  ul li { margin: 2.5px 0; font-size: 9.5pt; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; }
+  ul { padding-left: 20px; margin: 4px 0; list-style: disc outside; }
+  ul li { margin: 2.5px 0; font-size: 9.5pt; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; list-style: disc outside; display: list-item; }
+  ul li::marker { color: #ea580c; }
 
   /* ── TABLES ── */
   table.data { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 9pt; }
