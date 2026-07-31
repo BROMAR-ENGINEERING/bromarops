@@ -30,12 +30,16 @@
    (picker still shows Material/Labour Costing). New movable "Quote
    Total" section that picks costings and shows them individually or
    combined per costing. Orphan costings flag their rail tile red.
+   V1.55 — Per-section toggles to hide the heading and/or divider
+   line. Text sections get a Bold/Italic/Underline toolbar (HTML).
+   Movable "Quote Total" section: picks material & labour costings,
+   shows each individually or combined, optional top/bottom text.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.54',
+  version: 'V1.55',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -119,6 +123,7 @@ window.BromarPages.quotes = {
       labour:         { name: 'Labour Costing',              heading: 'Labour',   priced: true,  shape: 'labour' },
       costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
       scheduleOfRates:{ name: 'Schedule of Rates',           priced: false, shape: 'schedule' },
+      quoteTotal:     { name: 'Quote Total',                 priced: false, shape: 'total' },
       notes:          { name: 'Internal Notes',              priced: false, shape: 'text', internalOnly: true },
       exclusions:     { name: 'Exclusions',                  priced: false, shape: 'bullets' },
       inclusions:     { name: 'Inclusions',                  priced: false, shape: 'bullets' },
@@ -409,6 +414,7 @@ window.BromarPages.quotes = {
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }], clientView: 'full', alloc: 'grand' };
         case 'summary':   return { selectedIds: [], showTotal: true };
         case 'schedule':  return { scheduleId: '', title: 'Schedule of Rates' };
+        case 'total':     return { picks: {}, showGrand: true, grandLabel: 'Total (ex GST)', topText: 'The price for the described works excludes GST and will be held firm for no more than 30 days.', bottomText: '' };
         default:          return {};
       }
     }
@@ -550,6 +556,39 @@ window.BromarPages.quotes = {
       }, 0);
     }
     function quoteTotal(q, opts = {}) { return quoteBaseTotal(q) + quoteOptionsTotal(q, !opts.clientView); }
+
+    /* ── QUOTE TOTAL SECTION ──
+       picks[sectionId] = 'separate' | 'combined' | 'off'
+       'separate' shows the costing as its own line; 'combined' folds
+       it into a single combined line; 'off' excludes it. */
+    function totalEligible(q, exceptId) {
+      return (q.sections || []).filter(x => x.id !== exceptId && isPricedSection(x));
+    }
+    function totalPickMode(sec, x) {
+      const picks = (sec.data && sec.data.picks) || {};
+      return picks[x.id] || 'separate';
+    }
+    function totalRows(sec, q) {
+      const eligible = totalEligible(q, sec.id);
+      const separate = [], combined = [];
+      eligible.forEach(x => {
+        const mode = totalPickMode(sec, x);
+        if (mode === 'off') return;
+        if (mode === 'combined') combined.push(x);
+        else separate.push({ name: x.name, total: sectionSellTotal(x, q) });
+      });
+      const rows = separate.slice();
+      if (combined.length) {
+        rows.push({ name: 'Materials & Labour', total: combined.reduce((s, x) => s + sectionSellTotal(x, q), 0), combined: true });
+      }
+      return rows;
+    }
+    function totalGrand(sec, q) {
+      return totalRows(sec, q).reduce((s, r) => s + r.total, 0);
+    }
+    function hasQuoteTotalSection(q) {
+      return (q.sections || []).some(x => x.type === 'quoteTotal');
+    }
 
     /* Stage lines = each Costing Summary that is shown to the client,
        with its total. Used in the grand-total block breakdown. */
@@ -1052,7 +1091,7 @@ window.BromarPages.quotes = {
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','scheduleOfRates','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','quoteTotal','scheduleOfRates','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -1061,8 +1100,8 @@ window.BromarPages.quotes = {
             <div class="section-grid">
               ${order.map(type => {
                 const meta = SECTION_TYPES[type];
-                const tagCls = meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info')));
-                const tag = meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info'))));
+                const tagCls = meta.shape === 'total' ? 'pick-tag-opt' : (meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info'))));
+                const tag = meta.shape === 'total' ? 'Total' : (meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info')))));
                 return `<button class="section-pick" data-type="${type}"><span class="pick-name">${meta.name}</span><span class="pick-tag ${tagCls}">${tag}</span></button>`;
               }).join('')}
             </div>
@@ -1078,6 +1117,10 @@ window.BromarPages.quotes = {
         el.addEventListener('click', async () => {
           const sec = newSection(el.dataset.type);
           q.sections = q.sections || []; q.sections.push(sec);
+          // Auto-add a Quote Total the first time a costing is created
+          if (isPricedSection(sec) && !hasQuoteTotalSection(q)) {
+            q.sections.push(newSection('quoteTotal'));
+          }
           renumberOptions(q);
           activeSectionId = sec.id;
           await saveQuoteNow(q); close(); renderEditor();
@@ -1201,6 +1244,12 @@ window.BromarPages.quotes = {
             `)}
           </div>
         </div>
+        ${meta.internalOnly ? '' : `
+        <div class="col-bar display-bar">
+          <span class="col-bar-label">Heading</span>
+          <label class="toggle-lbl"><input type="checkbox" id="s-hide-heading" ${sec.hideHeading ? 'checked' : ''}><span>Hide heading text</span></label>
+          <label class="toggle-lbl"><input type="checkbox" id="s-hide-divider" ${sec.hideDivider ? 'checked' : ''}><span>Hide divider line</span></label>
+        </div>`}
         ${sectionPrebuilts.length || canSavePrebuilt(meta.shape) ? `
           <div class="preset-bar">
             <span class="col-bar-label">Prebuilts</span>
@@ -1309,8 +1358,18 @@ window.BromarPages.quotes = {
       const meta = SECTION_TYPES[sec.type];
       const d = sec.data || {};
       switch (meta.shape) {
-        case 'text':
-          return `<textarea class="quote-input quote-textarea" id="f-text" rows="8" placeholder="Enter content…">${escape(d.text || '')}</textarea>`;
+        case 'text': {
+          const html = d.html != null ? d.html : escape(d.text || '').replace(/\n/g, '<br>');
+          return `
+            <div class="rt-toolbar">
+              <button type="button" class="rt-btn" data-cmd="bold" title="Bold"><strong>B</strong></button>
+              <button type="button" class="rt-btn" data-cmd="italic" title="Italic"><em>I</em></button>
+              <button type="button" class="rt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+              <span class="rt-sep"></span>
+              <button type="button" class="rt-btn rt-clear" data-cmd="removeFormat" title="Clear formatting">clear</button>
+            </div>
+            <div class="quote-input rt-area" id="f-richtext" contenteditable="true" data-placeholder="Enter content…">${html}</div>`;
+        }
         case 'bullets':
           return `${quickAddBar(sec.type, 'qa-list-' + sec.id)}
             <div class="bullets-list" id="bullets-list">${(d.bullets || ['']).map(b => bulletRow(b, sec.type)).join('')}</div><button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Blank Bullet</button>`;
@@ -1413,6 +1472,34 @@ window.BromarPages.quotes = {
               ${chosen.rows.map(r => `<tr><td>${escape(roleName(r.role))}</td><td class="num">${fmt(r.ordinary)}</td><td class="num">${fmt(r.overtime)}</td></tr>`).join('')}
             </tbody></table>${(chosen.notes || []).length ? '<ul class="sched-notes">' + chosen.notes.map(n => `<li>${escape(n)}</li>`).join('') + '</ul>' : ''}</div>`
               : (schedules.length ? '<p class="hint">Pick a schedule above to preview it.</p>' : '<p class="hint">No rate schedules saved yet. Add one in Quote Settings.</p>')}`;
+        }
+        case 'total': {
+          const eligible = totalEligible(q, sec.id);
+          const rows = totalRows(sec, q);
+          return `
+            <p class="hint">Choose how each costing appears in the total. <em>Separate</em> shows its own line, <em>Combined</em> folds it into one "Materials &amp; Labour" line, <em>Off</em> excludes it.</p>
+            <div class="form-row"><label>Top text (optional)</label><textarea class="quote-input quote-textarea" id="f-total-top" rows="2" placeholder="Text above the total…">${escape(d.topText || '')}</textarea></div>
+            ${eligible.length ? `<div class="total-pick">
+              ${eligible.map(x => {
+                const mode = totalPickMode(sec, x);
+                return `<div class="total-pick-row" data-id="${x.id}">
+                  <span class="tp-name">${escape(x.name)}</span>
+                  <span class="tp-amt">${fmt(sectionSellTotal(x, q))}</span>
+                  <select class="quote-input tp-mode" data-id="${x.id}">
+                    <option value="separate" ${mode === 'separate' ? 'selected' : ''}>Separate line</option>
+                    <option value="combined" ${mode === 'combined' ? 'selected' : ''}>Combined</option>
+                    <option value="off" ${mode === 'off' ? 'selected' : ''}>Off</option>
+                  </select>
+                </div>`;
+              }).join('')}
+            </div>` : '<p class="hint">No Material or Labour costings in this quote yet.</p>'}
+            <label class="toggle-lbl" style="margin:0.6rem 0"><input type="checkbox" id="f-total-grand" ${d.showGrand !== false ? 'checked' : ''}><span>Show grand total row</span></label>
+            <div class="form-row" style="max-width:280px"><label>Grand total label</label><input class="quote-input" id="f-total-label" value="${escape(d.grandLabel || 'Total (ex GST)')}"></div>
+            <div class="total-preview">
+              ${rows.map(r => `<div class="tp-line"><span>${escape(r.name)}</span><strong>${fmt(r.total)}</strong></div>`).join('')}
+              ${d.showGrand !== false ? `<div class="tp-line tp-grand"><span>${escape(d.grandLabel || 'Total (ex GST)')}</span><strong>${fmt(totalGrand(sec, q))}</strong></div>` : ''}
+            </div>
+            <div class="form-row"><label>Bottom text (optional)</label><textarea class="quote-input quote-textarea" id="f-total-bottom" rows="2" placeholder="Text below the total…">${escape(d.bottomText || '')}</textarea></div>`;
         }
         default: return '';
       }
@@ -1565,6 +1652,10 @@ window.BromarPages.quotes = {
       if (showEl) showEl.addEventListener('change', async e => { sec.show = e.target.checked; await saveQuoteNow(q); renderEditor(); });
       const intEl = get('s-internal');
       if (intEl) intEl.addEventListener('change', async e => { sec.internal = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+      const hideHead = get('s-hide-heading');
+      if (hideHead) hideHead.addEventListener('change', e => { sec.hideHeading = e.target.checked; queueSave(q); });
+      const hideDiv = get('s-hide-divider');
+      if (hideDiv) hideDiv.addEventListener('change', e => { sec.hideDivider = e.target.checked; queueSave(q); });
 
       /* ── PREBUILTS ──
          Selecting only selects. Apply / Update / Rename / Delete are
@@ -1628,7 +1719,20 @@ window.BromarPages.quotes = {
       });
 
       if (meta.shape === 'text') {
-        get('f-text').addEventListener('input', e => { d.text = e.target.value; queueSave(q); });
+        const area = get('f-richtext');
+        if (area) {
+          const save = () => { d.html = area.innerHTML; d.text = area.textContent; queueSave(q); };
+          area.addEventListener('input', save);
+          area.addEventListener('blur', save);
+          document.querySelectorAll('.rt-btn').forEach(btn => {
+            btn.addEventListener('mousedown', e => e.preventDefault()); // keep selection
+            btn.addEventListener('click', () => {
+              area.focus();
+              document.execCommand(btn.dataset.cmd, false, null);
+              save();
+            });
+          });
+        }
       }
       if (meta.shape === 'bullets') {
         // quick add — pick a saved point or type a new one
@@ -1816,6 +1920,23 @@ window.BromarPages.quotes = {
         const sid = get('f-sch-id');
         if (sid) sid.addEventListener('change', async e => { d.scheduleId = e.target.value; await saveQuoteNow(q); renderEditor(); });
       }
+      if (meta.shape === 'total') {
+        const top = get('f-total-top');
+        if (top) top.addEventListener('input', e => { d.topText = e.target.value; queueSave(q); });
+        const bottom = get('f-total-bottom');
+        if (bottom) bottom.addEventListener('input', e => { d.bottomText = e.target.value; queueSave(q); });
+        const grand = get('f-total-grand');
+        if (grand) grand.addEventListener('change', async e => { d.showGrand = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+        const label = get('f-total-label');
+        if (label) label.addEventListener('input', e => { d.grandLabel = e.target.value; queueSave(q); });
+        document.querySelectorAll('.tp-mode').forEach(sel => {
+          sel.addEventListener('change', async () => {
+            d.picks = d.picks || {};
+            d.picks[sel.dataset.id] = sel.value;
+            await saveQuoteNow(q); renderEditor();
+          });
+        });
+      }
     }
 
     /* ── PREVIEW ── */
@@ -1838,13 +1959,13 @@ window.BromarPages.quotes = {
           ${renderDocumentHeader(q)}
           <div class="doc-content">
             ${visible.map(s => renderPreviewSection(s, q)).join('')}
-            <div class="doc-total-block">
+            ${hasQuoteTotalSection(q) ? '' : `<div class="doc-total-block">
               ${stageLines(q).map(st => `<div class="doc-stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
               ${hasGrandAllocation(q) ? `<div class="doc-total-row" id="preview-total"><span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong></div>` : ''}
               ${q.docType === 'estimate'
                 ? '<p class="doc-disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>'
                 : '<p class="doc-fineprint">Prices exclude GST unless otherwise stated.</p>'}
-            </div>
+            </div>`}
             ${canAccept ? `<div class="doc-approval"><button class="btn-secondary" id="reject-btn">Decline</button><button class="btn-primary" id="approve-btn">Accept Quote</button></div>` : ''}
           </div>
         </div>
@@ -1912,8 +2033,8 @@ window.BromarPages.quotes = {
       let body = '';
       switch (meta.shape) {
         case 'text':
-          if (!d.text) return '';
-          body = `<p>${escape(d.text).replace(/\n/g, '<br>')}</p>`; break;
+          if (!d.html && !d.text) return '';
+          body = `<div class="doc-text">${d.html != null ? d.html : escape(d.text).replace(/\n/g, '<br>')}</div>`; break;
         case 'bullets':
           if (!(d.bullets || []).some(b => b.trim())) return '';
           body = `<ul class="doc-bullets">${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`; break;
@@ -1983,6 +2104,16 @@ window.BromarPages.quotes = {
           body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Role</th><th class="num">Ordinary</th><th class="num">Overtime</th></tr></thead><tbody>${sched.rows.map(r => `<tr><td>${escape(roleName(r.role))}</td><td class="num">${fmt(r.ordinary)}</td><td class="num">${fmt(r.overtime)}</td></tr>`).join('')}</tbody></table>${(sched.notes || []).length ? '<ul class="sched-notes">' + sched.notes.map(n => `<li>${escape(n)}</li>`).join('') + '</ul>' : ''}</div>`;
           break;
         }
+        case 'total': {
+          const rows = totalRows(s, q);
+          const top = d.topText ? `<p class="doc-total-text">${escape(d.topText)}</p>` : '';
+          const bottom = d.bottomText ? `<p class="doc-total-text doc-total-text-b">${escape(d.bottomText)}</p>` : '';
+          body = `${top}<div class="doc-total-lines">
+            ${rows.map(r => `<div class="doc-total-line"><span>${escape(r.name)}</span><strong>${fmt(r.total)}</strong></div>`).join('')}
+            ${d.showGrand !== false ? `<div class="doc-total-line doc-total-grand"><span>${escape(d.grandLabel || 'Total (ex GST)')}</span><strong>${fmt(totalGrand(s, q))}</strong></div>` : ''}
+          </div>${bottom}`;
+          break;
+        }
       }
       if (!body) return '';
       if (meta.isOption) {
@@ -1994,7 +2125,8 @@ window.BromarPages.quotes = {
           <div class="doc-option-body">${body}</div>
         </section>`;
       }
-      return `<section class="doc-section"><h3>${escape(s.name)}</h3>${body}</section>`;
+      const headHtml = s.hideHeading ? '' : `<h3${s.hideDivider ? ' class="no-divider"' : ''}>${escape(s.name)}</h3>`;
+      return `<section class="doc-section">${headHtml}${body}</section>`;
     }
 
     /* ── BULLET LIBRARY MANAGER ── */
@@ -2364,7 +2496,7 @@ ${q.preparedBy || COMPANY.name}`;
         let body = '';
         let hasTable = false;
         switch (meta.shape) {
-          case 'text': if (d.text) body = `<p>${escape(d.text).replace(/\n/g, '<br>')}</p>`; break;
+          case 'text': if (d.html || d.text) body = `<div class="doc-text">${d.html != null ? d.html : escape(d.text).replace(/\n/g, '<br>')}</div>`; break;
           case 'bullets':
             if ((d.bullets || []).some(b => b.trim())) body = `<ul>${d.bullets.filter(b => b.trim()).map(b => `<li>${escape(b)}</li>`).join('')}</ul>`;
             break;
@@ -2439,13 +2571,24 @@ ${q.preparedBy || COMPANY.name}`;
             }
             break;
           }
+          case 'total': {
+            const rows = totalRows(s, q);
+            const top = d.topText ? `<p class="total-text">${escape(d.topText)}</p>` : '';
+            const bottom = d.bottomText ? `<p class="total-text">${escape(d.bottomText)}</p>` : '';
+            body = `${top}<div class="total-block quote-total-sec">
+              ${rows.map(r => `<div class="stage-row"><span>${escape(r.name)}</span><strong>${fmt(r.total)}</strong></div>`).join('')}
+              ${d.showGrand !== false ? `<div class="grand-total"><span>${escape(d.grandLabel || 'Total (ex GST)')}</span><strong>${fmt(totalGrand(s, q))}</strong></div>` : ''}
+            </div>${bottom}`;
+            break;
+          }
         }
         if (!body) return '';
         if (meta.isOption) return `<section class="opt-section ${s.optionSelected ? 'opt-on' : ''}"><div class="opt-head"><h3>${escape(s.name)} ${s.optionSelected ? '<span class="opt-tag">SELECTED</span>' : '<span class="opt-tag opt-tag-off">NOT SELECTED</span>'}</h3><span class="opt-amt">${fmt(sectionSellTotal(s, q))}</span></div>${body}</section>`;
         // tables may legitimately span pages; everything else stays whole
         const rows = hasTable ? ((s.data.items || []).length) : 0;
         const splittable = hasTable && rows > 12 ? ' class="splittable"' : '';
-        return `<section${splittable}><h3>${escape(s.name)}</h3>${body}</section>`;
+        const headHtml = s.hideHeading ? '' : `<h3${s.hideDivider ? ' class="no-divider"' : ''}>${escape(s.name)}</h3>`;
+        return `<section${splittable}>${headHtml}${body}</section>`;
       }).join('');
       const logoUrl = new URL(COMPANY.logoLight, window.location.href).href;
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${docLabel(q)} ${docNumber}${q.nickname ? ' — ' + escape(q.nickname) : ''}</title>
@@ -2506,6 +2649,11 @@ ${q.preparedBy || COMPANY.name}`;
 
   h3 { font-size: 9pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin: 0 0 7px; padding-bottom: 3px; border-bottom: 1px solid #ea580c;
        break-after: avoid; page-break-after: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h3.no-divider { border-bottom: none; padding-bottom: 0; }
+  .doc-text { font-size: 9.5pt; line-height: 1.5; }
+  .doc-text strong { font-weight: 700; } .doc-text em { font-style: italic; } .doc-text u { text-decoration: underline; }
+  .total-text { font-size: 9pt; color: #444; margin: 4px 0; }
+  .quote-total-sec .stage-row span { font-weight: 600; }
   h4 { font-size: 10.5pt; font-weight: 700; color: #1a1a1e; margin: 10px 0 3px; break-after: avoid; page-break-after: avoid; }
   p { margin: 5px 0; font-size: 9.5pt; line-height: 1.5; orphans: 3; widows: 3; }
   ul { padding-left: 20px; margin: 4px 0; list-style: disc outside; }
@@ -2623,14 +2771,14 @@ ${q.preparedBy || COMPANY.name}`;
 
       ${sectionsHtml}
 
-      <div class="total-block">
+      ${hasQuoteTotalSection(q) ? '' : `<div class="total-block">
         ${stageLines(q).map(st => `<div class="stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
         ${hasGrandAllocation(q) ? `<div class="grand-total">
           <span>Total ${isEst ? '(Indicative, ex GST)' : '(ex GST)'}</span>
           <strong>${fmt(quoteTotal(q, { clientView: true }))}</strong>
         </div>` : ''}
         ${isEst ? '<p class="disclaimer">This estimate is indicative pricing only and not a binding quote. A formal quotation will be provided on request following a detailed site review.</p>' : '<p class="fineprint">Prices exclude GST unless otherwise stated.</p>'}
-      </div>
+      </div>`}
 
     </td></tr></tbody>
   </table>
@@ -2813,6 +2961,24 @@ ${q.preparedBy || COMPANY.name}`;
         .col-bar-note { font-size: 0.72rem; color: var(--text-secondary); font-style: italic; margin-left: auto; }
         .apply-bar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
         .apply-note { font-size: 0.74rem; color: var(--text-secondary); font-style: italic; }
+        .display-bar { margin-bottom: 0.85rem; }
+        .rt-toolbar { display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem 0.4rem; border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--bg-main); }
+        .rt-btn { min-width: 30px; height: 28px; padding: 0 0.5rem; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text-primary); font-size: 0.85rem; font-family: 'Outfit', sans-serif; }
+        .rt-btn:hover { background: var(--card-hover); border-color: var(--border); }
+        .rt-btn.rt-clear { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+        .rt-sep { width: 1px; height: 18px; background: var(--border); margin: 0 0.25rem; }
+        .rt-area { min-height: 150px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); line-height: 1.6; overflow-y: auto; }
+        .rt-area:empty::before { content: attr(data-placeholder); color: var(--text-secondary); opacity: 0.6; }
+        .rt-area:focus { outline: none; border-color: var(--accent); }
+        .total-pick { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }
+        .total-pick-row { display: grid; grid-template-columns: 1fr auto 150px; gap: 0.6rem; align-items: center; padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); }
+        .tp-name { font-weight: 600; font-size: 0.9rem; }
+        .tp-amt { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary); }
+        .total-preview { margin: 0.6rem 0 0.85rem; padding: 0.75rem 0.9rem; border: 1px dashed var(--border); border-radius: var(--radius-sm); background: var(--card-hover); }
+        .tp-line { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.25rem 0; }
+        .tp-line strong { font-family: 'JetBrains Mono', monospace; }
+        .tp-grand { border-top: 2px solid var(--accent); margin-top: 0.35rem; padding-top: 0.5rem; font-size: 1.05rem; }
+        .tp-grand strong { color: var(--accent); }
         .rate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem; }
         .rate-grid-row { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 0.5rem; }
         .rate-grid-row label { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); text-transform: none; letter-spacing: 0; }
@@ -2947,6 +3113,17 @@ ${q.preparedBy || COMPANY.name}`;
         .doc-content { padding-top: 8px; }
         .doc-section { margin: 22px 0; }
         .doc-section h3 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid #ea580c; }
+        .doc-section h3.no-divider { border-bottom: none; padding-bottom: 0; }
+        .doc-text { font-size: 14px; line-height: 1.6; color: #333; }
+        .doc-text strong { font-weight: 700; } .doc-text em { font-style: italic; } .doc-text u { text-decoration: underline; }
+        .doc-total-text { font-size: 13px; color: #444; margin: 0 0 10px; }
+        .doc-total-text-b { margin: 10px 0 0; }
+        .doc-total-lines { border-top: 2px solid #ea580c; padding-top: 10px; }
+        .doc-total-line { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; padding: 6px 0; font-size: 14px; }
+        .doc-total-line span { font-weight: 600; color: #1a1a1e; }
+        .doc-total-line strong { font-family: 'JetBrains Mono', monospace; color: #1a1a1e; }
+        .doc-total-line.doc-total-grand { border-top: 1px solid #ddd; margin-top: 4px; padding-top: 10px; font-size: 17px; }
+        .doc-total-line.doc-total-grand strong { color: #ea580c; font-weight: 800; }
         .doc-section h4 { font-size: 15px; font-weight: 700; color: #1a1a1e; margin: 16px 0 6px; letter-spacing: -0.01em; }
         .doc-section p { margin: 8px 0; color: #1a1a1e; }
         .doc-scope { margin-bottom: 12px; }
