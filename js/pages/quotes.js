@@ -20,12 +20,18 @@
    the backdrop). New Quote gains a client search box.
    V1.52 — PDF bullet lists now show orange disc markers. Removed the
    Option — Materials and Option — Labour section types.
+   V1.53 — Quote Settings (default markup + per-role hourly rates) and
+   named Rate Schedules (Construction/Maintenance/per-client), stored
+   in quote_favourites (no schema change). Labour lines get a role
+   dropdown, running hours total, and Apply-default-rates. Materials
+   get Apply-default-markup and whole-dollar arrow stepping. New
+   "Schedule of Rates" section inserts a client-facing rate card.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.52',
+  version: 'V1.53',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -63,6 +69,43 @@ window.BromarPages.quotes = {
 
     const PREPARED_BY_OPTIONS = ['John Henshall', 'Tim Purdy', 'Tom Elpis', 'Ashley Shirreff'];
 
+    /* Labour roles — abbreviation for the compact dropdown box, full
+       name when expanded / on the document. */
+    const ROLES = [
+      { id: 'electrician',        abbr: 'Elec',  name: 'Electrician' },
+      { id: 'seniorElectrician',  abbr: 'Sr Elec', name: 'Senior Electrician' },
+      { id: 'engineer',           abbr: 'Eng',   name: 'Engineer' },
+      { id: 'seniorEngineer',     abbr: 'Sr Eng', name: 'Senior Engineer' },
+      { id: 'gradEngineer',       abbr: 'Grad', name: 'Grad Engineer' },
+      { id: 'apprentice',         abbr: 'App',   name: 'Apprentice' }
+    ];
+    function roleById(id) { return ROLES.find(r => r.id === id) || null; }
+    function roleName(id) { const r = roleById(id); return r ? r.name : ''; }
+
+    /* Let a number input accept free decimals when typed, but step by
+       whole dollars on the up/down arrows or spinner. */
+    function wholeDollarArrows(input) {
+      input.addEventListener('keydown', e => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const cur = Number(input.value) || 0;
+          // step to the next whole dollar in the arrow's direction
+          const next = e.key === 'ArrowUp' ? Math.floor(cur) + 1 : Math.ceil(cur) - 1;
+          input.value = Math.max(0, next);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    }
+
+    const SETTINGS_ID = 'settings:default';
+    const SCHEDULE_PREFIX = 'schedule:';
+    function defaultSettings() {
+      const rates = {};
+      ROLES.forEach(r => { rates[r.id] = 0; });
+      return { markup: 0, rates };
+    }
+    let settings = defaultSettings();
+
     const SECTION_TYPES = {
       introduction:   { name: 'Introduction',                priced: false, shape: 'text' },
       references:     { name: 'Quote References',            priced: false, shape: 'bullets' },
@@ -71,6 +114,7 @@ window.BromarPages.quotes = {
       materials:      { name: 'Material Costing',            priced: true,  shape: 'materials' },
       labour:         { name: 'Labour Costing',              priced: true,  shape: 'labour' },
       costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
+      scheduleOfRates:{ name: 'Schedule of Rates',           priced: false, shape: 'schedule' },
       notes:          { name: 'Internal Notes',              priced: false, shape: 'text', internalOnly: true },
       exclusions:     { name: 'Exclusions',                  priced: false, shape: 'bullets' },
       inclusions:     { name: 'Inclusions',                  priced: false, shape: 'bullets' },
@@ -182,6 +226,11 @@ window.BromarPages.quotes = {
         quotes = (qRes.data || []).map(rowToQuote);
         prebuilts = {};
         (fRes.data || []).forEach(f => { prebuilts[f.id] = { name: f.name, type: f.type, data: f.data }; });
+        // pull settings out of the shared prebuilts store
+        if (prebuilts[SETTINGS_ID] && prebuilts[SETTINGS_ID].data) {
+          const s = prebuilts[SETTINGS_ID].data;
+          settings = { markup: Number(s.markup) || 0, rates: { ...defaultSettings().rates, ...(s.rates || {}) } };
+        }
         clients = cRes.error ? [] : (cRes.data || []);
         sites = sRes.error ? [] : (sRes.data || []);
       } catch (e) {
@@ -256,6 +305,47 @@ window.BromarPages.quotes = {
       } catch (e) { console.error(e); toast('Prebuilt delete failed'); }
     }
 
+    /* ── SETTINGS & SCHEDULES (stored in quote_favourites) ── */
+    async function saveSettings() {
+      const entry = { name: 'Quote Settings', type: 'settings', data: { markup: settings.markup, rates: settings.rates } };
+      prebuilts[SETTINGS_ID] = entry;
+      await savePrebuiltDB(SETTINGS_ID, entry);
+    }
+    function allSchedules() {
+      return Object.entries(prebuilts)
+        .filter(([id, p]) => id.startsWith(SCHEDULE_PREFIX) || p.type === 'rateSchedule')
+        .map(([id, p]) => ({ id, ...p.data, name: p.name }))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }
+    function blankSchedule() {
+      return {
+        rows: ROLES.map(r => ({ role: r.id, ordinary: 0, overtime: 0 })),
+        notes: [
+          'Payment terms, 30 days EOM.',
+          'After Hours Calls will be at a minimum of 4 hours at the appropriate rate.',
+          'Minimum 3 hour charge for any site visit.'
+        ],
+        clientId: ''
+      };
+    }
+    async function saveSchedule(id, name, data) {
+      const sid = id || (SCHEDULE_PREFIX + Date.now() + Math.random().toString(36).slice(2, 6));
+      const entry = { name: name.trim(), type: 'rateSchedule', data };
+      prebuilts[sid] = entry;
+      await savePrebuiltDB(sid, entry);
+      return sid;
+    }
+    async function deleteSchedule(id) {
+      delete prebuilts[id];
+      await deletePrebuiltDB(id);
+    }
+    function scheduleForClient(clientName) {
+      const c = clients.find(x => x.name === clientName);
+      if (!c) return null;
+      const hit = allSchedules().find(s => s.clientId === c.id);
+      return hit || null;
+    }
+
     /* ── HELPERS ── */
     function uid() { return 'q' + Date.now() + Math.random().toString(36).slice(2, 7); }
     function sid() { return 's' + Date.now() + Math.random().toString(36).slice(2, 7); }
@@ -311,9 +401,10 @@ window.BromarPages.quotes = {
         case 'bullets':   return { bullets: [''] };
         case 'scopes':    return { intro: 'Bromar have allowed for the following:', scopes: [{ id: gid(), heading: 'Scope 1', bullets: [{ text: '', hidden: false }] }] };
         case 'materials': return { items: [{ desc: '', part: '', price: 0, markup: null, qty: 1 }], columns: { part: true, unit: true, qty: true }, clientView: 'full', alloc: 'grand' };
-        case 'labour':    return { items: [{ desc: '', rate: 0, hours: 8, days: 1, workers: 1 }], columns: { rate: true, hours: true, days: true, workers: true }, clientView: 'full', alloc: 'grand' };
+        case 'labour':    return { items: [{ desc: '', role: '', rate: 0, hours: 8, days: 1, workers: 1 }], columns: { rate: true, hours: true, days: true, workers: true }, clientView: 'full', alloc: 'grand' };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }], clientView: 'full', alloc: 'grand' };
         case 'summary':   return { selectedIds: [], showTotal: true };
+        case 'schedule':  return { scheduleId: '', title: 'Schedule of Rates' };
         default:          return {};
       }
     }
@@ -546,6 +637,7 @@ window.BromarPages.quotes = {
               ${docPill('all','All')} ${docPill('quote','Quotes')} ${docPill('estimate','Estimates')}
             </div>
             <div class="new-buttons">
+              <button class="btn-secondary" id="quote-settings-btn" title="Default rates, markup & rate schedules">⚙ Settings</button>
               <button class="btn-secondary" id="new-estimate-btn">+ Estimate</button>
               <button class="btn-primary" id="new-quote-btn">+ Quote</button>
             </div>
@@ -557,6 +649,7 @@ window.BromarPages.quotes = {
       `;
       document.getElementById('new-quote-btn').addEventListener('click', () => openNewQuoteDialog('quote'));
       document.getElementById('new-estimate-btn').addEventListener('click', () => openNewQuoteDialog('estimate'));
+      document.getElementById('quote-settings-btn').addEventListener('click', openSettingsDialog);
       document.getElementById('quote-search').addEventListener('input', e => { searchTerm = e.target.value; rerenderListOnly(); });
       document.querySelectorAll('.stat-card').forEach(el => el.addEventListener('click', () => { filterStatus = el.dataset.status; rerender(); }));
       document.querySelectorAll('[data-pill-status]').forEach(el => el.addEventListener('click', () => { filterStatus = el.dataset.pillStatus; rerender(); }));
@@ -949,7 +1042,7 @@ window.BromarPages.quotes = {
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','scheduleOfRates','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -958,8 +1051,8 @@ window.BromarPages.quotes = {
             <div class="section-grid">
               ${order.map(type => {
                 const meta = SECTION_TYPES[type];
-                const tagCls = meta.shape === 'summary' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info'));
-                const tag = meta.shape === 'summary' ? 'Summary' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info')));
+                const tagCls = meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info')));
+                const tag = meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info'))));
                 return `<button class="section-pick" data-type="${type}"><span class="pick-name">${meta.name}</span><span class="pick-tag ${tagCls}">${tag}</span></button>`;
               }).join('')}
             </div>
@@ -1229,6 +1322,10 @@ window.BromarPages.quotes = {
               <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="qty" ${mc.qty ? 'checked' : ''}><span>Qty</span></label>
               <span class="col-bar-note">Description &amp; Total always shown</span>
             </div>
+            <div class="apply-bar">
+              <button class="btn-secondary preset-btn" id="apply-markup">Apply default markup</button>
+              <span class="apply-note">Sets every line to the default markup (${settings.markup}%) from Quote Settings.</span>
+            </div>
             <div class="items-head mat-head"><span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => materialRow(it, q.globalMarkup)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Material</button>
@@ -1236,6 +1333,7 @@ window.BromarPages.quotes = {
         }
         case 'labour': {
           const lc = labColumns(d);
+          const totalHrs = (d.items || []).reduce((s, it) => s + labourHours(it), 0);
           return `
             ${costingControls(sec, q)}
             <div class="col-bar">
@@ -1246,8 +1344,13 @@ window.BromarPages.quotes = {
               <label class="toggle-lbl"><input type="checkbox" class="f-col" data-col="workers" ${lc.workers ? 'checked' : ''}><span>Workers</span></label>
               <span class="col-bar-note">Description &amp; Total always shown</span>
             </div>
-            <div class="items-head lab-head"><span>Description</span><span>Rate</span><span>Hrs/day</span><span>Days</span><span>Workers</span><span>Total hrs</span><span>Total</span><span></span></div>
+            <div class="apply-bar">
+              <button class="btn-secondary preset-btn" id="apply-rates">Apply default rates</button>
+              <span class="apply-note">Copies each line's role rate from Quote Settings.</span>
+            </div>
+            <div class="items-head lab-head"><span>Description</span><span>Role</span><span>Rate</span><span>Hrs/day</span><span>Days</span><span>Workers</span><span>Total hrs</span><span>Total</span><span></span></div>
             <div class="items-list" id="items-list">${(d.items || []).map(it => labourRow(it)).join('')}</div>
+            <div class="items-foot lab-foot"><span></span><span></span><span></span><span></span><span></span><span class="foot-lbl">Total hrs</span><span class="foot-val" id="lab-total-hrs">${totalHrs}</span><span></span><span></span></div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Labour Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         }
@@ -1281,6 +1384,25 @@ window.BromarPages.quotes = {
               }).join('')}
             </div>` : '<p class="hint">No costing sections in this quote yet. Add Material or Labour Costing first, then come back here.</p>'}
             <div class="section-foot">Summary total <strong>${fmt(summaryTotal(sec, q))}</strong></div>`;
+        }
+        case 'schedule': {
+          const schedules = allSchedules();
+          const chosen = schedules.find(s => s.id === d.scheduleId);
+          return `
+            <p class="hint">Insert a saved rate schedule as a client-facing rate card. Manage schedules in Quote Settings.</p>
+            <div class="form-grid">
+              <div class="form-row"><label>Heading</label><input id="f-sch-title" class="quote-input" value="${escape(d.title || 'Schedule of Rates')}"></div>
+              <div class="form-row"><label>Schedule</label>
+                <select id="f-sch-id" class="quote-input">
+                  <option value="">— Select a schedule —</option>
+                  ${schedules.map(s => `<option value="${s.id}" ${d.scheduleId === s.id ? 'selected' : ''}>${escape(s.name)}${s.clientId ? ' (' + escape((clients.find(c => c.id === s.clientId) || {}).name || 'client') + ')' : ''}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            ${chosen ? `<div class="doc-table-wrap" style="margin-top:0.75rem"><table class="doc-table"><thead><tr><th>Role</th><th class="num">Ordinary</th><th class="num">Overtime</th></tr></thead><tbody>
+              ${chosen.rows.map(r => `<tr><td>${escape(roleName(r.role))}</td><td class="num">${fmt(r.ordinary)}</td><td class="num">${fmt(r.overtime)}</td></tr>`).join('')}
+            </tbody></table>${(chosen.notes || []).length ? '<ul class="sched-notes">' + chosen.notes.map(n => `<li>${escape(n)}</li>`).join('') + '</ul>' : ''}</div>`
+              : (schedules.length ? '<p class="hint">Pick a schedule above to preview it.</p>' : '<p class="hint">No rate schedules saved yet. Add one in Quote Settings.</p>')}`;
         }
         default: return '';
       }
@@ -1322,8 +1444,10 @@ window.BromarPages.quotes = {
       const hrs = it.hours === undefined ? (it.qty ?? 0) : it.hours;
       const days = it.days === undefined ? 1 : it.days;
       const workers = it.workers === undefined ? 1 : it.workers;
+      const roleOpts = '<option value="">—</option>' + ROLES.map(r => `<option value="${r.id}" ${it.role === r.id ? 'selected' : ''}>${escape(r.abbr)}</option>`).join('');
       return `<div class="line-row lab-row">
         <input class="quote-input l-desc" value="${escape(it.desc || '')}" placeholder="Description / task">
+        <select class="quote-input l-role" title="${escape(roleName(it.role) || 'Role')}">${roleOpts}</select>
         <input class="quote-input l-rate" type="number" min="0" step="0.01" value="${it.rate || 0}">
         <input class="quote-input l-hours" type="number" min="0" step="0.25" value="${hrs}">
         <input class="quote-input l-days" type="number" min="0" step="0.5" value="${days}">
@@ -1597,10 +1721,18 @@ window.BromarPages.quotes = {
         document.querySelectorAll('.mat-row').forEach((row, idx) => {
           row.querySelector('.m-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
           row.querySelector('.m-part').addEventListener('input', e => { d.items[idx].part = e.target.value; queueSave(q); });
-          row.querySelector('.m-price').addEventListener('input', e => { d.items[idx].price = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          const priceInp = row.querySelector('.m-price');
+          wholeDollarArrows(priceInp);
+          priceInp.addEventListener('input', e => { d.items[idx].price = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.m-markup').addEventListener('input', e => { d.items[idx].markup = e.target.value === '' ? null : Number(e.target.value); queueSave(q); refreshItem(row, idx); });
           row.querySelector('.m-qty').addEventListener('input', e => { d.items[idx].qty = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
+        });
+        const applyMarkupBtn = get('apply-markup');
+        if (applyMarkupBtn) applyMarkupBtn.addEventListener('click', async () => {
+          if (!confirm(`Set the markup on all ${d.items.length} line(s) to ${settings.markup}%?`)) return;
+          d.items.forEach(it => { it.markup = settings.markup; });
+          await saveQuoteNow(q); toast('Default markup applied.'); renderEditor();
         });
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', part: '', price: 0, markup: null, qty: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
@@ -1617,19 +1749,33 @@ window.BromarPages.quotes = {
         const refreshItem = (row, idx) => {
           row.querySelector('.li-hrs').textContent = labourHours(d.items[idx]);
           row.querySelector('.li-total').textContent = fmt(labourItemTotal(d.items[idx]));
+          const th = get('lab-total-hrs');
+          if (th) th.textContent = (d.items || []).reduce((s, it) => s + labourHours(it), 0);
           refreshFoot();
         };
         document.querySelectorAll('.lab-row').forEach((row, idx) => {
           const it = d.items[idx];
           if (it.hours === undefined) { it.hours = it.qty ?? 0; it.days = it.days ?? 1; it.workers = it.workers ?? 1; delete it.qty; }
           row.querySelector('.l-desc').addEventListener('input', e => { it.desc = e.target.value; queueSave(q); });
-          row.querySelector('.l-rate').addEventListener('input', e => { it.rate = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          row.querySelector('.l-role').addEventListener('change', e => { it.role = e.target.value; e.target.title = roleName(it.role) || 'Role'; queueSave(q); });
+          const rateInp = row.querySelector('.l-rate');
+          wholeDollarArrows(rateInp);
+          rateInp.addEventListener('input', e => { it.rate = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.l-hours').addEventListener('input', e => { it.hours = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.l-days').addEventListener('input', e => { it.days = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.l-workers').addEventListener('input', e => { it.workers = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
         });
-        get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', rate: 0, hours: 8, days: 1, workers: 1 }); await saveQuoteNow(q); renderEditor(); });
+        const applyRatesBtn = get('apply-rates');
+        if (applyRatesBtn) applyRatesBtn.addEventListener('click', async () => {
+          const withRole = (d.items || []).filter(it => it.role);
+          if (!withRole.length) { toast('Set a role on at least one line first.'); return; }
+          const missing = withRole.filter(it => !settings.rates[it.role]);
+          if (missing.length && !confirm(`${missing.length} role(s) have no default rate set in Settings and will be left as-is. Apply the rest?`)) return;
+          withRole.forEach(it => { if (settings.rates[it.role]) it.rate = settings.rates[it.role]; });
+          await saveQuoteNow(q); toast('Default rates applied.'); renderEditor();
+        });
+        get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', role: '', rate: 0, hours: 8, days: 1, workers: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
       if (meta.shape === 'pcSums') {
         bindCostControls();
@@ -1653,6 +1799,12 @@ window.BromarPages.quotes = {
             await saveQuoteNow(q); renderEditor();
           });
         });
+      }
+      if (meta.shape === 'schedule') {
+        const t = get('f-sch-title');
+        if (t) t.addEventListener('input', e => { d.title = e.target.value; queueSave(q); });
+        const sid = get('f-sch-id');
+        if (sid) sid.addEventListener('change', async e => { d.scheduleId = e.target.value; await saveQuoteNow(q); renderEditor(); });
       }
     }
 
@@ -1815,6 +1967,12 @@ window.BromarPages.quotes = {
           body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="doc-table-total"><td class="num">Total</td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table></div>`;
           break;
         }
+        case 'schedule': {
+          const sched = allSchedules().find(x => x.id === d.scheduleId);
+          if (!sched) return '';
+          body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Role</th><th class="num">Ordinary</th><th class="num">Overtime</th></tr></thead><tbody>${sched.rows.map(r => `<tr><td>${escape(roleName(r.role))}</td><td class="num">${fmt(r.ordinary)}</td><td class="num">${fmt(r.overtime)}</td></tr>`).join('')}</tbody></table>${(sched.notes || []).length ? '<ul class="sched-notes">' + sched.notes.map(n => `<li>${escape(n)}</li>`).join('') + '</ul>' : ''}</div>`;
+          break;
+        }
       }
       if (!body) return '';
       if (meta.isOption) {
@@ -1892,6 +2050,144 @@ window.BromarPages.quotes = {
       let downOnBackdrop = false;
       dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
       dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
+    }
+
+    /* ── QUOTE SETTINGS DIALOG ── */
+    function openSettingsDialog() {
+      const dialog = document.createElement('div');
+      dialog.className = 'quote-modal-overlay';
+      const render = () => `
+        <div class="quote-modal">
+          <div class="modal-header"><h2>Quote Settings</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-body">
+            <div class="section-label">Default Material Markup</div>
+            <div class="form-row" style="max-width:220px"><label>Markup %</label><input id="set-markup" type="number" min="0" step="1" class="quote-input" value="${settings.markup}"></div>
+
+            <div class="section-label" style="margin-top:1.25rem">Default Hourly Rates</div>
+            <div class="rate-grid">
+              ${ROLES.map(r => `<div class="rate-grid-row">
+                <label>${escape(r.name)}</label>
+                <input type="number" min="0" step="1" class="quote-input set-rate" data-role="${r.id}" value="${settings.rates[r.id] || 0}">
+              </div>`).join('')}
+            </div>
+
+            <div class="section-label" style="margin-top:1.5rem">Rate Schedules
+              <button class="btn-secondary preset-btn" id="sch-new" style="margin-left:auto">+ New schedule</button>
+            </div>
+            <div class="sched-list" id="sched-list">
+              ${allSchedules().length ? allSchedules().map(s => `<div class="sched-row" data-id="${s.id}">
+                <span class="sched-name">${escape(s.name)}${s.clientId ? `<span class="sum-flag sum-flag-shown">${escape((clients.find(c => c.id === s.clientId) || {}).name || 'client')}</span>` : '<span class="sum-flag">generic</span>'}</span>
+                <button class="btn-secondary preset-btn sch-edit">Edit</button>
+                <button class="btn-secondary preset-btn icon-danger-btn sch-del">Delete</button>
+              </div>`).join('') : '<div class="empty-state">No rate schedules yet.</div>'}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" id="set-cancel">Close</button>
+            <button class="btn-primary" id="set-save">Save Settings</button>
+          </div>
+        </div>`;
+      dialog.innerHTML = render();
+      document.body.appendChild(dialog);
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
+      function close() { dialog.remove(); }
+      function bind() {
+        dialog.querySelector('#modal-close').addEventListener('click', close);
+        dialog.querySelector('#set-cancel').addEventListener('click', close);
+        dialog.querySelector('#set-save').addEventListener('click', async () => {
+          settings.markup = Number(dialog.querySelector('#set-markup').value) || 0;
+          dialog.querySelectorAll('.set-rate').forEach(inp => { settings.rates[inp.dataset.role] = Number(inp.value) || 0; });
+          await saveSettings();
+          toast('Settings saved.'); close();
+        });
+        dialog.querySelector('#sch-new').addEventListener('click', () => { close(); openScheduleDialog(null); });
+        dialog.querySelectorAll('.sched-row').forEach(row => {
+          row.querySelector('.sch-edit').addEventListener('click', () => { close(); openScheduleDialog(row.dataset.id); });
+          row.querySelector('.sch-del').addEventListener('click', async () => {
+            const s = allSchedules().find(x => x.id === row.dataset.id);
+            if (!confirm(`Delete rate schedule "${s ? s.name : ''}"?`)) return;
+            await deleteSchedule(row.dataset.id);
+            dialog.innerHTML = render(); bind();
+          });
+        });
+      }
+      bind();
+    }
+
+    /* ── RATE SCHEDULE EDITOR ── */
+    function openScheduleDialog(schedId) {
+      const existing = schedId ? allSchedules().find(s => s.id === schedId) : null;
+      const data = existing ? JSON.parse(JSON.stringify({ rows: existing.rows, notes: existing.notes, clientId: existing.clientId || '' })) : blankSchedule();
+      const name = existing ? existing.name : '';
+      const dialog = document.createElement('div');
+      dialog.className = 'quote-modal-overlay';
+      dialog.innerHTML = `
+        <div class="quote-modal">
+          <div class="modal-header"><h2>${existing ? 'Edit' : 'New'} Rate Schedule</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="form-row"><label>Schedule Name</label><input id="sc-name" class="quote-input" value="${escape(name)}" placeholder="e.g. Construction Rates" autocomplete="off"></div>
+              <div class="form-row"><label>Tag to Client (optional)</label>
+                <select id="sc-client" class="quote-input">
+                  <option value="">— Generic (no client) —</option>
+                  ${clients.map(c => `<option value="${escape(c.id)}" ${data.clientId === c.id ? 'selected' : ''}>${escape(c.name)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="section-label" style="margin-top:1rem">Rates</div>
+            <div class="items-head sch-head"><span>Role</span><span>Ordinary</span><span>Overtime</span></div>
+            <div class="items-list" id="sc-rows">
+              ${data.rows.map(r => `<div class="line-row sch-row" data-role="${r.role}">
+                <span class="sch-role">${escape(roleName(r.role))}</span>
+                <input class="quote-input sc-ord" type="number" min="0" step="1" value="${r.ordinary || 0}">
+                <input class="quote-input sc-ot" type="number" min="0" step="1" value="${r.overtime || 0}">
+              </div>`).join('')}
+            </div>
+            <div class="section-label" style="margin-top:1rem">Notes (shown under the table)</div>
+            <div class="bullets-list" id="sc-notes">
+              ${data.notes.map(n => `<div class="bullet-row"><span class="bullet-dot">•</span><input class="quote-input sc-note" value="${escape(n)}"><button class="icon-btn icon-danger sc-note-del">${ICON_TRASH}</button></div>`).join('')}
+            </div>
+            <button class="btn-secondary add-btn-sm" id="sc-note-add">+ Add Note</button>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" id="sc-cancel">Cancel</button>
+            <button class="btn-primary" id="sc-save">Save Schedule</button>
+          </div>
+        </div>`;
+      document.body.appendChild(dialog);
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
+      const close = () => { dialog.remove(); openSettingsDialog(); };
+      dialog.querySelector('#modal-close').addEventListener('click', () => dialog.remove());
+      dialog.querySelector('#sc-cancel').addEventListener('click', () => dialog.remove());
+
+      const collectNotes = () => Array.from(dialog.querySelectorAll('.sc-note')).map(i => i.value.trim()).filter(Boolean);
+      dialog.querySelector('#sc-note-add').addEventListener('click', () => {
+        const wrap = dialog.querySelector('#sc-notes');
+        const div = document.createElement('div');
+        div.className = 'bullet-row';
+        div.innerHTML = `<span class="bullet-dot">•</span><input class="quote-input sc-note" value=""><button class="icon-btn icon-danger sc-note-del">${ICON_TRASH}</button>`;
+        wrap.appendChild(div);
+        div.querySelector('.sc-note-del').addEventListener('click', () => div.remove());
+        div.querySelector('.sc-note').focus();
+      });
+      dialog.querySelectorAll('.sc-note-del').forEach(b => b.addEventListener('click', e => e.target.closest('.bullet-row').remove()));
+
+      dialog.querySelector('#sc-save').addEventListener('click', async () => {
+        const nm = dialog.querySelector('#sc-name').value.trim();
+        if (!nm) { toast('Name the schedule.'); return; }
+        const rows = Array.from(dialog.querySelectorAll('.sch-row')).map(r => ({
+          role: r.dataset.role,
+          ordinary: Number(r.querySelector('.sc-ord').value) || 0,
+          overtime: Number(r.querySelector('.sc-ot').value) || 0
+        }));
+        const out = { rows, notes: collectNotes(), clientId: dialog.querySelector('#sc-client').value };
+        await saveSchedule(schedId, nm, out);
+        toast('Schedule saved.'); close();
+      });
     }
 
     /* ── RENUMBER ──
@@ -2125,6 +2421,14 @@ ${q.preparedBy || COMPANY.name}`;
             }
             break;
           }
+          case 'schedule': {
+            const sched = allSchedules().find(x => x.id === d.scheduleId);
+            if (sched) {
+              hasTable = true;
+              body = `<table class="data"><thead><tr><th>Role</th><th class="num">Ordinary</th><th class="num">Overtime</th></tr></thead><tbody>${sched.rows.map(r => `<tr><td>${escape(roleName(r.role))}</td><td class="num">${fmt(r.ordinary)}</td><td class="num">${fmt(r.overtime)}</td></tr>`).join('')}</tbody></table>${(sched.notes || []).length ? '<ul class="sched-notes">' + sched.notes.map(n => `<li>${escape(n)}</li>`).join('') + '</ul>' : ''}`;
+            }
+            break;
+          }
         }
         if (!body) return '';
         if (meta.isOption) return `<section class="opt-section ${s.optionSelected ? 'opt-on' : ''}"><div class="opt-head"><h3>${escape(s.name)} ${s.optionSelected ? '<span class="opt-tag">SELECTED</span>' : '<span class="opt-tag opt-tag-off">NOT SELECTED</span>'}</h3><span class="opt-amt">${fmt(sectionSellTotal(s, q))}</span></div>${body}</section>`;
@@ -2197,6 +2501,8 @@ ${q.preparedBy || COMPANY.name}`;
   ul { padding-left: 20px; margin: 4px 0; list-style: disc outside; }
   ul li { margin: 2.5px 0; font-size: 9.5pt; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; list-style: disc outside; display: list-item; }
   ul li::marker { color: #ea580c; }
+  ul.sched-notes { margin-top: 6px; padding-left: 18px; }
+  ul.sched-notes li { font-size: 9pt; color: #444; }
 
   /* ── TABLES ── */
   table.data { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 9pt; }
@@ -2492,6 +2798,20 @@ ${q.preparedBy || COMPANY.name}`;
         .col-bar { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: center; padding: 0.55rem 0.8rem; margin-bottom: 0.85rem; background: var(--card-hover); border: 1px solid var(--border); border-radius: var(--radius-sm); }
         .col-bar-label { font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
         .col-bar-note { font-size: 0.72rem; color: var(--text-secondary); font-style: italic; margin-left: auto; }
+        .apply-bar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
+        .apply-note { font-size: 0.74rem; color: var(--text-secondary); font-style: italic; }
+        .rate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem; }
+        .rate-grid-row { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 0.5rem; }
+        .rate-grid-row label { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); text-transform: none; letter-spacing: 0; }
+        .sched-list { display: flex; flex-direction: column; gap: 0.4rem; }
+        .sched-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: center; padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); }
+        .sched-name { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .items-head.sch-head { grid-template-columns: 1fr 120px 120px; }
+        .line-row.sch-row { grid-template-columns: 1fr 120px 120px; }
+        .sch-role { font-weight: 600; font-size: 0.88rem; display: flex; align-items: center; }
+        .l-role { padding-left: 0.3rem; padding-right: 0.3rem; }
+        .sched-notes { margin: 0.6rem 0 0; padding-left: 1.1rem; list-style: disc; }
+        .sched-notes li { font-size: 0.85rem; color: var(--text-secondary); margin: 0.2rem 0; }
         .summary-pick { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
         .summary-pick-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 0.5rem; align-items: center; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); cursor: pointer; }
         .summary-pick-row:hover { border-color: var(--accent); background: var(--card-hover); }
@@ -2547,12 +2867,15 @@ ${q.preparedBy || COMPANY.name}`;
         .scope-bullets { display: flex; flex-direction: column; gap: 0.4rem; }
         .items-head { display: grid; gap: 0.4rem; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0.4rem 0.4rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
         .items-head.mat-head { grid-template-columns: 1.5fr 1fr 90px 70px 70px 90px 34px; }
-        .items-head.lab-head { grid-template-columns: 1.4fr 78px 70px 60px 66px 66px 84px 34px; }
+        .items-head.lab-head { grid-template-columns: 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; }
         .items-head.pc-head  { grid-template-columns: 1fr 120px 34px; }
         .items-list { display: flex; flex-direction: column; gap: 0.4rem; }
         .line-row { display: grid; gap: 0.4rem; align-items: center; }
         .line-row.mat-row { grid-template-columns: 1.5fr 1fr 90px 70px 70px 90px 34px; }
-        .line-row.lab-row { grid-template-columns: 1.4fr 78px 70px 60px 66px 66px 84px 34px; }
+        .line-row.lab-row { grid-template-columns: 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; }
+        .items-foot.lab-foot { display: grid; grid-template-columns: 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; gap: 0.4rem; padding: 0.35rem 0; align-items: center; }
+        .items-foot .foot-lbl { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); text-align: right; }
+        .items-foot .foot-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--accent); text-align: right; padding-right: 0.3rem; }
         .li-hrs { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; text-align: right; color: var(--text-secondary); padding-right: 0.3rem; }
         .line-row.pc-row  { grid-template-columns: 1fr 120px 34px; }
         .li-total { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; text-align: right; color: var(--text-secondary); padding-right: 0.3rem; }
@@ -2653,7 +2976,7 @@ ${q.preparedBy || COMPANY.name}`;
           .quote-row { grid-template-columns: 6px 1fr; grid-template-areas: "status main" ". total" ". actions"; row-gap: 0.5rem; }
           .row-status { grid-area: status; } .row-main { grid-area: main; } .row-total { grid-area: total; text-align: left; } .row-actions { grid-area: actions; }
           .items-head.mat-head, .line-row.mat-row { grid-template-columns: 1fr 1fr 80px 60px 60px 80px 34px; font-size: 0.8rem; }
-          .items-head.lab-head, .line-row.lab-row { grid-template-columns: 1.2fr 64px 56px 50px 56px 56px 72px 34px; font-size: 0.78rem; }
+          .items-head.lab-head, .line-row.lab-row, .items-foot.lab-foot { grid-template-columns: 1.1fr 54px 60px 50px 44px 50px 52px 64px 34px; font-size: 0.72rem; }
           .section-grid { grid-template-columns: 1fr; }
           .doc-page { padding: 32px 20px; overflow-x: hidden; }
           .doc-content { overflow-x: hidden; }
