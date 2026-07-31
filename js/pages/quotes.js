@@ -26,12 +26,16 @@
    dropdown, running hours total, and Apply-default-rates. Materials
    get Apply-default-markup and whole-dollar arrow stepping. New
    "Schedule of Rates" section inserts a client-facing rate card.
+   V1.54 — Section default headings shortened to "Material"/"Labour"
+   (picker still shows Material/Labour Costing). New movable "Quote
+   Total" section that picks costings and shows them individually or
+   combined per costing. Orphan costings flag their rail tile red.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.53',
+  version: 'V1.54',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -111,8 +115,8 @@ window.BromarPages.quotes = {
       references:     { name: 'Quote References',            priced: false, shape: 'bullets' },
       scopeOfWorks:   { name: 'Scope of Works',              priced: false, shape: 'scopes' },
       description:    { name: 'Description',                 priced: false, shape: 'text' },
-      materials:      { name: 'Material Costing',            priced: true,  shape: 'materials' },
-      labour:         { name: 'Labour Costing',              priced: true,  shape: 'labour' },
+      materials:      { name: 'Material Costing',            heading: 'Material', priced: true,  shape: 'materials' },
+      labour:         { name: 'Labour Costing',              heading: 'Labour',   priced: true,  shape: 'labour' },
       costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
       scheduleOfRates:{ name: 'Schedule of Rates',           priced: false, shape: 'schedule' },
       notes:          { name: 'Internal Notes',              priced: false, shape: 'text', internalOnly: true },
@@ -393,7 +397,7 @@ window.BromarPages.quotes = {
     /* ── SECTION DEFAULTS ── */
     function newSection(type) {
       const meta = SECTION_TYPES[type];
-      return { id: sid(), type, name: meta.name, show: !meta.internalOnly, internal: !!meta.internalOnly, data: defaultData(meta.shape) };
+      return { id: sid(), type, name: meta.heading || meta.name, show: !meta.internalOnly, internal: !!meta.internalOnly, data: defaultData(meta.shape) };
     }
     function defaultData(shape) {
       switch (shape) {
@@ -948,17 +952,23 @@ window.BromarPages.quotes = {
       const isActive = activeSectionId === s.id;
       const amount = meta.priced ? sectionSellTotal(s, q) : null;
       const flags = [];
+      let isOrphan = false;
       if (isPricedSection(s)) {
+        isOrphan = orphanCostings(q).some(o => o.id === s.id);
         const v = costView(s);
-        if (v === 'total') flags.push('<span class="rail-flag" title="Client sees total only">total</span>');
-        else if (v === 'summary') flags.push('<span class="rail-flag" title="Client sees it only in a Costing Summary">summary</span>');
-        if (costAlloc(s) === 'section') flags.push('<span class="rail-flag rail-flag-warn" title="Excluded from grand total">off-total</span>');
+        if (isOrphan) {
+          flags.push('<span class="rail-flag rail-flag-err" title="Not shown on the quote and not in any total or summary">not counted</span>');
+        } else {
+          if (v === 'total') flags.push('<span class="rail-flag" title="Client sees total only">total</span>');
+          else if (v === 'summary') flags.push('<span class="rail-flag" title="Client sees it only in a Costing Summary">summary</span>');
+          if (costAlloc(s) === 'section') flags.push('<span class="rail-flag rail-flag-warn" title="Excluded from grand total">off-total</span>');
+        }
       } else if (s.internal || !s.show) {
         flags.push('<span class="rail-flag" title="Internal-only">int</span>');
       }
       if (meta.isOption) flags.push('<span class="rail-flag rail-flag-opt" title="Option">opt</span>');
       return `
-        <div class="rail-tile ${isActive ? 'active' : ''}" data-sid="${s.id}">
+        <div class="rail-tile ${isActive ? 'active' : ''} ${isOrphan ? 'rail-tile-err' : ''}" data-sid="${s.id}">
           <button class="rail-tile-btn rail-item-section" data-sid="${s.id}">
             <span class="rail-name">${escape(s.name || meta.name || 'Section')}</span>
             <span class="rail-meta">
@@ -2767,6 +2777,9 @@ ${q.preparedBy || COMPANY.name}`;
         .rail-flag { font-size: 0.62rem; padding: 1px 5px; background: rgba(99,99,105,0.2); color: var(--text-secondary); border-radius: 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
         .rail-flag-opt { background: rgba(234,88,12,0.15); color: var(--accent); }
         .rail-flag-warn { background: rgba(220,38,38,0.15); color: var(--error); }
+        .rail-flag-err { background: var(--error); color: #fff; }
+        .rail-tile-err { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
+        .rail-tile-err .rail-name { color: var(--error); }
         .rail-controls { position: absolute; top: 4px; right: 4px; display: flex; gap: 1px; opacity: 0; pointer-events: none; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 1px; transition: opacity 0.2s ease; }
         .rail-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.6rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-main); color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.88rem; text-align: left; margin-bottom: 0.4rem; transition: all 0.2s ease; }
         .rail-item .rail-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
