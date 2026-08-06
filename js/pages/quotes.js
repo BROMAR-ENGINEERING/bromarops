@@ -38,12 +38,19 @@
    instead). Material/Labour lines can carry an internal note. Legacy
    numbers ending "Q<n>" revise by bumping the Q number (BE5685 Q1 →
    BE5685 Q2); everything else keeps the -R style.
+   V1.57 — "ex GST" shown by default on Costing Summary and Quote
+   Total. Per-quote validity period (default 30 days) in the details
+   panel, which auto-fills the standard "held firm" note beneath the
+   Quote Total.
+   V1.58 — Up/down reorder controls on every list item: bullet points
+   (exclusions, inclusions, references, assumptions), scope items, and
+   material / labour / PC-sum lines.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.56',
+  version: 'V1.58',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -173,6 +180,7 @@ window.BromarPages.quotes = {
         createdAt: r.created_at,
         publishedAt: r.published_at,
         globalMarkup: Number(r.global_markup) || 0,
+        validDays: (r.valid_days == null || r.valid_days === '') ? 30 : Number(r.valid_days),
         sections: typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || []),
         convertedToQuoteId: r.converted_to_quote_id || undefined,
         convertedToQuoteNumber: r.converted_to_quote_number || undefined,
@@ -200,6 +208,7 @@ window.BromarPages.quotes = {
         created_at: q.createdAt,
         published_at: q.publishedAt,
         global_markup: q.globalMarkup || 0,
+        valid_days: q.validDays == null ? 30 : q.validDays,
         sections: q.sections || [],
         converted_to_quote_id: q.convertedToQuoteId || null,
         converted_to_quote_number: q.convertedToQuoteNumber || null,
@@ -429,7 +438,7 @@ window.BromarPages.quotes = {
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }], clientView: 'full', alloc: 'grand' };
         case 'summary':   return { selectedIds: [], showTotal: true };
         case 'schedule':  return { scheduleId: '', title: 'Schedule of Rates' };
-        case 'total':     return { picks: {}, showGrand: true, grandLabel: 'Total (ex GST)', topText: 'The price for the described works excludes GST and will be held firm for no more than 30 days.', bottomText: '' };
+        case 'total':     return { picks: {}, showGrand: true, grandLabel: 'Total (ex GST)', topText: '', bottomText: '', useStdNote: true };
         default:          return {};
       }
     }
@@ -603,6 +612,12 @@ window.BromarPages.quotes = {
     }
     function hasQuoteTotalSection(q) {
       return (q.sections || []).some(x => x.type === 'quoteTotal');
+    }
+    /* Standard note beneath the Quote Total, built from the quote's
+       validity period. Used when the section's own note is blank. */
+    function heldFirmNote(q) {
+      const days = q.validDays == null ? 30 : q.validDays;
+      return `The price for the described works and materials excludes GST and will be held firm for no more than ${days} days.`;
     }
 
     /* Stage lines = each Costing Summary that is shown to the client,
@@ -1166,6 +1181,10 @@ window.BromarPages.quotes = {
           <div class="form-row form-row-wide"><label>Short Description</label><input id="d-nickname" class="quote-input" value="${escape(q.nickname || '')}" placeholder="e.g. Pump Station Upgrade" autocomplete="off">
             <span class="field-hint">Shown beside the quote number in the list and on the PDF.</span>
           </div>
+          <div class="form-row"><label>Quote Valid For</label>
+            <div class="valid-inline"><input id="d-valid-days" class="quote-input" type="number" min="1" step="1" value="${q.validDays == null ? 30 : q.validDays}"><span class="valid-suffix">days</span></div>
+            <span class="field-hint">Feeds the "held firm" note beneath the Quote Total.</span>
+          </div>
           <div class="form-row"><label>Document Type</label>
             <select id="d-doctype" class="quote-input">
               <option value="quote" ${q.docType === 'quote' ? 'selected' : ''}>Quote</option>
@@ -1389,7 +1408,7 @@ window.BromarPages.quotes = {
         }
         case 'bullets':
           return `${quickAddBar(sec.type, 'qa-list-' + sec.id)}
-            <div class="bullets-list" id="bullets-list">${(d.bullets || ['']).map(b => bulletRow(b, sec.type)).join('')}</div><button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Blank Bullet</button>`;
+            <div class="bullets-list" id="bullets-list">${(d.bullets || ['']).map((b, i, arr) => bulletRow(b, sec.type, i, arr.length - 1)).join('')}</div><button class="btn-secondary add-btn-sm" id="add-bullet">+ Add Blank Bullet</button>`;
         case 'scopes':
           return `
             <div class="form-row" style="margin-bottom:1rem"><label>Introduction</label>
@@ -1412,8 +1431,8 @@ window.BromarPages.quotes = {
               <button class="btn-secondary preset-btn" id="apply-markup">Apply default markup</button>
               <span class="apply-note">Sets every line to the default markup (${settings.markup}%) from Quote Settings.</span>
             </div>
-            <div class="items-head mat-head"><span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span></div>
-            <div class="items-list" id="items-list">${(d.items || []).map(it => materialRow(it, q.globalMarkup)).join('')}</div>
+            <div class="items-head mat-head"><span></span><span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span></div>
+            <div class="items-list" id="items-list">${(d.items || []).map((it, i, arr) => materialRow(it, q.globalMarkup, i, arr.length - 1)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Material</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         }
@@ -1434,17 +1453,17 @@ window.BromarPages.quotes = {
               <button class="btn-secondary preset-btn" id="apply-rates">Apply default rates</button>
               <span class="apply-note">Copies each line's role rate from Quote Settings.</span>
             </div>
-            <div class="items-head lab-head"><span>Description</span><span>Role</span><span>Rate</span><span>Hrs/day</span><span>Days</span><span>Workers</span><span>Total hrs</span><span>Total</span><span></span></div>
-            <div class="items-list" id="items-list">${(d.items || []).map(it => labourRow(it)).join('')}</div>
-            <div class="items-foot lab-foot"><span></span><span></span><span></span><span></span><span></span><span class="foot-lbl">Total hrs</span><span class="foot-val" id="lab-total-hrs">${totalHrs}</span><span></span><span></span></div>
+            <div class="items-head lab-head"><span></span><span>Description</span><span>Role</span><span>Rate</span><span>Hrs/day</span><span>Days</span><span>Workers</span><span>Total hrs</span><span>Total</span><span></span></div>
+            <div class="items-list" id="items-list">${(d.items || []).map((it, i, arr) => labourRow(it, i, arr.length - 1)).join('')}</div>
+            <div class="items-foot lab-foot"><span></span><span></span><span></span><span></span><span></span><span></span><span class="foot-lbl">Total hrs</span><span class="foot-val" id="lab-total-hrs">${totalHrs}</span><span></span><span></span></div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Labour Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         }
         case 'pcSums':
           return `
             ${costingControls(sec, q)}
-            <div class="items-head pc-head"><span>Description</span><span>Amount</span><span></span></div>
-            <div class="items-list" id="items-list">${(d.items || []).map(it => pcRow(it)).join('')}</div>
+            <div class="items-head pc-head"><span></span><span>Description</span><span>Amount</span><span></span></div>
+            <div class="items-list" id="items-list">${(d.items || []).map((it, i, arr) => pcRow(it, i, arr.length - 1)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Line</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         case 'summary': {
@@ -1516,14 +1535,16 @@ window.BromarPages.quotes = {
               ${rows.map(r => `<div class="tp-line"><span>${escape(r.name)}</span><strong>${fmt(r.total)}</strong></div>`).join('')}
               ${d.showGrand !== false ? `<div class="tp-line tp-grand"><span>${escape(d.grandLabel || 'Total (ex GST)')}</span><strong>${fmt(totalGrand(sec, q))}</strong></div>` : ''}
             </div>
-            <div class="form-row"><label>Bottom text (optional)</label><textarea class="quote-input quote-textarea" id="f-total-bottom" rows="2" placeholder="Text below the total…">${escape(d.bottomText || '')}</textarea></div>`;
+            <label class="toggle-lbl" style="margin:0.4rem 0"><input type="checkbox" id="f-total-stdnote" ${d.useStdNote !== false ? 'checked' : ''}><span>Show the standard note below the total (auto-updates with the quote's validity period)</span></label>
+            ${d.useStdNote !== false ? `<div class="std-note-preview">${escape(heldFirmNote(q))}</div>` : ''}
+            <div class="form-row"><label>Extra bottom text (optional)</label><textarea class="quote-input quote-textarea" id="f-total-bottom" rows="2" placeholder="Additional text below the total…">${escape(d.bottomText || '')}</textarea></div>`;
         }
         default: return '';
       }
     }
-    function bulletRow(text, sectionType) {
+    function bulletRow(text, sectionType, i, last) {
       const saved = sectionType ? !!bulletInLib(sectionType, text) : false;
-      return `<div class="bullet-row"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point"><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger bullet-remove" title="Remove">${ICON_TRASH}</button></div>`;
+      return `<div class="bullet-row">${moveControls('blt-move', i, last)}<span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point"><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger bullet-remove" title="Remove">${ICON_TRASH}</button></div>`;
     }
     function scopeCard(sc, i, total, sectionType) {
       return `<div class="scope-card" data-gid="${sc.id}">
@@ -1536,17 +1557,18 @@ window.BromarPages.quotes = {
           <button class="icon-btn icon-danger" data-scope="del" title="Remove scope">${ICON_TRASH}</button>
         </div>
         ${quickAddBar(sectionType, 'qa-list-' + sc.id)}
-        <div class="scope-bullets">${(sc.bullets || []).map((b, bi) => scopeBulletRow(b, bi, sectionType)).join('')}</div>
+        <div class="scope-bullets">${(sc.bullets || []).map((b, bi, arr) => scopeBulletRow(b, bi, sectionType, arr.length - 1)).join('')}</div>
         <button class="btn-secondary add-btn-sm scope-add">+ Add Blank Bullet</button>
       </div>`;
     }
-    function scopeBulletRow(b, bi, sectionType) {
+    function scopeBulletRow(b, bi, sectionType, last) {
       const saved = sectionType ? !!bulletInLib(sectionType, b.text) : false;
-      return `<div class="bullet-row scope-bullet" data-bi="${bi}"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(b.text || '')}" placeholder="Item"><label class="toggle-lbl toggle-mini"><input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span></label><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger b-remove" title="Remove">${ICON_TRASH}</button></div>`;
+      return `<div class="bullet-row scope-bullet" data-bi="${bi}">${moveControls('sb-move', bi, last)}<span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(b.text || '')}" placeholder="Item"><label class="toggle-lbl toggle-mini"><input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span></label><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger b-remove" title="Remove">${ICON_TRASH}</button></div>`;
     }
-    function materialRow(it, gm) {
+    function materialRow(it, gm, i, last) {
       return `<div class="line-wrap">
         <div class="line-row mat-row">
+        ${moveControls('li-move-btn', i, last)}
         <input class="quote-input m-desc" value="${escape(it.desc || '')}" placeholder="Description">
         <input class="quote-input m-part" value="${escape(it.part || '')}" placeholder="Part #">
         <input class="quote-input m-price" type="number" min="0" step="0.01" value="${it.price || 0}">
@@ -1557,13 +1579,14 @@ window.BromarPages.quotes = {
         <input class="quote-input line-note m-note" value="${escape(it.note || '')}" placeholder="+ internal note (not shown to client)">
       </div>`;
     }
-    function labourRow(it) {
+    function labourRow(it, i, last) {
       const hrs = it.hours === undefined ? (it.qty ?? 0) : it.hours;
       const days = it.days === undefined ? 1 : it.days;
       const workers = it.workers === undefined ? 1 : it.workers;
       const roleOpts = '<option value="">—</option>' + ROLES.map(r => `<option value="${r.id}" ${it.role === r.id ? 'selected' : ''}>${escape(r.abbr)}</option>`).join('');
       return `<div class="line-wrap">
         <div class="line-row lab-row">
+        ${moveControls('li-move-btn', i, last)}
         <input class="quote-input l-desc" value="${escape(it.desc || '')}" placeholder="Description / task">
         <select class="quote-input l-role" title="${escape(roleName(it.role) || 'Role')}">${roleOpts}</select>
         <input class="quote-input l-rate" type="number" min="0" step="0.01" value="${it.rate || 0}">
@@ -1576,8 +1599,9 @@ window.BromarPages.quotes = {
         <input class="quote-input line-note l-note" value="${escape(it.note || '')}" placeholder="+ internal note (not shown to client)">
       </div>`;
     }
-    function pcRow(it) {
+    function pcRow(it, i, last) {
       return `<div class="line-row pc-row">
+        ${moveControls('li-move-btn', i, last)}
         <input class="quote-input pc-desc" value="${escape(it.desc || '')}" placeholder="Description">
         <input class="quote-input pc-amount" type="number" min="0" step="0.01" value="${it.amount || 0}">
         <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
@@ -1604,7 +1628,8 @@ window.BromarPages.quotes = {
         'd-siteaddr': v => q.siteAddress = v,
         'd-sitecname': v => q.siteContactName = v,
         'd-sitecphone': v => q.siteContactPhone = v,
-        'd-sitecemail': v => q.siteContactEmail = v.trim()
+        'd-sitecemail': v => q.siteContactEmail = v.trim(),
+        'd-valid-days': v => q.validDays = Math.max(1, Number(v) || 30)
       };
       Object.entries(map).forEach(([id, fn]) => {
         const el = document.getElementById(id); if (!el) return;
@@ -1782,6 +1807,9 @@ window.BromarPages.quotes = {
             d.bullets.splice(idx, 1); if (d.bullets.length === 0) d.bullets.push('');
             await saveQuoteNow(q); renderEditor();
           });
+          row.querySelectorAll('.blt-move').forEach(btn => btn.addEventListener('click', async () => {
+            if (arrMove(d.bullets, idx, btn.dataset.dir)) { await saveQuoteNow(q); renderEditor(); }
+          }));
         });
         get('add-bullet').addEventListener('click', async () => { d.bullets.push(''); await saveQuoteNow(q); renderEditor(); });
       }
@@ -1810,6 +1838,9 @@ window.BromarPages.quotes = {
               if (ok) renderEditor();
             });
             row.querySelector('.b-remove').addEventListener('click', async () => { sc.bullets.splice(bi, 1); if (sc.bullets.length === 0) sc.bullets.push({ text: '', hidden: false }); await saveQuoteNow(q); renderEditor(); });
+            row.querySelectorAll('.sb-move').forEach(btn => btn.addEventListener('click', async () => {
+              if (arrMove(sc.bullets, bi, btn.dataset.dir)) { await saveQuoteNow(q); renderEditor(); }
+            }));
           });
           card.querySelector('.scope-add').addEventListener('click', async () => { sc.bullets.push({ text: '', hidden: false }); await saveQuoteNow(q); renderEditor(); });
           card.querySelectorAll('[data-scope]').forEach(btn => {
@@ -1866,6 +1897,7 @@ window.BromarPages.quotes = {
           const mNote = row.parentElement.querySelector('.m-note');
           if (mNote) mNote.addEventListener('input', e => { d.items[idx].note = e.target.value; queueSave(q); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
+          row.querySelectorAll('.li-move-btn').forEach(btn => btn.addEventListener('click', async () => { if (arrMove(d.items, idx, btn.dataset.dir)) { await saveQuoteNow(q); renderEditor(); } }));
         });
         const applyMarkupBtn = get('apply-markup');
         if (applyMarkupBtn) applyMarkupBtn.addEventListener('click', async () => {
@@ -1906,6 +1938,7 @@ window.BromarPages.quotes = {
           const lNote = row.parentElement.querySelector('.l-note');
           if (lNote) lNote.addEventListener('input', e => { it.note = e.target.value; queueSave(q); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
+          row.querySelectorAll('.li-move-btn').forEach(btn => btn.addEventListener('click', async () => { if (arrMove(d.items, idx, btn.dataset.dir)) { await saveQuoteNow(q); renderEditor(); } }));
         });
         const applyRatesBtn = get('apply-rates');
         if (applyRatesBtn) applyRatesBtn.addEventListener('click', async () => {
@@ -1924,6 +1957,7 @@ window.BromarPages.quotes = {
           row.querySelector('.pc-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
           row.querySelector('.pc-amount').addEventListener('input', e => { d.items[idx].amount = Number(e.target.value) || 0; queueSave(q); refreshFoot(); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
+          row.querySelectorAll('.li-move-btn').forEach(btn => btn.addEventListener('click', async () => { if (arrMove(d.items, idx, btn.dataset.dir)) { await saveQuoteNow(q); renderEditor(); } }));
         });
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', amount: 0 }); await saveQuoteNow(q); renderEditor(); });
       }
@@ -1954,6 +1988,8 @@ window.BromarPages.quotes = {
         if (bottom) bottom.addEventListener('input', e => { d.bottomText = e.target.value; queueSave(q); });
         const grand = get('f-total-grand');
         if (grand) grand.addEventListener('change', async e => { d.showGrand = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+        const stdNote = get('f-total-stdnote');
+        if (stdNote) stdNote.addEventListener('change', async e => { d.useStdNote = e.target.checked; await saveQuoteNow(q); renderEditor(); });
         const label = get('f-total-label');
         if (label) label.addEventListener('input', e => { d.grandLabel = e.target.value; queueSave(q); });
         document.querySelectorAll('.tp-mode').forEach(sel => {
@@ -2122,7 +2158,7 @@ window.BromarPages.quotes = {
         case 'summary': {
           const rows = summaryRows(s, q);
           if (!rows.length) return '';
-          body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="doc-table-total"><td class="num">Total</td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table></div>`;
+          body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="doc-table-total"><td class="num">Total <span class="doc-exgst">ex GST</span></td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table></div>`;
           break;
         }
         case 'schedule': {
@@ -2134,11 +2170,12 @@ window.BromarPages.quotes = {
         case 'total': {
           const rows = totalRows(s, q);
           const top = d.topText ? `<p class="doc-total-text">${escape(d.topText)}</p>` : '';
+          const stdNote = d.useStdNote !== false ? `<p class="doc-total-text doc-total-text-b">${escape(heldFirmNote(q))}</p>` : '';
           const bottom = d.bottomText ? `<p class="doc-total-text doc-total-text-b">${escape(d.bottomText)}</p>` : '';
           body = `${top}<div class="doc-total-lines">
             ${rows.map(r => `<div class="doc-total-line"><span>${escape(r.name)}</span><strong>${fmt(r.total)}</strong></div>`).join('')}
-            ${d.showGrand !== false ? `<div class="doc-total-line doc-total-grand"><span>${escape(d.grandLabel || 'Total (ex GST)')}</span><strong>${fmt(totalGrand(s, q))}</strong></div>` : ''}
-          </div>${bottom}`;
+            ${d.showGrand !== false ? `<div class="doc-total-line doc-total-grand"><span>${escape((d.grandLabel || 'Total').replace(/\s*\(ex gst\)\s*$/i, ''))} <span class="doc-exgst">ex GST</span></span><strong>${fmt(totalGrand(s, q))}</strong></div>` : ''}
+          </div>${stdNote}${bottom}`;
           break;
         }
       }
@@ -2586,7 +2623,7 @@ ${q.preparedBy || COMPANY.name}`;
             const rows = summaryRows(s, q);
             if (rows.length) {
               hasTable = true;
-              body = `<table class="data"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="ttl"><td class="num">Total</td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table>`;
+              body = `<table class="data"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="ttl"><td class="num">Total <span class="pdf-exgst">ex GST</span></td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table>`;
             }
             break;
           }
@@ -2601,11 +2638,12 @@ ${q.preparedBy || COMPANY.name}`;
           case 'total': {
             const rows = totalRows(s, q);
             const top = d.topText ? `<p class="total-text">${escape(d.topText)}</p>` : '';
+            const stdNote = d.useStdNote !== false ? `<p class="total-text">${escape(heldFirmNote(q))}</p>` : '';
             const bottom = d.bottomText ? `<p class="total-text">${escape(d.bottomText)}</p>` : '';
             body = `${top}<div class="total-block quote-total-sec">
               ${rows.map(r => `<div class="stage-row"><span>${escape(r.name)}</span><strong>${fmt(r.total)}</strong></div>`).join('')}
-              ${d.showGrand !== false ? `<div class="grand-total"><span>${escape(d.grandLabel || 'Total (ex GST)')}</span><strong>${fmt(totalGrand(s, q))}</strong></div>` : ''}
-            </div>${bottom}`;
+              ${d.showGrand !== false ? `<div class="grand-total"><span>${escape((d.grandLabel || 'Total').replace(/\s*\(ex gst\)\s*$/i, ''))} <span class="pdf-exgst">ex GST</span></span><strong>${fmt(totalGrand(s, q))}</strong></div>` : ''}
+            </div>${stdNote}${bottom}`;
             break;
           }
         }
@@ -2681,6 +2719,7 @@ ${q.preparedBy || COMPANY.name}`;
   .doc-text strong { font-weight: 700; } .doc-text em { font-style: italic; } .doc-text u { text-decoration: underline; }
   .total-text { font-size: 9pt; color: #444; margin: 4px 0; }
   .quote-total-sec .stage-row span { font-weight: 600; }
+  .pdf-exgst { font-size: 0.7em; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.04em; }
   h4 { font-size: 10.5pt; font-weight: 700; color: #1a1a1e; margin: 10px 0 3px; break-after: avoid; page-break-after: avoid; }
   p { margin: 5px 0; font-size: 9.5pt; line-height: 1.5; orphans: 3; widows: 3; }
   ul { padding-left: 20px; margin: 4px 0; list-style: disc outside; }
@@ -2841,6 +2880,21 @@ ${q.preparedBy || COMPANY.name}`;
     const ICON_MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/></svg>';
     const ICON_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>';
     const ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+
+    /* Compact up/down reorder buttons for a list item. cls is the
+       class used to bind the click; i/last disable the ends. */
+    function moveControls(cls, i, last) {
+      return `<span class="li-move">
+        <button type="button" class="icon-btn li-mini ${cls}" data-dir="up" ${i === 0 ? 'disabled' : ''} title="Move up">${ICON_UP}</button>
+        <button type="button" class="icon-btn li-mini ${cls}" data-dir="down" ${i === last ? 'disabled' : ''} title="Move down">${ICON_DOWN}</button>
+      </span>`;
+    }
+    function arrMove(arr, i, dir) {
+      const j = dir === 'up' ? i - 1 : i + 1;
+      if (j < 0 || j >= arr.length) return false;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      return true;
+    }
     const ICON_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const ICON_TOTALS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4l-7 8v4l-4 2v-6L3 7V3z"/></svg>';
     const ICON_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
@@ -2990,6 +3044,12 @@ ${q.preparedBy || COMPANY.name}`;
         .apply-note { font-size: 0.74rem; color: var(--text-secondary); font-style: italic; }
         .display-bar { margin-bottom: 0.85rem; }
         .line-wrap { margin-bottom: 0.5rem; }
+        .li-move { display: inline-flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+        .li-mini { width: 20px; height: 15px; padding: 0; border: 1px solid var(--border); background: var(--bg-secondary); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-secondary); }
+        .li-mini:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+        .li-mini:disabled { opacity: 0.3; cursor: default; }
+        .li-mini svg { width: 12px; height: 12px; }
+        .bullet-row .li-move { margin-right: 0.15rem; }
         .line-note { width: 100%; margin-top: 3px; font-size: 0.8rem; padding: 0.3rem 0.5rem; background: transparent; border: 1px dashed var(--border); color: var(--text-secondary); }
         .line-note:focus { border-style: solid; border-color: var(--accent); color: var(--text-primary); background: var(--bg-main); }
         .line-note::placeholder { font-style: italic; opacity: 0.7; }
@@ -3066,8 +3126,8 @@ ${q.preparedBy || COMPANY.name}`;
         .bullet-save.is-saved { color: var(--accent); }
         .lib-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 46vh; overflow-y: auto; }
         .lib-row { display: grid; grid-template-columns: 16px 1fr 34px; gap: 0.5rem; align-items: center; }
-        .bullet-row { display: grid; grid-template-columns: 16px 1fr 34px 34px; gap: 0.5rem; align-items: center; }
-        .bullet-row.scope-bullet { grid-template-columns: 16px 1fr auto 34px 34px; }
+        .bullet-row { display: grid; grid-template-columns: 24px 16px 1fr 34px 34px; gap: 0.5rem; align-items: center; }
+        .bullet-row.scope-bullet { grid-template-columns: 24px 16px 1fr auto 34px 34px; }
         .bullet-dot { color: var(--accent); font-weight: 700; text-align: center; }
         .scopes-list { display: flex; flex-direction: column; gap: 0.75rem; }
         .scope-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-main); padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
@@ -3076,14 +3136,15 @@ ${q.preparedBy || COMPANY.name}`;
         .scope-controls { opacity: 1; }
         .scope-bullets { display: flex; flex-direction: column; gap: 0.4rem; }
         .items-head { display: grid; gap: 0.4rem; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0.4rem 0.4rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
-        .items-head.mat-head { grid-template-columns: 1.5fr 1fr 90px 70px 70px 90px 34px; }
-        .items-head.lab-head { grid-template-columns: 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; }
-        .items-head.pc-head  { grid-template-columns: 1fr 120px 34px; }
+        .items-head.mat-head { grid-template-columns: 24px 1.5fr 1fr 90px 70px 70px 90px 34px; }
+        .items-head.lab-head { grid-template-columns: 24px 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; }
+        .items-head.pc-head  { grid-template-columns: 24px 1fr 120px 34px; }
+        .line-row.pc-row { grid-template-columns: 24px 1fr 120px 34px; }
         .items-list { display: flex; flex-direction: column; gap: 0.4rem; }
         .line-row { display: grid; gap: 0.4rem; align-items: center; }
-        .line-row.mat-row { grid-template-columns: 1.5fr 1fr 90px 70px 70px 90px 34px; }
-        .line-row.lab-row { grid-template-columns: 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; }
-        .items-foot.lab-foot { display: grid; grid-template-columns: 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; gap: 0.4rem; padding: 0.35rem 0; align-items: center; }
+        .line-row.mat-row { grid-template-columns: 24px 1.5fr 1fr 90px 70px 70px 90px 34px; }
+        .line-row.lab-row { grid-template-columns: 24px 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; }
+        .items-foot.lab-foot { display: grid; grid-template-columns: 24px 1.3fr 66px 74px 62px 52px 60px 62px 80px 34px; gap: 0.4rem; padding: 0.35rem 0; align-items: center; }
         .items-foot .foot-lbl { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); text-align: right; }
         .items-foot .foot-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--accent); text-align: right; padding-right: 0.3rem; }
         .li-hrs { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; text-align: right; color: var(--text-secondary); padding-right: 0.3rem; }
@@ -3155,6 +3216,11 @@ ${q.preparedBy || COMPANY.name}`;
         .doc-total-line strong { font-family: 'JetBrains Mono', monospace; color: #1a1a1e; }
         .doc-total-line.doc-total-grand { border-top: 1px solid #ddd; margin-top: 4px; padding-top: 10px; font-size: 17px; }
         .doc-total-line.doc-total-grand strong { color: #ea580c; font-weight: 800; }
+        .doc-exgst { font-size: 0.62em; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; vertical-align: middle; opacity: 0.8; }
+        .valid-inline { display: flex; align-items: center; gap: 0.5rem; max-width: 200px; }
+        .valid-inline .quote-input { width: 90px; }
+        .valid-suffix { color: var(--text-secondary); font-size: 0.9rem; }
+        .std-note-preview { font-size: 0.82rem; font-style: italic; color: var(--text-secondary); padding: 0.5rem 0.7rem; margin-bottom: 0.6rem; border-left: 3px solid var(--accent); background: var(--card-hover); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
         .doc-section h4 { font-size: 15px; font-weight: 700; color: #1a1a1e; margin: 16px 0 6px; letter-spacing: -0.01em; }
         .doc-section p { margin: 8px 0; color: #1a1a1e; }
         .doc-scope { margin-bottom: 12px; }
@@ -3196,8 +3262,8 @@ ${q.preparedBy || COMPANY.name}`;
           .form-grid { grid-template-columns: 1fr; }
           .quote-row { grid-template-columns: 6px 1fr; grid-template-areas: "status main" ". total" ". actions"; row-gap: 0.5rem; }
           .row-status { grid-area: status; } .row-main { grid-area: main; } .row-total { grid-area: total; text-align: left; } .row-actions { grid-area: actions; }
-          .items-head.mat-head, .line-row.mat-row { grid-template-columns: 1fr 1fr 80px 60px 60px 80px 34px; font-size: 0.8rem; }
-          .items-head.lab-head, .line-row.lab-row, .items-foot.lab-foot { grid-template-columns: 1.1fr 54px 60px 50px 44px 50px 52px 64px 34px; font-size: 0.72rem; }
+          .items-head.mat-head, .line-row.mat-row { grid-template-columns: 24px 1fr 1fr 80px 60px 60px 80px 34px; font-size: 0.8rem; }
+          .items-head.lab-head, .line-row.lab-row, .items-foot.lab-foot { grid-template-columns: 22px 1.1fr 54px 60px 50px 44px 50px 52px 64px 34px; font-size: 0.72rem; }
           .section-grid { grid-template-columns: 1fr; }
           .doc-page { padding: 32px 20px; overflow-x: hidden; }
           .doc-content { overflow-x: hidden; }
