@@ -34,12 +34,16 @@
    line. Text sections get a Bold/Italic/Underline toolbar (HTML).
    Movable "Quote Total" section: picks material & labour costings,
    shows each individually or combined, optional top/bottom text.
+   V1.56 — Quote Total can't be deleted (hide it via checkboxes
+   instead). Material/Labour lines can carry an internal note. Legacy
+   numbers ending "Q<n>" revise by bumping the Q number (BE5685 Q1 →
+   BE5685 Q2); everything else keeps the -R style.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.55',
+  version: 'V1.56',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -371,7 +375,18 @@ window.BromarPages.quotes = {
       const n = (num || '').trim().toLowerCase();
       return quotes.some(q => q.id !== exceptId && (q.rootNumber || '').trim().toLowerCase() === n && q.version === 1);
     }
-    function displayNumber(q) { return q.version > 1 ? `${q.rootNumber}-R${q.version - 1}` : q.rootNumber; }
+    /* Display number for a revision. Legacy numbers ending in "Q<n>"
+       bump the Q number (BE5685 Q1 → BE5685 Q2 for the 2nd version);
+       everything else appends -R<n>. version 1 is the original. */
+    function displayNumber(q) {
+      if (q.version <= 1) return q.rootNumber;
+      const m = /^(.*\bQ)(\d+)\s*$/i.exec(q.rootNumber || '');
+      if (m) {
+        const base = parseInt(m[2], 10);
+        return `${m[1]}${base + (q.version - 1)}`;
+      }
+      return `${q.rootNumber}-R${q.version - 1}`;
+    }
     function docLabel(q) { return q.docType === 'estimate' ? 'Estimate' : 'Quote'; }
     function fmt(n) { return '$' + (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function escape(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
@@ -941,7 +956,7 @@ window.BromarPages.quotes = {
       const q = quotes.find(x => x.id === activeQuoteId);
       if (!q) { backToDashboard(); return; }
       const isPublished = !!q.publishedAt;
-      const revLabel = q.version > 1 ? `R${q.version - 1}` : 'Original';
+      const revLabel = q.version > 1 ? displayNumber(q) : 'Original';
       if (activeSectionId !== '__details__' && activeSectionId !== '__totals__') {
         if (!(q.sections || []).find(s => s.id === activeSectionId)) activeSectionId = '__details__';
       }
@@ -1018,8 +1033,8 @@ window.BromarPages.quotes = {
           <div class="rail-controls">
             <button class="icon-btn rail-mini" data-rail="up" data-sid="${s.id}" ${idx === 0 ? 'disabled' : ''} title="Move up">${ICON_UP}</button>
             <button class="icon-btn rail-mini" data-rail="down" data-sid="${s.id}" ${idx === total - 1 ? 'disabled' : ''} title="Move down">${ICON_DOWN}</button>
-            <button class="icon-btn rail-mini" data-rail="dup" data-sid="${s.id}" title="Duplicate">${ICON_COPY}</button>
-            <button class="icon-btn rail-mini icon-danger" data-rail="del" data-sid="${s.id}" title="Remove">${ICON_TRASH}</button>
+            ${s.type === 'quoteTotal' ? '' : `<button class="icon-btn rail-mini" data-rail="dup" data-sid="${s.id}" title="Duplicate">${ICON_COPY}</button>
+            <button class="icon-btn rail-mini icon-danger" data-rail="del" data-sid="${s.id}" title="Remove">${ICON_TRASH}</button>`}
           </div>
         </div>`;
     }
@@ -1071,12 +1086,14 @@ window.BromarPages.quotes = {
           if (op === 'up' && idx > 0) [q.sections[idx - 1], q.sections[idx]] = [q.sections[idx], q.sections[idx - 1]];
           else if (op === 'down' && idx < q.sections.length - 1) [q.sections[idx + 1], q.sections[idx]] = [q.sections[idx], q.sections[idx + 1]];
           else if (op === 'dup') {
+            if (q.sections[idx].type === 'quoteTotal') { toast('Only one Quote Total per quote.'); return; }
             const copy = JSON.parse(JSON.stringify(q.sections[idx]));
             copy.id = sid();
             if (copy.data && copy.data.scopes) copy.data.scopes.forEach(sc => sc.id = gid());
             q.sections.splice(idx + 1, 0, copy);
             activeSectionId = copy.id;
           } else if (op === 'del') {
+            if (q.sections[idx].type === 'quoteTotal') { toast('The Quote Total can\'t be deleted — untick "Show to client" to hide it.'); return; }
             if (!confirm(`Remove section "${q.sections[idx].name}"?`)) return;
             q.sections.splice(idx, 1);
             if (activeSectionId === id) activeSectionId = '__details__';
@@ -1144,7 +1161,7 @@ window.BromarPages.quotes = {
         <div class="section-label">Document</div>
         <div class="form-grid">
           <div class="form-row"><label>${docLabel(q)} Number</label><input id="d-rootnumber" class="quote-input" value="${escape(q.rootNumber || '')}" autocomplete="off" spellcheck="false">
-            <span class="field-hint">${q.version > 1 ? `Revision <strong>R${q.version - 1}</strong> — shows as ${escape(displayNumber(q))}.` : 'Editable during migration from the old system.'}</span>
+            <span class="field-hint">${q.version > 1 ? `Revision ${escape(displayNumber(q))} — from root ${escape(q.rootNumber)}.` : 'Editable during migration from the old system.'}</span>
           </div>
           <div class="form-row form-row-wide"><label>Short Description</label><input id="d-nickname" class="quote-input" value="${escape(q.nickname || '')}" placeholder="e.g. Pump Station Upgrade" autocomplete="off">
             <span class="field-hint">Shown beside the quote number in the list and on the PDF.</span>
@@ -1528,21 +1545,25 @@ window.BromarPages.quotes = {
       return `<div class="bullet-row scope-bullet" data-bi="${bi}"><span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(b.text || '')}" placeholder="Item"><label class="toggle-lbl toggle-mini"><input type="checkbox" class="b-hide" ${b.hidden ? 'checked' : ''}><span>Hide</span></label><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger b-remove" title="Remove">${ICON_TRASH}</button></div>`;
     }
     function materialRow(it, gm) {
-      return `<div class="line-row mat-row">
+      return `<div class="line-wrap">
+        <div class="line-row mat-row">
         <input class="quote-input m-desc" value="${escape(it.desc || '')}" placeholder="Description">
         <input class="quote-input m-part" value="${escape(it.part || '')}" placeholder="Part #">
         <input class="quote-input m-price" type="number" min="0" step="0.01" value="${it.price || 0}">
         <input class="quote-input m-markup" type="number" min="0" step="0.1" value="${it.markup ?? ''}" placeholder="—">
         <input class="quote-input m-qty" type="number" min="0" step="0.01" value="${it.qty || 0}">
         <div class="li-total">${fmt(materialItemTotal(it, gm))}</div>
-        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
+        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>
+        <input class="quote-input line-note m-note" value="${escape(it.note || '')}" placeholder="+ internal note (not shown to client)">
+      </div>`;
     }
     function labourRow(it) {
       const hrs = it.hours === undefined ? (it.qty ?? 0) : it.hours;
       const days = it.days === undefined ? 1 : it.days;
       const workers = it.workers === undefined ? 1 : it.workers;
       const roleOpts = '<option value="">—</option>' + ROLES.map(r => `<option value="${r.id}" ${it.role === r.id ? 'selected' : ''}>${escape(r.abbr)}</option>`).join('');
-      return `<div class="line-row lab-row">
+      return `<div class="line-wrap">
+        <div class="line-row lab-row">
         <input class="quote-input l-desc" value="${escape(it.desc || '')}" placeholder="Description / task">
         <select class="quote-input l-role" title="${escape(roleName(it.role) || 'Role')}">${roleOpts}</select>
         <input class="quote-input l-rate" type="number" min="0" step="0.01" value="${it.rate || 0}">
@@ -1551,7 +1572,9 @@ window.BromarPages.quotes = {
         <input class="quote-input l-workers" type="number" min="0" step="1" value="${workers}">
         <div class="li-hrs">${labourHours(it)}</div>
         <div class="li-total">${fmt(labourItemTotal(it))}</div>
-        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>`;
+        <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>
+        <input class="quote-input line-note l-note" value="${escape(it.note || '')}" placeholder="+ internal note (not shown to client)">
+      </div>`;
     }
     function pcRow(it) {
       return `<div class="line-row pc-row">
@@ -1840,6 +1863,8 @@ window.BromarPages.quotes = {
           priceInp.addEventListener('input', e => { d.items[idx].price = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.m-markup').addEventListener('input', e => { d.items[idx].markup = e.target.value === '' ? null : Number(e.target.value); queueSave(q); refreshItem(row, idx); });
           row.querySelector('.m-qty').addEventListener('input', e => { d.items[idx].qty = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          const mNote = row.parentElement.querySelector('.m-note');
+          if (mNote) mNote.addEventListener('input', e => { d.items[idx].note = e.target.value; queueSave(q); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
         });
         const applyMarkupBtn = get('apply-markup');
@@ -1878,6 +1903,8 @@ window.BromarPages.quotes = {
           row.querySelector('.l-hours').addEventListener('input', e => { it.hours = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.l-days').addEventListener('input', e => { it.days = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
           row.querySelector('.l-workers').addEventListener('input', e => { it.workers = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
+          const lNote = row.parentElement.querySelector('.l-note');
+          if (lNote) lNote.addEventListener('input', e => { it.note = e.target.value; queueSave(q); });
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
         });
         const applyRatesBtn = get('apply-rates');
@@ -2962,6 +2989,10 @@ ${q.preparedBy || COMPANY.name}`;
         .apply-bar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
         .apply-note { font-size: 0.74rem; color: var(--text-secondary); font-style: italic; }
         .display-bar { margin-bottom: 0.85rem; }
+        .line-wrap { margin-bottom: 0.5rem; }
+        .line-note { width: 100%; margin-top: 3px; font-size: 0.8rem; padding: 0.3rem 0.5rem; background: transparent; border: 1px dashed var(--border); color: var(--text-secondary); }
+        .line-note:focus { border-style: solid; border-color: var(--accent); color: var(--text-primary); background: var(--bg-main); }
+        .line-note::placeholder { font-style: italic; opacity: 0.7; }
         .rt-toolbar { display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem 0.4rem; border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--bg-main); }
         .rt-btn { min-width: 30px; height: 28px; padding: 0 0.5rem; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text-primary); font-size: 0.85rem; font-family: 'Outfit', sans-serif; }
         .rt-btn:hover { background: var(--card-hover); border-color: var(--border); }
