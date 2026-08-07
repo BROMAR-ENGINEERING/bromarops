@@ -49,12 +49,15 @@
    pasted content is stripped of inline colours/backgrounds so it
    inherits the theme; added a text-colour picker (applies to the
    selected text only).
+   V1.60 — Fix: saving failed for anyone who hadn't added the
+   valid_days column. Saves now retry automatically without that
+   field if the column is missing, so quotes save either way.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.59',
+  version: 'V1.60',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -212,7 +215,7 @@ window.BromarPages.quotes = {
         created_at: q.createdAt,
         published_at: q.publishedAt,
         global_markup: q.globalMarkup || 0,
-        valid_days: q.validDays == null ? 30 : q.validDays,
+        ...(validDaysColumnMissing ? {} : { valid_days: q.validDays == null ? 30 : q.validDays }),
         sections: q.sections || [],
         converted_to_quote_id: q.convertedToQuoteId || null,
         converted_to_quote_number: q.convertedToQuoteNumber || null,
@@ -291,6 +294,11 @@ window.BromarPages.quotes = {
         toast('Save failed — check console');
       }
     }
+    /* Some deployments haven't added the valid_days column yet. Once a
+       write fails because of it, we stop sending the field entirely so
+       saves keep working; validity then lives only in memory. */
+    let validDaysColumnMissing = false;
+
     async function saveQuoteNow(q) {
       const supabase = sb();
       if (!supabase) { toast('Not connected — changes not saved'); return false; }
@@ -300,6 +308,18 @@ window.BromarPages.quotes = {
         if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
         return true;
       } catch (e) {
+        // If the column is missing, drop it and retry once.
+        const msg = (e && (e.message || e.details || '')) + '';
+        if (!validDaysColumnMissing && /valid_days/.test(msg)) {
+          validDaysColumnMissing = true;
+          console.warn('valid_days column not found — saving without it. Add it with:  alter table quotes add column if not exists valid_days integer default 30;');
+          try {
+            const { data, error } = await supabase.from('quotes').upsert(quoteToRow(q)).select();
+            if (error) throw error;
+            if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
+            return true;
+          } catch (e2) { console.error('Save failed', e2); toast('Save failed — check console'); return false; }
+        }
         console.error('Save failed', e);
         toast('Save failed — check console');
         return false;
