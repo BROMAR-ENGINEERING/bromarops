@@ -45,12 +45,16 @@
    V1.58 — Up/down reorder controls on every list item: bullet points
    (exclusions, inclusions, references, assumptions), scope items, and
    material / labour / PC-sum lines.
+   V1.59 — Rich text: "clear" button relabelled "Clear formatting";
+   pasted content is stripped of inline colours/backgrounds so it
+   inherits the theme; added a text-colour picker (applies to the
+   selected text only).
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.58',
+  version: 'V1.59',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -1402,7 +1406,9 @@ window.BromarPages.quotes = {
               <button type="button" class="rt-btn" data-cmd="italic" title="Italic"><em>I</em></button>
               <button type="button" class="rt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
               <span class="rt-sep"></span>
-              <button type="button" class="rt-btn rt-clear" data-cmd="removeFormat" title="Clear formatting">clear</button>
+              <label class="rt-colour" title="Text colour"><span class="rt-colour-swatch">A</span><input type="color" class="rt-colour-input" value="#1a1a1e"></label>
+              <span class="rt-sep"></span>
+              <button type="button" class="rt-btn rt-clear" data-cmd="removeFormat" title="Clear formatting">Clear formatting</button>
             </div>
             <div class="quote-input rt-area" id="f-richtext" contenteditable="true" data-placeholder="Enter content…">${html}</div>`;
         }
@@ -1772,6 +1778,27 @@ window.BromarPages.quotes = {
           const save = () => { d.html = area.innerHTML; d.text = area.textContent; queueSave(q); };
           area.addEventListener('input', save);
           area.addEventListener('blur', save);
+          // Strip pasted colours/backgrounds so text inherits the theme
+          area.addEventListener('paste', e => {
+            e.preventDefault();
+            const html = (e.clipboardData || window.clipboardData).getData('text/html');
+            const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+            if (html) {
+              const tmp = document.createElement('div');
+              tmp.innerHTML = html;
+              tmp.querySelectorAll('*').forEach(el => {
+                el.style.removeProperty('color');
+                el.style.removeProperty('background');
+                el.style.removeProperty('background-color');
+                el.removeAttribute('color');
+                if (!el.getAttribute('style')) el.removeAttribute('style');
+              });
+              document.execCommand('insertHTML', false, tmp.innerHTML);
+            } else {
+              document.execCommand('insertText', false, text);
+            }
+            save();
+          });
           document.querySelectorAll('.rt-btn').forEach(btn => {
             btn.addEventListener('mousedown', e => e.preventDefault()); // keep selection
             btn.addEventListener('click', () => {
@@ -1780,6 +1807,15 @@ window.BromarPages.quotes = {
               save();
             });
           });
+          const colourInput = document.querySelector('.rt-colour-input');
+          if (colourInput) {
+            colourInput.addEventListener('mousedown', () => { area.focus(); });
+            colourInput.addEventListener('input', () => {
+              area.focus();
+              document.execCommand('foreColor', false, colourInput.value);
+              save();
+            });
+          }
         }
       }
       if (meta.shape === 'bullets') {
@@ -2716,6 +2752,7 @@ ${q.preparedBy || COMPANY.name}`;
        break-after: avoid; page-break-after: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   h3.no-divider { border-bottom: none; padding-bottom: 0; }
   .doc-text { font-size: 9.5pt; line-height: 1.5; }
+  .doc-text [style*="color: rgb(255, 255, 255)"], .doc-text [style*="color:#fff"], .doc-text [style*="color: white"] { color: #1a1a1e !important; }
   .doc-text strong { font-weight: 700; } .doc-text em { font-style: italic; } .doc-text u { text-decoration: underline; }
   .total-text { font-size: 9pt; color: #444; margin: 4px 0; }
   .quote-total-sec .stage-row span { font-weight: 600; }
@@ -3056,9 +3093,14 @@ ${q.preparedBy || COMPANY.name}`;
         .rt-toolbar { display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem 0.4rem; border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--bg-main); }
         .rt-btn { min-width: 30px; height: 28px; padding: 0 0.5rem; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text-primary); font-size: 0.85rem; font-family: 'Outfit', sans-serif; }
         .rt-btn:hover { background: var(--card-hover); border-color: var(--border); }
-        .rt-btn.rt-clear { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+        .rt-btn.rt-clear { font-size: 0.72rem; color: var(--text-secondary); padding: 0 0.6rem; }
+        .rt-colour { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+        .rt-colour:hover { background: var(--card-hover); border-color: var(--border); }
+        .rt-colour-swatch { font-weight: 700; font-size: 0.9rem; border-bottom: 3px solid var(--accent); line-height: 1; pointer-events: none; }
+        .rt-colour-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
         .rt-sep { width: 1px; height: 18px; background: var(--border); margin: 0 0.25rem; }
-        .rt-area { min-height: 150px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); line-height: 1.6; overflow-y: auto; }
+        .rt-area { min-height: 150px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); line-height: 1.6; overflow-y: auto; color: var(--text-primary); }
+        .rt-area [style*="color: rgb(255, 255, 255)"], .rt-area [style*="color:#fff"], .rt-area [style*="color: white"] { color: var(--text-primary) !important; }
         .rt-area:empty::before { content: attr(data-placeholder); color: var(--text-secondary); opacity: 0.6; }
         .rt-area:focus { outline: none; border-color: var(--accent); }
         .total-pick { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }
@@ -3207,6 +3249,7 @@ ${q.preparedBy || COMPANY.name}`;
         .doc-section h3 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid #ea580c; }
         .doc-section h3.no-divider { border-bottom: none; padding-bottom: 0; }
         .doc-text { font-size: 14px; line-height: 1.6; color: #333; }
+        .doc-text [style*="color: rgb(255, 255, 255)"], .doc-text [style*="color:#fff"], .doc-text [style*="color: white"] { color: #333 !important; }
         .doc-text strong { font-weight: 700; } .doc-text em { font-style: italic; } .doc-text u { text-decoration: underline; }
         .doc-total-text { font-size: 13px; color: #444; margin: 0 0 10px; }
         .doc-total-text-b { margin: 10px 0 0; }
