@@ -52,12 +52,15 @@
    V1.60 — Fix: saving failed for anyone who hadn't added the
    valid_days column. Saves now retry automatically without that
    field if the column is missing, so quotes save either way.
+   V1.61 — New "Page Break" section: forces everything after it onto a
+   new page in the exported PDF. Shows as a divider in the editor and
+   on-screen preview; no heading, no content.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.60',
+  version: 'V1.61',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -142,6 +145,7 @@ window.BromarPages.quotes = {
       costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
       scheduleOfRates:{ name: 'Schedule of Rates',           priced: false, shape: 'schedule' },
       quoteTotal:     { name: 'Quote Total',                 priced: false, shape: 'total' },
+      pageBreak:      { name: 'Page Break',                  priced: false, shape: 'pagebreak' },
       notes:          { name: 'Internal Notes',              priced: false, shape: 'text', internalOnly: true },
       exclusions:     { name: 'Exclusions',                  priced: false, shape: 'bullets' },
       inclusions:     { name: 'Inclusions',                  priced: false, shape: 'bullets' },
@@ -463,6 +467,7 @@ window.BromarPages.quotes = {
         case 'summary':   return { selectedIds: [], showTotal: true };
         case 'schedule':  return { scheduleId: '', title: 'Schedule of Rates' };
         case 'total':     return { picks: {}, showGrand: true, grandLabel: 'Total (ex GST)', topText: '', bottomText: '', useStdNote: true };
+        case 'pagebreak': return {};
         default:          return {};
       }
     }
@@ -1147,7 +1152,7 @@ window.BromarPages.quotes = {
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','quoteTotal','scheduleOfRates','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','quoteTotal','scheduleOfRates','pageBreak','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -1156,8 +1161,8 @@ window.BromarPages.quotes = {
             <div class="section-grid">
               ${order.map(type => {
                 const meta = SECTION_TYPES[type];
-                const tagCls = meta.shape === 'total' ? 'pick-tag-opt' : (meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info'))));
-                const tag = meta.shape === 'total' ? 'Total' : (meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info')))));
+                const tagCls = meta.shape === 'pagebreak' ? 'pick-tag-info' : (meta.shape === 'total' ? 'pick-tag-opt' : (meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info')))));
+                const tag = meta.shape === 'pagebreak' ? 'Layout' : (meta.shape === 'total' ? 'Total' : (meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info'))))));
                 return `<button class="section-pick" data-type="${type}"><span class="pick-name">${meta.name}</span><span class="pick-tag ${tagCls}">${tag}</span></button>`;
               }).join('')}
             </div>
@@ -1289,6 +1294,11 @@ window.BromarPages.quotes = {
     function renderSectionPanel(q, sec) {
       const meta = SECTION_TYPES[sec.type];
       const sectionPrebuilts = Object.entries(prebuilts).filter(([_, p]) => p.type === sec.type);
+      if (meta.shape === 'pagebreak') {
+        return `
+          <div class="panel-head"><div class="panel-head-left"><span class="type-pill">Page Break</span></div></div>
+          ${renderSectionBody(sec, q)}`;
+      }
       return `
         <div class="panel-head">
           <div class="panel-head-left">
@@ -1565,6 +1575,11 @@ window.BromarPages.quotes = {
             ${d.useStdNote !== false ? `<div class="std-note-preview">${escape(heldFirmNote(q))}</div>` : ''}
             <div class="form-row"><label>Extra bottom text (optional)</label><textarea class="quote-input quote-textarea" id="f-total-bottom" rows="2" placeholder="Additional text below the total…">${escape(d.bottomText || '')}</textarea></div>`;
         }
+        case 'pagebreak':
+          return `<div class="pagebreak-info">
+            <div class="pagebreak-line"><span>PAGE BREAK</span></div>
+            <p class="hint">Everything after this point starts on a new page in the exported PDF. This marker isn't printed.</p>
+          </div>`;
         default: return '';
       }
     }
@@ -2149,6 +2164,7 @@ window.BromarPages.quotes = {
     }
     function renderPreviewSection(s, q) {
       const meta = SECTION_TYPES[s.type], d = s.data || {};
+      if (meta.shape === 'pagebreak') return '<div class="doc-pagebreak"><span>Page break</span></div>';
       let body = '';
       switch (meta.shape) {
         case 'text':
@@ -2613,6 +2629,7 @@ ${q.preparedBy || COMPANY.name}`;
       const footerLeft = `${COMPANY.name} — ${docLabel(q)} ${docNumber}${q.nickname ? ' · ' + q.nickname : ''}`;
       const sectionsHtml = visible.map(s => {
         const meta = SECTION_TYPES[s.type], d = s.data || {};
+        if (meta.shape === 'pagebreak') return '<div class="force-break"></div>';
         let body = '';
         let hasTable = false;
         switch (meta.shape) {
@@ -2771,6 +2788,7 @@ ${q.preparedBy || COMPANY.name}`;
   h3 { font-size: 9pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin: 0 0 7px; padding-bottom: 3px; border-bottom: 1px solid #ea580c;
        break-after: avoid; page-break-after: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   h3.no-divider { border-bottom: none; padding-bottom: 0; }
+  .force-break { break-before: page; page-break-before: always; height: 0; margin: 0; border: 0; }
   .doc-text { font-size: 9.5pt; line-height: 1.5; }
   .doc-text [style*="color: rgb(255, 255, 255)"], .doc-text [style*="color:#fff"], .doc-text [style*="color: white"] { color: #1a1a1e !important; }
   .doc-text strong { font-weight: 700; } .doc-text em { font-style: italic; } .doc-text u { text-decoration: underline; }
@@ -3118,6 +3136,13 @@ ${q.preparedBy || COMPANY.name}`;
         .rt-colour:hover { background: var(--card-hover); border-color: var(--border); }
         .rt-colour-swatch { font-weight: 700; font-size: 0.9rem; border-bottom: 3px solid var(--accent); line-height: 1; pointer-events: none; }
         .rt-colour-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+        .pagebreak-info { text-align: center; }
+        .pagebreak-line { position: relative; text-align: center; margin: 1rem 0; }
+        .pagebreak-line::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; border-top: 2px dashed var(--accent); }
+        .pagebreak-line span { position: relative; background: var(--bg-secondary); padding: 0 0.9rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; color: var(--accent); }
+        .doc-pagebreak { position: relative; text-align: center; margin: 26px 0; }
+        .doc-pagebreak::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; border-top: 2px dashed #d0d0d0; }
+        .doc-pagebreak span { position: relative; background: #fff; padding: 0 12px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #b0b0b0; }
         .rt-sep { width: 1px; height: 18px; background: var(--border); margin: 0 0.25rem; }
         .rt-area { min-height: 150px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); line-height: 1.6; overflow-y: auto; color: var(--text-primary); }
         .rt-area [style*="color: rgb(255, 255, 255)"], .rt-area [style*="color:#fff"], .rt-area [style*="color: white"] { color: var(--text-primary) !important; }
