@@ -69,12 +69,15 @@
    "OPTION: " on its name. Summary of Options can show a combined
    grand total. Scope cards reorder (up/down). Drag-and-drop
    reordering for sections, bullets and scopes.
+   V1.65 — Fix: scope-of-works bullet inputs were squished/hidden — the
+   scope-bullet grid had a grip column the markup didn't use. Scope
+   bullets keep their up/down buttons (no drag grip).
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.64',
+  version: 'V1.65',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -3381,7 +3384,7 @@ ${q.preparedBy || COMPANY.name}`;
         .lib-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 46vh; overflow-y: auto; }
         .lib-row { display: grid; grid-template-columns: 16px 1fr 34px; gap: 0.5rem; align-items: center; }
         .bullet-row { display: grid; grid-template-columns: 18px 24px 16px 1fr 34px 34px; gap: 0.5rem; align-items: center; }
-        .bullet-row.scope-bullet { grid-template-columns: 18px 24px 16px 1fr auto 34px 34px; }
+        .bullet-row.scope-bullet { grid-template-columns: 24px 16px 1fr auto 34px 34px; }
         .bullet-row .drag-grip { width: 18px; }
         .bullet-dot { color: var(--accent); font-weight: 700; text-align: center; }
         .scopes-list { display: flex; flex-direction: column; gap: 0.75rem; }
