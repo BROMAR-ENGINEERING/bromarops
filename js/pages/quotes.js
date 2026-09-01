@@ -55,12 +55,21 @@
    V1.61 — New "Page Break" section: forces everything after it onto a
    new page in the exported PDF. Shows as a divider in the editor and
    on-screen preview; no heading, no content.
+   V1.62 — "Client sees" gains a 4th option, "In quote total only":
+   hides the costing's detail and shows it as a line in the Quote
+   Total section. Orphan detection and warnings updated to match.
+   V1.63 — Add Section inserts after the selected section. Material
+   markup has a section-default % (defaults to Settings) with per-line
+   override; the Apply button is gone. Labour rate auto-fills from
+   Settings when a role is picked (still editable). Costing Summary
+   has an "Option" flag that excludes it from the quote total, plus a
+   new "Summary of Options" section listing all options.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.61',
+  version: 'V1.63',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -143,6 +152,7 @@ window.BromarPages.quotes = {
       materials:      { name: 'Material Costing',            heading: 'Material', priced: true,  shape: 'materials' },
       labour:         { name: 'Labour Costing',              heading: 'Labour',   priced: true,  shape: 'labour' },
       costingSummary: { name: 'Costing Summary',             priced: false, shape: 'summary' },
+      optionsSummary: { name: 'Summary of Options',          priced: false, shape: 'optionslist' },
       scheduleOfRates:{ name: 'Schedule of Rates',           priced: false, shape: 'schedule' },
       quoteTotal:     { name: 'Quote Total',                 priced: false, shape: 'total' },
       pageBreak:      { name: 'Page Break',                  priced: false, shape: 'pagebreak' },
@@ -465,6 +475,7 @@ window.BromarPages.quotes = {
         case 'labour':    return { items: [{ desc: '', role: '', rate: 0, hours: 8, days: 1, workers: 1 }], columns: { rate: true, hours: true, days: true, workers: true }, clientView: 'full', alloc: 'grand' };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }], clientView: 'full', alloc: 'grand' };
         case 'summary':   return { selectedIds: [], showTotal: true };
+        case 'optionslist': return { note: 'Options below are additional and are not included in the quote total.' };
         case 'schedule':  return { scheduleId: '', title: 'Schedule of Rates' };
         case 'total':     return { picks: {}, showGrand: true, grandLabel: 'Total (ex GST)', topText: '', bottomText: '', useStdNote: true };
         case 'pagebreak': return {};
@@ -485,6 +496,12 @@ window.BromarPages.quotes = {
       const cost = (it.qty || 0) * (it.price || 0);
       const m = (it.markup === null || it.markup === undefined || it.markup === '') ? Number(gm || 0) : Number(it.markup);
       return cost * (1 + m / 100);
+    }
+    /* The markup a material section applies to lines with no per-line
+       override: its own saved default, else the Settings default. */
+    function sectionMarkup(sec) {
+      const d = sec.data || {};
+      return (d.markup === null || d.markup === undefined || d.markup === '') ? (settings.markup || 0) : Number(d.markup);
     }
     /* A labour line's hours = Hours x Days x Workers (each defaulting
        to 1, hours to 8). Old lines used a single `qty` (hours) — treat
@@ -521,7 +538,7 @@ window.BromarPages.quotes = {
        appear only inside their Costing Summary. */
     function clientVisible(sec) {
       if (SECTION_TYPES[sec.type].internalOnly) return false;
-      if (isPricedSection(sec)) return costView(sec) !== 'summary';
+      if (isPricedSection(sec)) { const v = costView(sec); return v !== 'summary' && v !== 'quotetotal'; }
       return sec.show && !sec.internal;
     }
     function isPricedSection(sec) {
@@ -536,6 +553,16 @@ window.BromarPages.quotes = {
     /* Which summary (if any) a section is assigned to. One summary only. */
     function summaryOf(q, sectionId) {
       return (q.sections || []).find(x => x.type === 'costingSummary' && ((x.data && x.data.selectedIds) || []).includes(sectionId)) || null;
+    }
+    /* Costing summaries flagged as an Option (client add-on, excluded
+       from the quote total). */
+    function optionSummaries(q) {
+      return (q.sections || []).filter(x => x.type === 'costingSummary' && x.data && x.data.isOption);
+    }
+    /* Is this priced section a member of an Option summary? Its money
+       must then stay out of the grand total. */
+    function inOptionSummary(q, sectionId) {
+      return optionSummaries(q).some(s => ((s.data && s.data.selectedIds) || []).includes(sectionId));
     }
     function summaryTotal(sec, q) {
       const sel = (sec.data && sec.data.selectedIds) || [];
@@ -575,7 +602,7 @@ window.BromarPages.quotes = {
     function sectionSellTotal(sec, q) {
       const d = sec.data || {};
       switch (SECTION_TYPES[sec.type].shape) {
-        case 'materials': return (d.items || []).reduce((s, it) => s + materialItemTotal(it, q.globalMarkup), 0);
+        case 'materials': return (d.items || []).reduce((s, it) => s + materialItemTotal(it, sectionMarkup(sec)), 0);
         case 'labour':    return (d.items || []).reduce((s, it) => s + labourItemTotal(it), 0);
         case 'pcSums':    return (d.items || []).reduce((s, it) => s + Number(it.amount || 0), 0);
         default: return 0;
@@ -597,6 +624,7 @@ window.BromarPages.quotes = {
       return (q.sections || []).reduce((s, sec) => {
         if (!isPricedSection(sec)) return s;
         if (costAlloc(sec) !== 'grand') return s;
+        if (inOptionSummary(q, sec.id)) return s;
         return s + sectionSellTotal(sec, q);
       }, 0);
     }
@@ -615,7 +643,7 @@ window.BromarPages.quotes = {
        'separate' shows the costing as its own line; 'combined' folds
        it into a single combined line; 'off' excludes it. */
     function totalEligible(q, exceptId) {
-      return (q.sections || []).filter(x => x.id !== exceptId && isPricedSection(x));
+      return (q.sections || []).filter(x => x.id !== exceptId && isPricedSection(x) && !inOptionSummary(q, x.id));
     }
     function totalPickMode(sec, x) {
       const picks = (sec.data && sec.data.picks) || {};
@@ -657,26 +685,35 @@ window.BromarPages.quotes = {
         .map(x => ({ name: x.name, total: summaryTotal(x, q) }));
     }
 
-    /* Costings that will not reach the client anywhere: set to
-       'summary' view but not placed in any (client-shown) summary, or
-       allocated to 'section' with no home. Returns section objects. */
+    /* Is this costing shown, as a line, in a client-visible Quote
+       Total section (pick mode not 'off')? */
+    function inShownQuoteTotal(q, sec) {
+      const qt = (q.sections || []).find(x => x.type === 'quoteTotal' && x.show && !x.internal);
+      if (!qt) return false;
+      const mode = (qt.data && qt.data.picks && qt.data.picks[sec.id]) || 'separate';
+      return mode !== 'off';
+    }
+
+    /* Costings that will not reach the client anywhere. */
     function orphanCostings(q) {
       return (q.sections || []).filter(sec => {
         if (!isPricedSection(sec)) return false;
         const view = costView(sec), alloc = costAlloc(sec);
         const inSummary = summaryOf(q, sec.id);
         const summaryShown = inSummary && inSummary.show && !inSummary.internal;
-        // shown directly to the client → fine
-        if (view !== 'summary' && alloc === 'grand') return false;
-        if (view !== 'summary' && alloc === 'section') return summaryShown ? false : true;
-        // view === 'summary' → must be in a client-shown summary
+        // "In quote total only" → must be a shown line in the Quote Total
+        if (view === 'quotetotal') return inShownQuoteTotal(q, sec) ? false : true;
+        // "In costing summary only" → must be in a client-shown summary
+        if (view === 'summary') return summaryShown ? false : true;
+        // shown directly (full/total): fine if it feeds the grand total,
+        // otherwise it needs a home in a summary
+        if (alloc === 'grand') return false;
         return summaryShown ? false : true;
       });
     }
-    /* True when at least one section is set to 'summary' view but no
-       Costing Summary section exists at all. */
+    /* True when a section wants a Costing Summary but none exists. */
     function needsSummary(q) {
-      const wantsSummary = (q.sections || []).some(sec => isPricedSection(sec) && (costView(sec) === 'summary' || costAlloc(sec) === 'section'));
+      const wantsSummary = (q.sections || []).some(sec => isPricedSection(sec) && costView(sec) === 'summary');
       const hasSummary = (q.sections || []).some(x => x.type === 'costingSummary');
       return wantsSummary && !hasSummary;
     }
@@ -1059,8 +1096,11 @@ window.BromarPages.quotes = {
         } else {
           if (v === 'total') flags.push('<span class="rail-flag" title="Client sees total only">total</span>');
           else if (v === 'summary') flags.push('<span class="rail-flag" title="Client sees it only in a Costing Summary">summary</span>');
+          else if (v === 'quotetotal') flags.push('<span class="rail-flag" title="Client sees it only in the Quote Total">in total</span>');
           if (costAlloc(s) === 'section') flags.push('<span class="rail-flag rail-flag-warn" title="Excluded from grand total">off-total</span>');
         }
+      } else if (s.type === 'costingSummary' && s.data && s.data.isOption) {
+        flags.push('<span class="rail-flag rail-flag-opt" title="Option — excluded from quote total">option</span>');
       } else if (s.internal || !s.show) {
         flags.push('<span class="rail-flag" title="Internal-only">int</span>');
       }
@@ -1152,7 +1192,7 @@ window.BromarPages.quotes = {
     function openAddSectionDialog(q) {
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
-      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','quoteTotal','scheduleOfRates','pageBreak','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
+      const order = ['introduction','references','scopeOfWorks','description','materials','labour','costingSummary','optionsSummary','quoteTotal','scheduleOfRates','pageBreak','exclusions','inclusions','conclusion','assumptions','pcSums','travel','variations','payment','notes'];
       dialog.innerHTML = `
         <div class="quote-modal">
           <div class="modal-header"><h2>Add Section</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
@@ -1161,8 +1201,8 @@ window.BromarPages.quotes = {
             <div class="section-grid">
               ${order.map(type => {
                 const meta = SECTION_TYPES[type];
-                const tagCls = meta.shape === 'pagebreak' ? 'pick-tag-info' : (meta.shape === 'total' ? 'pick-tag-opt' : (meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info')))));
-                const tag = meta.shape === 'pagebreak' ? 'Layout' : (meta.shape === 'total' ? 'Total' : (meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info'))))));
+                const tagCls = meta.shape === 'optionslist' ? 'pick-tag-opt' : (meta.shape === 'pagebreak' ? 'pick-tag-info' : (meta.shape === 'total' ? 'pick-tag-opt' : (meta.shape === 'summary' ? 'pick-tag-opt' : (meta.shape === 'schedule' ? 'pick-tag-opt' : (meta.isOption ? 'pick-tag-opt' : (meta.priced ? '' : 'pick-tag-info'))))));
+                const tag = meta.shape === 'optionslist' ? 'Options' : (meta.shape === 'pagebreak' ? 'Layout' : (meta.shape === 'total' ? 'Total' : (meta.shape === 'summary' ? 'Summary' : (meta.shape === 'schedule' ? 'Rates' : (meta.isOption ? 'Option' : (meta.priced ? 'Priced' : (meta.internalOnly ? 'Internal' : 'Info')))))));
                 return `<button class="section-pick" data-type="${type}"><span class="pick-name">${meta.name}</span><span class="pick-tag ${tagCls}">${tag}</span></button>`;
               }).join('')}
             </div>
@@ -1177,7 +1217,12 @@ window.BromarPages.quotes = {
       dialog.querySelectorAll('.section-pick').forEach(el => {
         el.addEventListener('click', async () => {
           const sec = newSection(el.dataset.type);
-          q.sections = q.sections || []; q.sections.push(sec);
+          q.sections = q.sections || [];
+          // Insert right after the currently selected section (or at the
+          // end when a fixed panel like Client/Totals is active).
+          const selIdx = q.sections.findIndex(x => x.id === activeSectionId);
+          if (selIdx >= 0) q.sections.splice(selIdx + 1, 0, sec);
+          else q.sections.push(sec);
           // Auto-add a Quote Total the first time a costing is created
           if (isPricedSection(sec) && !hasQuoteTotalSection(q)) {
             q.sections.push(newSection('quoteTotal'));
@@ -1396,7 +1441,22 @@ window.BromarPages.quotes = {
       const view = costView(sec);
       const alloc = costAlloc(sec);
       const assignedTo = summaryOf(q, sec.id);
-      const warn = (view === 'summary' || alloc === 'section') && !assignedTo;
+      const inQT = inShownQuoteTotal(q, sec);
+      const hasQT = (q.sections || []).some(x => x.type === 'quoteTotal');
+      const warn = (view === 'summary' && !assignedTo) || (view === 'quotetotal' && !inQT) || (alloc === 'section' && !assignedTo && view !== 'quotetotal');
+      let note;
+      if (view === 'quotetotal') {
+        note = inQT
+          ? 'Detail hidden — shown as a line in the Quote Total.'
+          : (hasQT ? 'Set to "Off" in the Quote Total — untick Off there so it shows, or it won\'t appear on the quote.'
+                   : 'No Quote Total section yet — add one, or this costing won\'t appear on the quote.');
+      } else if (assignedTo) {
+        note = `In summary: <strong>${escape(assignedTo.name)}</strong>`;
+      } else if (warn) {
+        note = 'Not in any Costing Summary yet — add one and include this section, or it will not appear on the quote.';
+      } else {
+        note = 'Feeds the grand total at the bottom of the quote.';
+      }
       return `
         <div class="cost-ctrl">
           <div class="cost-ctrl-row">
@@ -1405,6 +1465,7 @@ window.BromarPages.quotes = {
                 <option value="full" ${view === 'full' ? 'selected' : ''}>Full table</option>
                 <option value="total" ${view === 'total' ? 'selected' : ''}>Total only</option>
                 <option value="summary" ${view === 'summary' ? 'selected' : ''}>In costing summary only</option>
+                <option value="quotetotal" ${view === 'quotetotal' ? 'selected' : ''}>In quote total only</option>
               </select>
             </label>
             <label class="cost-ctrl-field"><span>Costing goes to</span>
@@ -1414,13 +1475,7 @@ window.BromarPages.quotes = {
               </select>
             </label>
           </div>
-          <div class="cost-ctrl-note ${warn ? 'cost-warn' : ''}">
-            ${assignedTo
-              ? `In summary: <strong>${escape(assignedTo.name)}</strong>`
-              : (warn
-                  ? 'Not in any Costing Summary yet — add one and include this section, or it will not appear on the quote.'
-                  : 'Feeds the grand total at the bottom of the quote.')}
-          </div>
+          <div class="cost-ctrl-note ${warn ? 'cost-warn' : ''}">${note}</div>
         </div>`;
     }
 
@@ -1464,11 +1519,11 @@ window.BromarPages.quotes = {
               <span class="col-bar-note">Description &amp; Total always shown</span>
             </div>
             <div class="apply-bar">
-              <button class="btn-secondary preset-btn" id="apply-markup">Apply default markup</button>
-              <span class="apply-note">Sets every line to the default markup (${settings.markup}%) from Quote Settings.</span>
+              <label class="markup-default"><span>Default markup %</span><input type="number" min="0" step="1" class="quote-input" id="f-sec-markup" value="${(d.markup === null || d.markup === undefined || d.markup === '') ? '' : d.markup}" placeholder="${settings.markup}"></label>
+              <span class="apply-note">Applies to lines with no markup of their own. Blank = Settings default (${settings.markup}%).</span>
             </div>
             <div class="items-head mat-head"><span></span><span>Description</span><span>Part #</span><span>Price ex GST</span><span>Markup %</span><span>Qty</span><span>Total</span><span></span></div>
-            <div class="items-list" id="items-list">${(d.items || []).map((it, i, arr) => materialRow(it, q.globalMarkup, i, arr.length - 1)).join('')}</div>
+            <div class="items-list" id="items-list">${(d.items || []).map((it, i, arr) => materialRow(it, sectionMarkup(sec), i, arr.length - 1)).join('')}</div>
             <button class="btn-secondary add-btn-sm" id="add-item">+ Add Material</button>
             <div class="section-foot">Section total <strong>${fmt(sectionSellTotal(sec, q))}</strong></div>`;
         }
@@ -1510,6 +1565,7 @@ window.BromarPages.quotes = {
             <div class="col-bar">
               <label class="toggle-lbl"><input type="checkbox" id="f-show-total" ${d.showTotal !== false ? 'checked' : ''}><span>Show this summary's total row</span></label>
               <label class="toggle-lbl"><input type="checkbox" id="f-rollup" ${d.rollup ? 'checked' : ''}><span>Also list as a stage in the grand-total block</span></label>
+              <label class="toggle-lbl"><input type="checkbox" id="f-isoption" ${d.isOption ? 'checked' : ''}><span>This is an <strong>Option</strong> (excluded from the quote total)</span></label>
             </div>
             ${eligible.length ? `<div class="summary-pick" id="summary-pick">
               ${eligible.map(x => {
@@ -1525,6 +1581,15 @@ window.BromarPages.quotes = {
               }).join('')}
             </div>` : '<p class="hint">No costing sections in this quote yet. Add Material or Labour Costing first, then come back here.</p>'}
             <div class="section-foot">Summary total <strong>${fmt(summaryTotal(sec, q))}</strong></div>`;
+        }
+        case 'optionslist': {
+          const opts = optionSummaries(q);
+          return `
+            <p class="hint">Auto-generated. Lists every Costing Summary flagged as an <strong>Option</strong>, with its total. Mark a summary as an option via its "Option" checkbox.</p>
+            <div class="form-row"><label>Intro note</label><input class="quote-input" id="f-opt-note" value="${escape(d.note || '')}" placeholder="Shown above the options list"></div>
+            ${opts.length ? `<div class="total-preview">
+              ${opts.map(o => `<div class="tp-line"><span>${escape(o.name)}</span><strong>${fmt(summaryTotal(o, q))}</strong></div>`).join('')}
+            </div>` : '<p class="hint">No options yet — tick "Option" on a Costing Summary and it will appear here.</p>'}`;
         }
         case 'schedule': {
           const schedules = allSchedules();
@@ -1555,7 +1620,7 @@ window.BromarPages.quotes = {
               ${eligible.map(x => {
                 const mode = totalPickMode(sec, x);
                 return `<div class="total-pick-row" data-id="${x.id}">
-                  <span class="tp-name">${escape(x.name)}</span>
+                  <span class="tp-name">${escape(x.name)}${costView(x) === 'quotetotal' ? '<span class="sum-flag sum-flag-shown">detail hidden</span>' : ''}</span>
                   <span class="tp-amt">${fmt(sectionSellTotal(x, q))}</span>
                   <select class="quote-input tp-mode" data-id="${x.id}">
                     <option value="separate" ${mode === 'separate' ? 'selected' : ''}>Separate line</option>
@@ -1613,7 +1678,7 @@ window.BromarPages.quotes = {
         <input class="quote-input m-desc" value="${escape(it.desc || '')}" placeholder="Description">
         <input class="quote-input m-part" value="${escape(it.part || '')}" placeholder="Part #">
         <input class="quote-input m-price" type="number" min="0" step="0.01" value="${it.price || 0}">
-        <input class="quote-input m-markup" type="number" min="0" step="0.1" value="${it.markup ?? ''}" placeholder="—">
+        <input class="quote-input m-markup" type="number" min="0" step="0.1" value="${it.markup ?? ''}" placeholder="${gm}" title="Blank = section default (${gm}%)">
         <input class="quote-input m-qty" type="number" min="0" step="0.01" value="${it.qty || 0}">
         <div class="li-total">${fmt(materialItemTotal(it, gm))}</div>
         <button class="icon-btn icon-danger li-remove">${ICON_TRASH}</button></div>
@@ -1935,8 +2000,9 @@ window.BromarPages.quotes = {
         if (vSel) vSel.addEventListener('change', async () => {
           d.clientView = vSel.value;
           // keep the legacy fields roughly in sync for any old readers
-          sec.show = vSel.value !== 'summary';
-          sec.internal = vSel.value === 'summary';
+          const hiddenInPlace = vSel.value === 'summary' || vSel.value === 'quotetotal';
+          sec.show = !hiddenInPlace;
+          sec.internal = false;
           d.showTable = vSel.value === 'full';
           await saveQuoteNow(q); renderEditor();
         });
@@ -1956,7 +2022,7 @@ window.BromarPages.quotes = {
             queueSave(q);
           });
         });
-        const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(materialItemTotal(d.items[idx], q.globalMarkup)); refreshFoot(); };
+        const refreshItem = (row, idx) => { row.querySelector('.li-total').textContent = fmt(materialItemTotal(d.items[idx], sectionMarkup(sec))); refreshFoot(); };
         document.querySelectorAll('.mat-row').forEach((row, idx) => {
           row.querySelector('.m-desc').addEventListener('input', e => { d.items[idx].desc = e.target.value; queueSave(q); });
           row.querySelector('.m-part').addEventListener('input', e => { d.items[idx].part = e.target.value; queueSave(q); });
@@ -1970,11 +2036,10 @@ window.BromarPages.quotes = {
           row.querySelector('.li-remove').addEventListener('click', async () => { d.items.splice(idx, 1); await saveQuoteNow(q); renderEditor(); });
           row.querySelectorAll('.li-move-btn').forEach(btn => btn.addEventListener('click', async () => { if (arrMove(d.items, idx, btn.dataset.dir)) { await saveQuoteNow(q); renderEditor(); } }));
         });
-        const applyMarkupBtn = get('apply-markup');
-        if (applyMarkupBtn) applyMarkupBtn.addEventListener('click', async () => {
-          if (!confirm(`Set the markup on all ${d.items.length} line(s) to ${settings.markup}%?`)) return;
-          d.items.forEach(it => { it.markup = settings.markup; });
-          await saveQuoteNow(q); toast('Default markup applied.'); renderEditor();
+        const secMarkupInp = get('f-sec-markup');
+        if (secMarkupInp) secMarkupInp.addEventListener('input', e => {
+          d.markup = e.target.value === '' ? null : Number(e.target.value);
+          queueSave(q); renderEditor();
         });
         get('add-item').addEventListener('click', async () => { d.items.push({ desc: '', part: '', price: 0, markup: null, qty: 1 }); await saveQuoteNow(q); renderEditor(); });
       }
@@ -1999,7 +2064,12 @@ window.BromarPages.quotes = {
           const it = d.items[idx];
           if (it.hours === undefined) { it.hours = it.qty ?? 0; it.days = it.days ?? 1; it.workers = it.workers ?? 1; delete it.qty; }
           row.querySelector('.l-desc').addEventListener('input', e => { it.desc = e.target.value; queueSave(q); });
-          row.querySelector('.l-role').addEventListener('change', e => { it.role = e.target.value; e.target.title = roleName(it.role) || 'Role'; queueSave(q); });
+          row.querySelector('.l-role').addEventListener('change', async e => {
+            it.role = e.target.value;
+            // Auto-fill the rate from Quote Settings on pick (still editable after)
+            if (it.role && settings.rates[it.role]) it.rate = settings.rates[it.role];
+            await saveQuoteNow(q); renderEditor();
+          });
           const rateInp = row.querySelector('.l-rate');
           wholeDollarArrows(rateInp);
           rateInp.addEventListener('input', e => { it.rate = Number(e.target.value) || 0; queueSave(q); refreshItem(row, idx); });
@@ -2037,6 +2107,12 @@ window.BromarPages.quotes = {
         if (st) st.addEventListener('change', e => { d.showTotal = e.target.checked; queueSave(q); });
         const roll = get('f-rollup');
         if (roll) roll.addEventListener('change', e => { d.rollup = e.target.checked; queueSave(q); });
+        const isOpt = get('f-isoption');
+        if (isOpt) isOpt.addEventListener('change', async e => { d.isOption = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+      }
+      if (meta.shape === 'optionslist') {
+        const n = get('f-opt-note');
+        if (n) n.addEventListener('input', e => { d.note = e.target.value; queueSave(q); });
         document.querySelectorAll('.sum-sel').forEach(cb => {
           cb.addEventListener('change', async () => {
             d.selectedIds = d.selectedIds || [];
@@ -2194,9 +2270,9 @@ window.BromarPages.quotes = {
             const span = 1 + (mc.part ? 1 : 0) + (mc.unit ? 1 : 0) + (mc.qty ? 1 : 0);
             const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
               .concat(mc.part ? ['<td>' + escape(it.part || '—') + '</td>'] : [])
-              .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup)) + '</td>'] : [])
+              .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, sectionMarkup(s))) + '</td>'] : [])
               .concat(mc.qty ? ['<td class="num">' + it.qty + '</td>'] : [])
-              .concat(['<td class="num">' + fmt(materialItemTotal(it, q.globalMarkup)) + '</td>'])
+              .concat(['<td class="num">' + fmt(materialItemTotal(it, sectionMarkup(s))) + '</td>'])
               .join('')).map(r => `<tr>${r}</tr>`).join('');
             body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="doc-table-total"><td colspan="${span}" class="num">Subtotal</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr></tbody></table></div>`;
           }
@@ -2231,6 +2307,12 @@ window.BromarPages.quotes = {
           const rows = summaryRows(s, q);
           if (!rows.length) return '';
           body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="doc-table-total"><td class="num">Total <span class="doc-exgst">ex GST</span></td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table></div>`;
+          break;
+        }
+        case 'optionslist': {
+          const opts = optionSummaries(q);
+          if (!opts.length) return '';
+          body = `${d.note ? `<p class="doc-total-text">${escape(d.note)}</p>` : ''}<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Option</th><th class="num">Amount ex GST</th></tr></thead><tbody>${opts.map(o => `<tr><td>${escape(o.name)}</td><td class="num">${fmt(summaryTotal(o, q))}</td></tr>`).join('')}</tbody></table></div>`;
           break;
         }
         case 'schedule': {
@@ -2655,9 +2737,9 @@ ${q.preparedBy || COMPANY.name}`;
                 const span = 1 + (mc.part ? 1 : 0) + (mc.unit ? 1 : 0) + (mc.qty ? 1 : 0);
                 const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
                   .concat(mc.part ? ['<td>' + escape(it.part || '—') + '</td>'] : [])
-                  .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, q.globalMarkup)) + '</td>'] : [])
+                  .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, sectionMarkup(s))) + '</td>'] : [])
                   .concat(mc.qty ? ['<td class="num">' + it.qty + '</td>'] : [])
-                  .concat(['<td class="num">' + fmt(materialItemTotal(it, q.globalMarkup)) + '</td>'])
+                  .concat(['<td class="num">' + fmt(materialItemTotal(it, sectionMarkup(s))) + '</td>'])
                   .join('')).map(r => `<tr>${r}</tr>`).join('');
                 body = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="ttl"><td colspan="${span}" class="num">Subtotal</td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
               }
@@ -2697,6 +2779,14 @@ ${q.preparedBy || COMPANY.name}`;
             if (rows.length) {
               hasTable = true;
               body = `<table class="data"><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${rows.map(x => `<tr><td>${escape(x.name)}</td><td class="num">${fmt(sectionSellTotal(x, q))}</td></tr>`).join('')}${d.showTotal !== false ? `<tr class="ttl"><td class="num">Total <span class="pdf-exgst">ex GST</span></td><td class="num"><strong>${fmt(summaryTotal(s, q))}</strong></td></tr>` : ''}</tbody></table>`;
+            }
+            break;
+          }
+          case 'optionslist': {
+            const opts = optionSummaries(q);
+            if (opts.length) {
+              hasTable = true;
+              body = `${d.note ? `<p class="total-text">${escape(d.note)}</p>` : ''}<table class="data"><thead><tr><th>Option</th><th class="num">Amount ex GST</th></tr></thead><tbody>${opts.map(o => `<tr><td>${escape(o.name)}</td><td class="num">${fmt(summaryTotal(o, q))}</td></tr>`).join('')}</tbody></table>`;
             }
             break;
           }
@@ -3117,6 +3207,9 @@ ${q.preparedBy || COMPANY.name}`;
         .col-bar-note { font-size: 0.72rem; color: var(--text-secondary); font-style: italic; margin-left: auto; }
         .apply-bar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
         .apply-note { font-size: 0.74rem; color: var(--text-secondary); font-style: italic; }
+        .markup-default { display: inline-flex; align-items: center; gap: 0.5rem; }
+        .markup-default span { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+        .markup-default .quote-input { width: 90px; }
         .display-bar { margin-bottom: 0.85rem; }
         .line-wrap { margin-bottom: 0.5rem; }
         .li-move { display: inline-flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
