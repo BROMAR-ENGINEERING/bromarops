@@ -72,12 +72,15 @@
    V1.65 — Fix: scope-of-works bullet inputs were squished/hidden — the
    scope-bullet grid had a grip column the markup didn't use. Scope
    bullets keep their up/down buttons (no drag grip).
+   V1.66 — Fix: the dashboard/rail quote total ignored the Quote Total
+   section and used only grand-allocated costings, so it read lower
+   than the document. It now mirrors the Quote Total section's grand.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.65',
+  version: 'V1.66',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -647,7 +650,17 @@ window.BromarPages.quotes = {
         return s + sectionSellTotal(sec, q);
       }, 0);
     }
-    function quoteTotal(q, opts = {}) { return quoteBaseTotal(q) + quoteOptionsTotal(q, !opts.clientView); }
+    function quoteTotal(q, opts = {}) {
+      // When a Quote Total section drives the document, mirror its grand
+      // so the dashboard/rail match what the client sees. Otherwise fall
+      // back to the legacy base + options computation.
+      const qt = (q.sections || []).find(x => x.type === 'quoteTotal');
+      if (qt) {
+        const base = totalGrand(qt, q);
+        return opts.clientView ? base : base + quoteOptionsTotal(q, true);
+      }
+      return quoteBaseTotal(q) + quoteOptionsTotal(q, !opts.clientView);
+    }
 
     /* ── QUOTE TOTAL SECTION ──
        picks[sectionId] = 'separate' | 'combined' | 'off'
