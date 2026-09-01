@@ -64,12 +64,17 @@
    Settings when a role is picked (still editable). Costing Summary
    has an "Option" flag that excludes it from the quote total, plus a
    new "Summary of Options" section listing all options.
+   V1.64 — Section rail widened; tile names clip with ellipsis (full
+   name on hover). Ticking a Costing Summary's Option box prefixes
+   "OPTION: " on its name. Summary of Options can show a combined
+   grand total. Scope cards reorder (up/down). Drag-and-drop
+   reordering for sections, bullets and scopes.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.63',
+  version: 'V1.64',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -475,7 +480,7 @@ window.BromarPages.quotes = {
         case 'labour':    return { items: [{ desc: '', role: '', rate: 0, hours: 8, days: 1, workers: 1 }], columns: { rate: true, hours: true, days: true, workers: true }, clientView: 'full', alloc: 'grand' };
         case 'pcSums':    return { items: [{ desc: '', amount: 0 }], clientView: 'full', alloc: 'grand' };
         case 'summary':   return { selectedIds: [], showTotal: true };
-        case 'optionslist': return { note: 'Options below are additional and are not included in the quote total.' };
+        case 'optionslist': return { note: 'Options below are additional and are not included in the quote total.', showGrand: false, grandLabel: 'All options combined' };
         case 'schedule':  return { scheduleId: '', title: 'Schedule of Rates' };
         case 'total':     return { picks: {}, showGrand: true, grandLabel: 'Total (ex GST)', topText: '', bottomText: '', useStdNote: true };
         case 'pagebreak': return {};
@@ -563,6 +568,9 @@ window.BromarPages.quotes = {
        must then stay out of the grand total. */
     function inOptionSummary(q, sectionId) {
       return optionSummaries(q).some(s => ((s.data && s.data.selectedIds) || []).includes(sectionId));
+    }
+    function optionsGrand(q) {
+      return optionSummaries(q).reduce((s, o) => s + summaryTotal(o, q), 0);
     }
     function summaryTotal(sec, q) {
       const sel = (sec.data && sec.data.selectedIds) || [];
@@ -1106,9 +1114,10 @@ window.BromarPages.quotes = {
       }
       if (meta.isOption) flags.push('<span class="rail-flag rail-flag-opt" title="Option">opt</span>');
       return `
-        <div class="rail-tile ${isActive ? 'active' : ''} ${isOrphan ? 'rail-tile-err' : ''}" data-sid="${s.id}">
+        <div class="rail-tile ${isActive ? 'active' : ''} ${isOrphan ? 'rail-tile-err' : ''}" data-sid="${s.id}" data-idx="${idx}">
+          <span class="drag-grip" title="Drag to reorder">${ICON_GRIP}</span>
           <button class="rail-tile-btn rail-item-section" data-sid="${s.id}">
-            <span class="rail-name">${escape(s.name || meta.name || 'Section')}</span>
+            <span class="rail-name" title="${escape(s.name || meta.name || 'Section')}">${escape(s.name || meta.name || 'Section')}</span>
             <span class="rail-meta">
               ${amount !== null ? `<span class="rail-amt">${fmt(amount)}</span>` : ''}
               ${flags.join('')}
@@ -1160,6 +1169,9 @@ window.BromarPages.quotes = {
     function bindRail(q) {
       document.querySelectorAll('.rail-item, .rail-tile-btn').forEach(el => {
         el.addEventListener('click', () => { activeSectionId = el.dataset.sid; renderEditor(); });
+      });
+      enableDragReorder(document.getElementById('rail-list'), '.rail-tile', async (from, to) => {
+        if (arrReorder(q.sections, from, to)) { renumberOptions(q); await saveQuoteNow(q); renderEditor(); }
       });
       document.querySelectorAll('[data-rail]').forEach(el => {
         el.addEventListener('click', async e => {
@@ -1587,8 +1599,11 @@ window.BromarPages.quotes = {
           return `
             <p class="hint">Auto-generated. Lists every Costing Summary flagged as an <strong>Option</strong>, with its total. Mark a summary as an option via its "Option" checkbox.</p>
             <div class="form-row"><label>Intro note</label><input class="quote-input" id="f-opt-note" value="${escape(d.note || '')}" placeholder="Shown above the options list"></div>
+            <label class="toggle-lbl" style="margin:0.4rem 0"><input type="checkbox" id="f-opt-grand" ${d.showGrand ? 'checked' : ''}><span>Show a combined grand total of all options</span></label>
+            ${d.showGrand ? `<div class="form-row" style="max-width:280px"><label>Combined total label</label><input class="quote-input" id="f-opt-label" value="${escape(d.grandLabel || 'All options combined')}"></div>` : ''}
             ${opts.length ? `<div class="total-preview">
               ${opts.map(o => `<div class="tp-line"><span>${escape(o.name)}</span><strong>${fmt(summaryTotal(o, q))}</strong></div>`).join('')}
+              ${d.showGrand ? `<div class="tp-line tp-grand"><span>${escape(d.grandLabel || 'All options combined')}</span><strong>${fmt(optionsGrand(q))}</strong></div>` : ''}
             </div>` : '<p class="hint">No options yet — tick "Option" on a Costing Summary and it will appear here.</p>'}`;
         }
         case 'schedule': {
@@ -1650,7 +1665,7 @@ window.BromarPages.quotes = {
     }
     function bulletRow(text, sectionType, i, last) {
       const saved = sectionType ? !!bulletInLib(sectionType, text) : false;
-      return `<div class="bullet-row">${moveControls('blt-move', i, last)}<span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point"><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger bullet-remove" title="Remove">${ICON_TRASH}</button></div>`;
+      return `<div class="bullet-row" data-idx="${i}"><span class="drag-grip" title="Drag to reorder">${ICON_GRIP}</span>${moveControls('blt-move', i, last)}<span class="bullet-dot">•</span><input class="quote-input bullet-input" value="${escape(text)}" placeholder="Bullet point"><button class="icon-btn bullet-save ${saved ? 'is-saved' : ''}" title="${saved ? 'Already in your saved list' : 'Save this point to your list'}">${saved ? ICON_STAR_FILL : ICON_STAR}</button><button class="icon-btn icon-danger bullet-remove" title="Remove">${ICON_TRASH}</button></div>`;
     }
     function scopeCard(sc, i, total, sectionType) {
       return `<div class="scope-card" data-gid="${sc.id}">
@@ -1948,6 +1963,9 @@ window.BromarPages.quotes = {
           }));
         });
         get('add-bullet').addEventListener('click', async () => { d.bullets.push(''); await saveQuoteNow(q); renderEditor(); });
+        enableDragReorder(document.getElementById('bullets-list'), '.bullet-row', async (from, to) => {
+          if (arrReorder(d.bullets, from, to)) { await saveQuoteNow(q); renderEditor(); }
+        });
       }
       if (meta.shape === 'scopes') {
         get('f-intro').addEventListener('input', e => { d.intro = e.target.value; queueSave(q); });
@@ -2108,11 +2126,22 @@ window.BromarPages.quotes = {
         const roll = get('f-rollup');
         if (roll) roll.addEventListener('change', e => { d.rollup = e.target.checked; queueSave(q); });
         const isOpt = get('f-isoption');
-        if (isOpt) isOpt.addEventListener('change', async e => { d.isOption = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+        if (isOpt) isOpt.addEventListener('change', async e => {
+          d.isOption = e.target.checked;
+          // Keep an "OPTION: " prefix on the name in sync with the flag,
+          // preserving any custom name the user typed.
+          const base = (sec.name || '').replace(/^OPTION:\s*/i, '');
+          sec.name = e.target.checked ? 'OPTION: ' + base : base;
+          await saveQuoteNow(q); renderEditor();
+        });
       }
       if (meta.shape === 'optionslist') {
         const n = get('f-opt-note');
         if (n) n.addEventListener('input', e => { d.note = e.target.value; queueSave(q); });
+        const g = get('f-opt-grand');
+        if (g) g.addEventListener('change', async e => { d.showGrand = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+        const gl = get('f-opt-label');
+        if (gl) gl.addEventListener('input', e => { d.grandLabel = e.target.value; queueSave(q); });
         document.querySelectorAll('.sum-sel').forEach(cb => {
           cb.addEventListener('change', async () => {
             d.selectedIds = d.selectedIds || [];
@@ -2312,7 +2341,7 @@ window.BromarPages.quotes = {
         case 'optionslist': {
           const opts = optionSummaries(q);
           if (!opts.length) return '';
-          body = `${d.note ? `<p class="doc-total-text">${escape(d.note)}</p>` : ''}<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Option</th><th class="num">Amount ex GST</th></tr></thead><tbody>${opts.map(o => `<tr><td>${escape(o.name)}</td><td class="num">${fmt(summaryTotal(o, q))}</td></tr>`).join('')}</tbody></table></div>`;
+          body = `${d.note ? `<p class="doc-total-text">${escape(d.note)}</p>` : ''}<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Option</th><th class="num">Amount ex GST</th></tr></thead><tbody>${opts.map(o => `<tr><td>${escape(o.name)}</td><td class="num">${fmt(summaryTotal(o, q))}</td></tr>`).join('')}${d.showGrand ? `<tr class="doc-table-total"><td class="num">${escape(d.grandLabel || 'All options combined')} <span class="doc-exgst">ex GST</span></td><td class="num"><strong>${fmt(optionsGrand(q))}</strong></td></tr>` : ''}</tbody></table></div>`;
           break;
         }
         case 'schedule': {
@@ -2786,7 +2815,7 @@ ${q.preparedBy || COMPANY.name}`;
             const opts = optionSummaries(q);
             if (opts.length) {
               hasTable = true;
-              body = `${d.note ? `<p class="total-text">${escape(d.note)}</p>` : ''}<table class="data"><thead><tr><th>Option</th><th class="num">Amount ex GST</th></tr></thead><tbody>${opts.map(o => `<tr><td>${escape(o.name)}</td><td class="num">${fmt(summaryTotal(o, q))}</td></tr>`).join('')}</tbody></table>`;
+              body = `${d.note ? `<p class="total-text">${escape(d.note)}</p>` : ''}<table class="data"><thead><tr><th>Option</th><th class="num">Amount ex GST</th></tr></thead><tbody>${opts.map(o => `<tr><td>${escape(o.name)}</td><td class="num">${fmt(summaryTotal(o, q))}</td></tr>`).join('')}${d.showGrand ? `<tr class="ttl"><td class="num">${escape(d.grandLabel || 'All options combined')} <span class="pdf-exgst">ex GST</span></td><td class="num"><strong>${fmt(optionsGrand(q))}</strong></td></tr>` : ''}</tbody></table>`;
             }
             break;
           }
@@ -3060,6 +3089,43 @@ ${q.preparedBy || COMPANY.name}`;
       [arr[i], arr[j]] = [arr[j], arr[i]];
       return true;
     }
+    const ICON_GRIP = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
+
+    /* Drag-and-drop reordering. Only the .drag-grip inside a row can
+       start a drag, so text inputs stay selectable. onDrop(from,to)
+       mutates the array and re-renders. */
+    function enableDragReorder(container, rowSel, onDrop) {
+      if (!container) return;
+      let dragFrom = null;
+      container.querySelectorAll(rowSel).forEach(row => {
+        const grip = row.querySelector('.drag-grip');
+        if (!grip) return;
+        grip.addEventListener('mousedown', () => { row.setAttribute('draggable', 'true'); });
+        row.addEventListener('dragstart', e => {
+          dragFrom = parseInt(row.dataset.idx, 10);
+          row.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (_) {}
+        });
+        row.addEventListener('dragend', () => { row.classList.remove('dragging'); row.removeAttribute('draggable'); container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over')); dragFrom = null; });
+        row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; row.classList.add('drag-over'); });
+        row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+        row.addEventListener('drop', async e => {
+          e.preventDefault();
+          row.classList.remove('drag-over');
+          const to = parseInt(row.dataset.idx, 10);
+          const from = dragFrom;
+          if (from == null || from === to || isNaN(to)) return;
+          await onDrop(from, to);
+        });
+      });
+    }
+    function arrReorder(arr, from, to) {
+      if (from < 0 || from >= arr.length || to < 0 || to >= arr.length) return false;
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      return true;
+    }
     const ICON_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const ICON_TOTALS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4l-7 8v4l-4 2v-6L3 7V3z"/></svg>';
     const ICON_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
@@ -3151,20 +3217,28 @@ ${q.preparedBy || COMPANY.name}`;
         .save-indicator.saved { color: var(--success); opacity: 1; }
         .save-indicator.save-error { color: #fff; background: var(--error); opacity: 1; font-weight: 700; }
         [data-theme="dark"] .save-indicator.saved { color: #4ade80; }
-        .builder-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
+        .builder-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
         .builder-rail { padding: 1rem; position: sticky; top: calc(var(--header-height) + 1rem); align-self: start; max-height: calc(100vh - var(--header-height) - 2rem); overflow-y: auto; }
         .builder-main { padding: 1.5rem; min-height: 400px; }
         .rail-section { margin-bottom: 1rem; }
         .rail-label { font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.4rem 0.5rem; }
         .rail-list { display: flex; flex-direction: column; gap: 0.25rem; }
         .rail-empty { font-size: 0.8rem; color: var(--text-secondary); padding: 0.5rem; font-style: italic; }
-        .rail-tile { position: relative; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); margin-bottom: 0.4rem; transition: all 0.2s ease; }
+        .rail-tile { position: relative; display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-main); margin-bottom: 0.4rem; transition: all 0.2s ease; }
+        .drag-grip { display: flex; align-items: center; justify-content: center; width: 20px; flex-shrink: 0; color: var(--text-secondary); opacity: 0.35; cursor: grab; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+        .drag-grip:hover { opacity: 0.9; background: var(--card-hover); }
+        .drag-grip:active { cursor: grabbing; }
+        .drag-grip svg { width: 16px; height: 16px; }
+        .rail-tile.dragging { opacity: 0.4; }
+        .rail-tile.drag-over { border-color: var(--accent); box-shadow: 0 -2px 0 var(--accent) inset; }
+        .bullet-row.drag-over, .scope-card.drag-over { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .bullet-row.dragging, .scope-card.dragging { opacity: 0.4; }
         .rail-tile:hover { border-color: var(--accent); }
         .rail-tile:hover .rail-controls { opacity: 1; pointer-events: auto; }
         .rail-tile.active { border-color: var(--accent); background: var(--card-hover); box-shadow: 0 0 0 1px var(--accent); }
-        .rail-tile-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; width: 100%; padding: 0.6rem 0.7rem; background: transparent; border: none; color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; text-align: left; }
+        .rail-tile-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; width: 100%; max-width: 100%; min-width: 0; padding: 0.6rem 0.7rem; background: transparent; border: none; color: var(--text-primary); cursor: pointer; font-family: 'Outfit', sans-serif; text-align: left; overflow: hidden; }
         .rail-tile.active .rail-name { color: var(--accent); }
-        .rail-name { font-size: 0.86rem; font-weight: 600; line-height: 1.3; white-space: normal; word-break: break-word; }
+        .rail-name { font-size: 0.86rem; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
         .rail-meta { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
         .rail-amt { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); }
         .rail-tile.active .rail-amt { color: var(--accent); }
@@ -3306,8 +3380,9 @@ ${q.preparedBy || COMPANY.name}`;
         .bullet-save.is-saved { color: var(--accent); }
         .lib-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 46vh; overflow-y: auto; }
         .lib-row { display: grid; grid-template-columns: 16px 1fr 34px; gap: 0.5rem; align-items: center; }
-        .bullet-row { display: grid; grid-template-columns: 24px 16px 1fr 34px 34px; gap: 0.5rem; align-items: center; }
-        .bullet-row.scope-bullet { grid-template-columns: 24px 16px 1fr auto 34px 34px; }
+        .bullet-row { display: grid; grid-template-columns: 18px 24px 16px 1fr 34px 34px; gap: 0.5rem; align-items: center; }
+        .bullet-row.scope-bullet { grid-template-columns: 18px 24px 16px 1fr auto 34px 34px; }
+        .bullet-row .drag-grip { width: 18px; }
         .bullet-dot { color: var(--accent); font-weight: 700; text-align: center; }
         .scopes-list { display: flex; flex-direction: column; gap: 0.75rem; }
         .scope-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-main); padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
