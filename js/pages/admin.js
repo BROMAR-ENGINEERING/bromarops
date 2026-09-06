@@ -793,11 +793,8 @@ window.BromarPages.admin = {
         const btn = e.target.closest('[data-fb-status]');
         const newStatus = btn.dataset.fbStatus;
         const id = btn.dataset.fbId;
-        /* If moving to resolved/closed, ask if they want to notify */
         if (newStatus === 'resolved' || newStatus === 'closed') {
-          const report = this._fbData.find(r => r.id === id);
-          const notify = report && report.user_email ? confirm('Mark as ' + newStatus + ' and send notification email to ' + report.user_email + '?') : false;
-          this._updateFeedbackStatus(id, newStatus, container.querySelector('#admin-section-content'), notify);
+          this._showNotifyModal(id, newStatus, container.querySelector('#admin-section-content'));
         } else {
           this._updateFeedbackStatus(id, newStatus, container.querySelector('#admin-section-content'), false);
         }
@@ -816,6 +813,27 @@ window.BromarPages.admin = {
       if (e.target.closest('[data-fb-archive]')) {
         this._fbShowArchive = !this._fbShowArchive;
         this._renderFeedbackList(container.querySelector('#fb-list-area'));
+        return;
+      }
+      /* Notify modal actions */
+      if (e.target.closest('[data-fb-send-notify]')) {
+        const modal = container.querySelector('#fb-notify-modal');
+        const id = modal?.dataset.fbId;
+        const status = modal?.dataset.fbNewStatus;
+        if (id && status) this._sendNotifyAndUpdate(id, status, container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-fb-skip-notify]')) {
+        const modal = container.querySelector('#fb-notify-modal');
+        const id = modal?.dataset.fbId;
+        const status = modal?.dataset.fbNewStatus;
+        if (modal) modal.classList.remove('show');
+        if (id && status) this._updateFeedbackStatus(id, status, container.querySelector('#admin-section-content'), false);
+        return;
+      }
+      if (e.target.closest('[data-fb-cancel-notify]') || (e.target.classList && e.target.classList.contains('fb-notify-overlay'))) {
+        const modal = container.querySelector('#fb-notify-modal');
+        if (modal) modal.classList.remove('show');
         return;
       }
     });
@@ -2041,6 +2059,30 @@ window.BromarPages.admin = {
         </div>
         <div id="fb-list-area">
           <div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading…</p></div>
+        </div>
+      </div>
+
+      <!-- Notify Email Modal -->
+      <div class="co-modal-overlay fb-notify-overlay" id="fb-notify-modal">
+        <div class="co-modal" style="max-width:520px">
+          <div class="co-modal-header">
+            <h3>Notify Reporter</h3>
+            <button class="control-btn co-modal-close" data-fb-cancel-notify aria-label="Close">
+              <svg viewBox="0 0 24 24" style="pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="co-modal-body">
+            <div class="tt-form-row"><label style="display:block;font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-secondary);margin-bottom:0.2rem">To</label><input type="text" id="fb-notify-to" readonly style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:0.85rem"></div>
+            <div class="tt-form-row" style="margin-top:0.6rem"><label style="display:block;font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-secondary);margin-bottom:0.2rem">Subject</label><input type="text" id="fb-notify-subject" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.85rem"></div>
+            <div class="tt-form-row" style="margin-top:0.6rem"><label style="display:block;font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-secondary);margin-bottom:0.2rem">Message</label><textarea id="fb-notify-body" rows="8" style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.85rem;resize:vertical;line-height:1.5"></textarea></div>
+            <div style="display:flex;gap:0.5rem;margin-top:1rem">
+              <button class="btn-primary" data-fb-send-notify style="flex:1;padding:0.7rem">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>Send &amp; Update Status
+              </button>
+              <button class="btn-secondary" data-fb-skip-notify style="flex:1;padding:0.7rem">Update Without Email</button>
+            </div>
+            <div id="fb-notify-feedback" style="margin-top:0.75rem"></div>
+          </div>
         </div>
       </div>
     `;
