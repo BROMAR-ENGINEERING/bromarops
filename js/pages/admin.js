@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.14',
+  version: 'V1.15',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -791,7 +791,16 @@ window.BromarPages.admin = {
       }
       if (e.target.closest('[data-fb-status]')) {
         const btn = e.target.closest('[data-fb-status]');
-        this._updateFeedbackStatus(btn.dataset.fbId, btn.dataset.fbStatus, container.querySelector('#admin-section-content'));
+        const newStatus = btn.dataset.fbStatus;
+        const id = btn.dataset.fbId;
+        /* If moving to resolved/closed, ask if they want to notify */
+        if (newStatus === 'resolved' || newStatus === 'closed') {
+          const report = this._fbData.find(r => r.id === id);
+          const notify = report && report.user_email ? confirm('Mark as ' + newStatus + ' and send notification email to ' + report.user_email + '?') : false;
+          this._updateFeedbackStatus(id, newStatus, container.querySelector('#admin-section-content'), notify);
+        } else {
+          this._updateFeedbackStatus(id, newStatus, container.querySelector('#admin-section-content'), false);
+        }
         return;
       }
       if (e.target.closest('[data-fb-delete]')) {
@@ -802,6 +811,11 @@ window.BromarPages.admin = {
       if (e.target.closest('[data-fb-edit]')) {
         const btn = e.target.closest('[data-fb-edit]');
         this._showFeedbackForm(container.querySelector('#admin-section-content'), btn.dataset.fbEdit);
+        return;
+      }
+      if (e.target.closest('[data-fb-archive]')) {
+        this._fbShowArchive = !this._fbShowArchive;
+        this._renderFeedbackList(container.querySelector('#fb-list-area'));
         return;
       }
     });
@@ -1993,6 +2007,7 @@ window.BromarPages.admin = {
      SECTION: Bug / Feedback
      ════════════════════════════════════════ */
   _fbData: [],
+  _fbShowArchive: false,
   _fbTypes: ['Bug','Improvement','Feature Request','Other'],
   _fbStatuses: ['open','in_progress','resolved','closed'],
   _fbPriorities: ['Low','Medium','High','Critical'],
@@ -2005,6 +2020,9 @@ window.BromarPages.admin = {
           <div class="co-toolbar">
             <button class="btn-primary" data-fb-add style="padding:0.6rem 1.2rem;font-size:0.85rem">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>New Report
+            </button>
+            <button class="btn-secondary" data-fb-archive>
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg>Archive
             </button>
           </div>
         </div>
@@ -2049,10 +2067,14 @@ window.BromarPages.admin = {
     if (!container) return;
     const typeFilter = (document.getElementById('fb-type-filter') || {}).value || '';
     const statusFilter = (document.getElementById('fb-status-filter') || {}).value || '';
+    const showArchive = this._fbShowArchive;
 
     let filtered = this._fbData.filter(r => {
       if (typeFilter && r.report_type !== typeFilter) return false;
       if (statusFilter && r.status !== statusFilter) return false;
+      /* Main view: open + in_progress only. Archive: resolved + closed only */
+      if (!showArchive && (r.status === 'resolved' || r.status === 'closed')) return false;
+      if (showArchive && r.status !== 'resolved' && r.status !== 'closed') return false;
       return true;
     });
 
@@ -2072,9 +2094,13 @@ window.BromarPages.admin = {
     `;
 
     if (!filtered.length) {
-      container.innerHTML = summaryHtml + '<div class="admin-placeholder"><p>' + (this._fbData.length ? 'No reports match filters.' : 'No reports yet.') + '</p></div>';
+      container.innerHTML = summaryHtml + '<div class="admin-placeholder"><p>' + (showArchive ? 'No archived reports.' : (this._fbData.length ? 'No open reports — all clear!' : 'No reports yet.')) + '</p></div>';
       return;
     }
+
+    const viewLabel = showArchive
+      ? '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem"><svg viewBox="0 0 24 24" style="width:16px;height:16px;opacity:0.5" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg><span style="font-size:0.82rem;font-weight:600;color:var(--text-secondary)">Showing archived (resolved / closed)</span></div>'
+      : '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem"><span style="font-size:0.82rem;font-weight:600;color:var(--text-secondary)">Showing active reports</span></div>';
 
     const statusLabel = s => {
       const map = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed' };
@@ -2136,7 +2162,7 @@ window.BromarPages.admin = {
       </div>`;
     }).join('');
 
-    container.innerHTML = summaryHtml + '<div class="fb-count" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">' + filtered.length + ' report' + (filtered.length !== 1 ? 's' : '') + '</div>' + cards;
+    container.innerHTML = summaryHtml + viewLabel + '<div class="fb-count" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">' + filtered.length + ' report' + (filtered.length !== 1 ? 's' : '') + '</div>' + cards;
   },
 
   _showFeedbackForm(target, editId) {
@@ -2233,13 +2259,39 @@ window.BromarPages.admin = {
     }
   },
 
-  async _updateFeedbackStatus(id, newStatus, sectionTarget) {
+  async _updateFeedbackStatus(id, newStatus, sectionTarget, sendNotify) {
     try {
       const res = await fetch(this._SB_URL + '/rest/v1/feedback_reports?id=eq.' + id, {
         method: 'PATCH', headers: this._sbHeaders(),
         body: JSON.stringify({ status: newStatus, updated_at: new Date().toISOString() })
       });
       if (!res.ok) throw new Error(await res.text());
+
+      /* Send notification email if requested */
+      if (sendNotify) {
+        const report = this._fbData.find(r => r.id === id);
+        if (report && report.user_email) {
+          try {
+            await fetch(this._SB_URL + '/functions/v1/send-notification', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + this._SB_KEY, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'email',
+                to: report.user_email,
+                subject: 'Your report has been actioned — ' + report.subject,
+                body: 'Hi ' + report.user_name + ',\n\n' +
+                  'Your report "' + report.subject + '" has been reviewed and marked as ' + newStatus.replace('_', ' ') + '.\n\n' +
+                  'If you are still experiencing any issues, please don\'t hesitate to let us know by submitting a new report.\n\n' +
+                  'Thanks,\nBromar Ops Team'
+              })
+            });
+          } catch (emailErr) {
+            console.warn('Notification email failed:', emailErr);
+            /* Don't block status update if email fails */
+          }
+        }
+      }
+
       await this._fetchFeedback();
       this._renderBugs(sectionTarget);
     } catch (err) {
