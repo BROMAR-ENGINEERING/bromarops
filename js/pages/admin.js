@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.15',
+  version: 'V1.17',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -683,8 +683,8 @@ window.BromarPages.admin = {
         return;
       }
       if (e.target.closest('[data-co-modal-close]') || (e.target.classList && e.target.classList.contains('co-modal-overlay'))) {
-        const modal = container.querySelector('#co-instructions-modal') || container.querySelector('#rdo-instructions-modal');
-        if (modal) modal.classList.remove('show');
+        const modals = container.querySelectorAll('.co-modal-overlay.show');
+        modals.forEach(m => m.classList.remove('show'));
         return;
       }
 
@@ -725,11 +725,6 @@ window.BromarPages.admin = {
       if (e.target.closest('[data-rdo-instructions]')) {
         const modal = container.querySelector('#rdo-instructions-modal');
         if (modal) modal.classList.add('show');
-        return;
-      }
-      if (e.target.closest('[data-rdo-modal-close]') || (e.target.classList && e.target.classList.contains('rdo-modal-overlay'))) {
-        const modal = container.querySelector('#rdo-instructions-modal');
-        if (modal) modal.classList.remove('show');
         return;
       }
 
@@ -831,7 +826,7 @@ window.BromarPages.admin = {
         if (id && status) this._updateFeedbackStatus(id, status, container.querySelector('#admin-section-content'), false);
         return;
       }
-      if (e.target.closest('[data-fb-cancel-notify]') || (e.target.classList && e.target.classList.contains('fb-notify-overlay'))) {
+      if (e.target.closest('[data-fb-cancel-notify]')) {
         const modal = container.querySelector('#fb-notify-modal');
         if (modal) modal.classList.remove('show');
         return;
@@ -2067,7 +2062,7 @@ window.BromarPages.admin = {
         <div class="co-modal" style="max-width:520px">
           <div class="co-modal-header">
             <h3>Notify Reporter</h3>
-            <button class="control-btn co-modal-close" data-fb-cancel-notify aria-label="Close">
+            <button class="control-btn" data-fb-cancel-notify aria-label="Close">
               <svg viewBox="0 0 24 24" style="pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
@@ -2308,38 +2303,88 @@ window.BromarPages.admin = {
         body: JSON.stringify({ status: newStatus, updated_at: new Date().toISOString() })
       });
       if (!res.ok) throw new Error(await res.text());
-
-      /* Send notification email if requested */
-      if (sendNotify) {
-        const report = this._fbData.find(r => r.id === id);
-        if (report && report.user_email) {
-          try {
-            await fetch(this._SB_URL + '/functions/v1/send-notification', {
-              method: 'POST',
-              headers: { 'Authorization': 'Bearer ' + this._SB_KEY, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'email',
-                to: report.user_email,
-                subject: 'Your report has been actioned — ' + report.subject,
-                body: 'Hi ' + report.user_name + ',\n\n' +
-                  'Your report "' + report.subject + '" has been reviewed and marked as ' + newStatus.replace('_', ' ') + '.\n\n' +
-                  'If you are still experiencing any issues, please don\'t hesitate to let us know by submitting a new report.\n\n' +
-                  'Thanks,\nBromar Ops Team'
-              })
-            });
-          } catch (emailErr) {
-            console.warn('Notification email failed:', emailErr);
-            /* Don't block status update if email fails */
-          }
-        }
-      }
-
       await this._fetchFeedback();
       this._renderBugs(sectionTarget);
     } catch (err) {
       console.error('Status update error:', err);
       alert('Failed to update status.');
     }
+  },
+
+  _showNotifyModal(id, newStatus, sectionTarget) {
+    const report = this._fbData.find(r => r.id === id);
+    if (!report) return;
+
+    const modal = sectionTarget.querySelector('#fb-notify-modal');
+    if (!modal) return;
+    modal.dataset.fbId = id;
+    modal.dataset.fbNewStatus = newStatus;
+
+    const statusLabel = newStatus.replace('_', ' ');
+    document.getElementById('fb-notify-to').value = report.user_email || '';
+    document.getElementById('fb-notify-subject').value = 'Your report has been actioned — ' + report.subject;
+    document.getElementById('fb-notify-body').value =
+      'Hi ' + report.user_name + ',\n\n' +
+      'Your report "' + report.subject + '" has been reviewed and marked as ' + statusLabel + '.\n\n' +
+      'If you are still experiencing any issues, please don\'t hesitate to let us know by submitting a new report.\n\n' +
+      'Thanks,\nBromar Ops Team';
+
+    const fb = document.getElementById('fb-notify-feedback');
+    if (fb) fb.innerHTML = '';
+    modal.classList.add('show');
+  },
+
+  async _sendNotifyAndUpdate(id, newStatus, sectionTarget) {
+    const modal = sectionTarget.querySelector('#fb-notify-modal');
+    const feedback = document.getElementById('fb-notify-feedback');
+    const to = (document.getElementById('fb-notify-to').value || '').trim();
+    const subject = (document.getElementById('fb-notify-subject').value || '').trim();
+    const body = (document.getElementById('fb-notify-body').value || '').trim();
+
+    if (!to || !subject || !body) {
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Please fill in all fields.</div>';
+      return;
+    }
+
+    if (feedback) feedback.innerHTML = '<div class="co-upload-result" style="background:var(--card-hover);color:var(--text-primary)"><div class="co-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:-3px;margin-right:8px;display:inline-block"></div>Sending…</div>';
+
+    /* Update status first */
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/feedback_reports?id=eq.' + id, {
+        method: 'PATCH', headers: this._sbHeaders(),
+        body: JSON.stringify({ status: newStatus, updated_at: new Date().toISOString() })
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (err) {
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Status update failed: ' + err.message + '</div>';
+      return;
+    }
+
+    /* Send email */
+    try {
+      const emailRes = await fetch(this._SB_URL + '/functions/v1/send-notification', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + this._SB_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'email', to: to, subject: subject, body: body })
+      });
+      if (!emailRes.ok) {
+        const errText = await emailRes.text();
+        throw new Error(errText);
+      }
+    } catch (emailErr) {
+      console.warn('Email send failed:', emailErr);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Status updated but email failed to send. Email may not be configured yet.</div>';
+      setTimeout(async () => {
+        await this._fetchFeedback();
+        if (modal) modal.classList.remove('show');
+        this._renderBugs(sectionTarget);
+      }, 2500);
+      return;
+    }
+
+    await this._fetchFeedback();
+    if (modal) modal.classList.remove('show');
+    this._renderBugs(sectionTarget);
   },
 
   async _deleteFeedback(id, sectionTarget) {
