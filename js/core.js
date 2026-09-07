@@ -1,14 +1,16 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
-   V1.14
+   V1.16
    Renders sidebar + header + footer once.
-   Pages register via window.BromarPages[id] = { title, render, destroy? }
+   Pages register via window.BromarPages[id] = { title, render, destroy?, version }
    Waits for `bromar-auth-ready` before initialising.
+   Wraps every page render() in try/catch → error card on failure.
+   On page load, resets to #dashboard (previous hash discarded).
    ============================================================ */
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.14';
+  const APP_VERSION = 'V1.16';
 
   function renderVersion(pageVersion, pageId) {
     const coreEl = document.getElementById('core-version');
@@ -51,10 +53,10 @@ const BromarOps = (() => {
     { id: 'scheduling', label: 'Scheduling',              icon: 'M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2z' },
     { id: 'timesheets', label: 'Timesheets',              icon: 'M12 2a10 10 0 100 20 10 10 0 000-20zm.5-15H11v6l5 3 .75-1.23-4.25-2.52z' },
     { id: 'employees',  label: 'Employees',               icon: 'M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z' },
-    { id: 'ims',        label: 'IMS',                     icon: 'M9 2h6l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2h3zm5 1.5V8h4.5L14 3.5zM8 12h8v2H8v-2zm0 4h8v2H8v-2zm0-8h5v2H8V8z' },
+    { id: 'ims',        label: 'IMS',                     icon: 'M12 2L4 5v6c0 5.25 3.4 9.74 8 11 4.6-1.26 8-5.75 8-11V5l-8-3zm-1.2 13.6L7.4 12.2l1.4-1.4 2 2 4.4-4.4 1.4 1.4-5.8 5.8z' },
     { id: 'fleet',      label: 'Fleet Management',        icon: 'M20 8h-3V4H3a2 2 0 00-2 2v11h2a3 3 0 006 0h6a3 3 0 006 0h2v-5l-3-4zM6 18.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm12 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z' },
     { id: 'equipment',  label: 'Equipment',               icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
-    { id: 'clients',    label: 'Clients',                 icon: 'M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z' },
+    { id: 'clients',    label: 'Clients & Sites',         icon: 'M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z' },
     { id: 'tasks',      label: 'Tasks',                   icon: 'M19 3h-4.18A2.99 2.99 0 0012 1a2.99 2.99 0 00-2.82 2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-9 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
     { id: 'materials',  label: 'Materials & Procurement', icon: 'M20 4H4v2h16V4zM4 14h6v6H4v-6zm0-9v7h16V5H4zm12 9h4v6h-4v-6zm-6 0h4v6h-4v-6z' },
     { id: 'admin',      label: 'Admin Tools',             icon: 'M19.14 12.94a7.07 7.07 0 000-1.88l2.03-1.58a.5.5 0 00.12-.64l-1.92-3.32a.5.5 0 00-.6-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.5.5 0 00-.5-.42h-3.84a.5.5 0 00-.5.42l-.36 2.54a7.03 7.03 0 00-1.62.94l-2.39-.96a.5.5 0 00-.6.22L2.71 8.84a.5.5 0 00.12.64l2.03 1.58a7.07 7.07 0 000 1.88l-2.03 1.58a.5.5 0 00-.12.64l1.92 3.32a.5.5 0 00.6.22l2.39-.96a7.03 7.03 0 001.62.94l.36 2.54a.5.5 0 00.5.42h3.84a.5.5 0 00.5-.42l.36-2.54a7.03 7.03 0 001.62-.94l2.39.96a.5.5 0 00.6-.22l1.92-3.32a.5.5 0 00-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z' }
@@ -105,6 +107,20 @@ const BromarOps = (() => {
     `;
   }
 
+  function renderErrorCard(container, pageId, err) {
+    container.innerHTML = `
+      <div class="card" style="border-color:#dc2626;">
+        <div class="section-label" style="color:#dc2626;">Page failed to load</div>
+        <p style="margin-bottom:1rem;">The <strong>${pageId}</strong> page threw an error and couldn't render.</p>
+        <p style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--text-secondary);background:var(--bg-main);padding:0.75rem;border-radius:8px;overflow-x:auto;">${(err && err.message) || 'Unknown error'}</p>
+        <div style="margin-top:1rem;display:flex;gap:0.5rem;">
+          <button class="btn-primary" onclick="location.reload()">Reload app</button>
+          <button class="btn-secondary" onclick="location.hash='#dashboard'">Back to dashboard</button>
+        </div>
+      </div>
+    `;
+  }
+
   function navigate(pageId) {
     const page = window.BromarPages[pageId];
     if (!page) {
@@ -114,7 +130,7 @@ const BromarOps = (() => {
     }
 
     if (currentPage?.destroy) {
-      try { currentPage.destroy(); } catch (e) { console.warn(e); }
+      try { currentPage.destroy(); } catch (e) { console.warn(`[${pageId}] destroy failed:`, e); }
     }
 
     document.getElementById('page-title').textContent = page.title || '';
@@ -124,8 +140,15 @@ const BromarOps = (() => {
 
     const container = document.getElementById('page-content');
     container.innerHTML = '';
-    page.render(container);
-    currentPage = page;
+
+    try {
+      page.render(container);
+      currentPage = page;
+    } catch (err) {
+      console.error(`[${pageId}] render failed:`, err);
+      renderErrorCard(container, pageId, err);
+      currentPage = null;
+    }
 
     renderVersion(page.version, pageId);
 
@@ -140,6 +163,12 @@ const BromarOps = (() => {
   }
 
   function init() {
+    // Force reset to dashboard on every page load — discards previous hash.
+    // Sidebar clicks / hashchange events still navigate normally within-session.
+    if (location.hash && location.hash !== '#dashboard') {
+      history.replaceState(null, '', location.pathname + location.search + '#dashboard');
+    }
+
     const app = document.getElementById('app');
     if (!app) return;
     app.className = 'app-layout';
@@ -149,8 +178,11 @@ const BromarOps = (() => {
     renderVersion();
 
     document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-    document.getElementById('sign-out').addEventListener('click', () => {
-      if (confirm('Sign out of Bromar Ops?')) window.BromarAuth?.signOut();
+    document.getElementById('sign-out').addEventListener('click', async () => {
+      const ok = window.BromarUtils
+        ? await window.BromarUtils.confirmDialog({ title: 'Sign out?', message: 'You will be returned to the sign-in screen.', okLabel: 'Sign out', danger: true })
+        : confirm('Sign out of Bromar Ops?');
+      if (ok) window.BromarAuth?.signOut();
     });
 
     const sidebar = document.getElementById('sidebar');
@@ -171,5 +203,4 @@ const BromarOps = (() => {
   return { init, navigate, toggleTheme, version: APP_VERSION };
 })();
 
-// Wait for auth before rendering shell
 document.addEventListener('bromar-auth-ready', BromarOps.init);
