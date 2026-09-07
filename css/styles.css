@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED STYLESHEET
-   V1.01
+   V1.02
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -353,6 +353,83 @@ input, select, textarea, button {
   0%   { transform: rotate(0deg)   scale(0.82); }
   50%  { transform: rotate(180deg) scale(1); }
   100% { transform: rotate(360deg) scale(0.82); }
+}
+
+/* ── PAGE LOGO (used inside a page body when a large centred logo is wanted) ── */
+.page-logo { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+.page-logo img { height: 36px; width: auto; }
+.page-logo .light-logo { display: block; }
+.page-logo .dark-logo  { display: none; }
+[data-theme="dark"] .page-logo .light-logo { display: none; }
+[data-theme="dark"] .page-logo .dark-logo  { display: block; }
+
+/* ── IMS TABS ── */
+.ims-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+}
+.ims-tab {
+  font-family: 'Outfit', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-main);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.ims-tab-iso {
+  font-size: 0.7rem;
+  font-weight: 400;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+.ims-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+.ims-tab.active {
+  background: var(--card-hover);
+  color: var(--accent);
+  border-color: rgba(234, 88, 12, 0.3);
+}
+.ims-subtabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.ims-subtab {
+  font-family: 'Outfit', sans-serif;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.ims-subtab:hover { color: var(--text-primary); border-color: var(--accent); }
+.ims-subtab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.ims-empty-state {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 /* ── ANIMATIONS ── */
