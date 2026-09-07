@@ -1,7 +1,8 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
-   V1.02
-   Tabs: Safety (ISO 45001) / Quality (ISO 9001) / Environment (ISO 14001) / Bromar Hub
+   Path: js/pages/ims.js
+   Version: V1.03
+   Tabs: Safety / Quality / Environment / Bromar Hub
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy() })
@@ -18,13 +19,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.02';
+  const VERSION = 'V1.03';
 
   const SECTIONS = [
-    { id: 'safety',      label: 'Safety',      iso: 'ISO 45001' },
-    { id: 'quality',     label: 'Quality',     iso: 'ISO 9001' },
-    { id: 'environment', label: 'Environment', iso: 'ISO 14001' },
-    { id: 'bromar-hub',  label: 'Bromar Hub',  iso: '' }
+    { id: 'safety',      label: 'Safety',      desc: 'SWMS, Incidents, Hazards' },
+    { id: 'quality',     label: 'Quality',     desc: 'ITC, Testing, Policies' },
+    { id: 'environment', label: 'Environment', desc: 'Policies, Procedures' },
+    { id: 'bromar-hub',  label: 'Bromar Hub',  desc: 'Job Types, Customisation' }
   ];
 
   let activeSection = 'safety';
@@ -43,7 +44,7 @@ window.BromarPages.ims = (() => {
   function sectionTabsHTML() {
     return SECTIONS.map(s => `
       <button class="ims-tab ${s.id === activeSection ? 'active' : ''}" data-section="${s.id}">
-        ${s.label}${s.iso ? `<span class="ims-tab-iso">${s.iso}</span>` : ''}
+        ${s.label}${s.desc ? `<span class="ims-tab-iso">${s.desc}</span>` : ''}
       </button>
     `).join('');
   }
