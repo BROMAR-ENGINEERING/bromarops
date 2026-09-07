@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — MAIN SHELL
-  V1.17
+  V1.19
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -33,8 +33,14 @@
 <body>
   <div id="app"></div>
 
-  <!-- Auth first: blocks SPA render until session is confirmed -->
+  <!-- Config first: Supabase URL/key -->
+  <script src="js/config.js"></script>
+
+  <!-- Auth: blocks SPA render until session confirmed -->
   <script src="js/auth.js"></script>
+
+  <!-- Utilities available to every page -->
+  <script src="js/utils.js"></script>
 
   <!-- Shared report styling kit -->
   <script src="js/bromar-report-kit.js"></script>
@@ -47,6 +53,7 @@
   <script src="js/pages/timesheets.js"></script>
   <script src="js/pages/employees.js"></script>
   <script src="js/pages/ims.js"></script>
+  <script src="js/pages/ims/ims-quality-itc-builder.js"></script>
   <script src="js/pages/fleet.js"></script>
   <script src="js/pages/equipment.js"></script>
   <script src="js/pages/clients.js"></script>
@@ -56,6 +63,9 @@
 
   <!-- Sub-modules -->
   <script src="js/pages/testtag.js"></script>
+
+  <!-- Dev-only component library (accessible via #_components) -->
+  <script src="js/pages/_components.js"></script>
 
   <!-- Core last -->
   <script src="js/core.js"></script>
