@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS · QUALITY · ITC BUILDER
    Path: js/pages/ims/ims-quality-itc-builder.js
-   Version: V1.02
+   Version: V1.03
    Registers into: window.BromarIMS.registerSubTab('quality', {...})
    Must load AFTER js/pages/ims.js in index.html.
 
@@ -49,7 +49,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V1.02';
+  const VERSION = 'V1.03';
 
   const FIELD_TYPES = [
     { type: 'text',      label: 'Text field' },
@@ -107,10 +107,31 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     return data || [];
   }
 
+  function nextFormCode() {
+    let max = 0;
+    forms.forEach(f => {
+      const m = /IMS-QUAL-ITC-(\d+)/.exec(f.form_code || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return `IMS-QUAL-ITC-${max + 1}`;
+  }
+  function docNumber(form, revision) {
+    return form?.form_code ? `${form.form_code}-V${revision}` : `V${revision}`;
+  }
+
   async function createForm({ title, formId, category, description }) {
-    const { data: formRow, error: e1 } = await sb().from('itc_forms').insert({
+    let { data: formRow, error: e1 } = await sb().from('itc_forms').insert({
       title, form_code: formId, category, description, status: 'draft', latest_revision: 1, created_by: currentUser()
     }).select().single();
+
+    // Fallback if this Supabase project hasn't had the form_code/category migration run yet
+    if (e1 && /column .* does not exist/i.test(e1.message || '')) {
+      const retry = await sb().from('itc_forms').insert({
+        title, description, status: 'draft', latest_revision: 1, created_by: currentUser()
+      }).select().single();
+      formRow = retry.data; e1 = retry.error;
+      if (formRow) alert('Form created, but "Form ID"/"Category" weren\'t saved — run the itc-builder-tables.sql migration in Supabase to enable those fields.');
+    }
     if (e1 || !formRow) { alert('Could not create form: ' + (e1?.message || 'unknown error')); return null; }
 
     const { data: revRow, error: e2 } = await sb().from('itc_form_revisions').insert({
@@ -242,8 +263,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <input type="text" id="itc-modal-title" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
           </div>
           <div>
-            <label style="font-size:0.8rem;color:var(--text-secondary);">Form ID *</label>
-            <input type="text" id="itc-modal-formid" placeholder="e.g. ITC-ELEC-001" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Form ID (auto-generated — edit if needed) *</label>
+            <input type="text" id="itc-modal-formid" value="${esc(nextFormCode())}" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:0.25rem;">Will display as e.g. ${esc(nextFormCode())}-V1</div>
           </div>
           <div>
             <label style="font-size:0.8rem;color:var(--text-secondary);">Category *</label>
@@ -328,7 +350,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                     ${esc(f.description || '')}
                   </div>
                   <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
-                    ${esc(f.form_code || '—')} · Rev ${f.latest_revision}${f.published_revision ? ` · live: Rev ${f.published_revision}` : ' · never published'}
+                    ${esc(docNumber(f, f.latest_revision))}${f.published_revision && f.published_revision !== f.latest_revision ? ` · live: ${esc(docNumber(f, f.published_revision))}` : ''}${!f.published_revision ? ' · never published' : ''}
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:0.6rem;">
@@ -385,7 +407,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           <button class="btn-secondary" data-action="back" style="margin-bottom:0.6rem;">← Back to list</button>
           <div class="section-label" style="margin:0;">${esc(f.title)}</div>
           <div style="font-size:0.8rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">
-            Rev ${r.revision} — ${isPublished ? 'Published (live)' : 'Draft'}
+            ${esc(docNumber(f, r.revision))} — ${isPublished ? 'Published (live)' : 'Draft'}
           </div>
         </div>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
@@ -406,6 +428,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <label style="font-size:0.8rem;color:var(--text-secondary);">Form ID</label>
             <input type="text" value="${esc(f.form_code || '')}" data-meta="form_code" ${isPublished ? 'disabled' : ''}
               style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:0.25rem;">Full: ${esc(docNumber(f, r.revision))}</div>
           </div>
           <div>
             <label style="font-size:0.8rem;color:var(--text-secondary);">Category</label>
