@@ -75,12 +75,18 @@
    V1.66 — Fix: the dashboard/rail quote total ignored the Quote Total
    section and used only grand-allocated costings, so it read lower
    than the document. It now mirrors the Quote Total section's grand.
+   V1.67 — Approve a published quote into a job: Accept dialog marks it
+   Accepted and captures a job number (keep BExxxx or override, e.g.
+   BAxxx). Job-number tile shows by the quote number. Published quotes
+   open read-only with a prompt: Start new revision, or Edit anyway
+   (which flags the quote as edited with an asterisk). Jobs-table write
+   is stubbed pending the schema.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.66',
+  version: 'V1.67',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -213,6 +219,9 @@ window.BromarPages.quotes = {
         publishedAt: r.published_at,
         globalMarkup: Number(r.global_markup) || 0,
         validDays: (r.valid_days == null || r.valid_days === '') ? 30 : Number(r.valid_days),
+        acceptedJobNumber: r.accepted_job_number || '',
+        acceptedAt: r.accepted_at || null,
+        editedAfterPublish: !!r.edited_after_publish,
         sections: typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || []),
         convertedToQuoteId: r.converted_to_quote_id || undefined,
         convertedToQuoteNumber: r.converted_to_quote_number || undefined,
@@ -241,6 +250,11 @@ window.BromarPages.quotes = {
         published_at: q.publishedAt,
         global_markup: q.globalMarkup || 0,
         ...(validDaysColumnMissing ? {} : { valid_days: q.validDays == null ? 30 : q.validDays }),
+        ...(acceptColsMissing ? {} : {
+          accepted_job_number: q.acceptedJobNumber || null,
+          accepted_at: q.acceptedAt || null,
+          edited_after_publish: !!q.editedAfterPublish
+        }),
         sections: q.sections || [],
         converted_to_quote_id: q.convertedToQuoteId || null,
         converted_to_quote_number: q.convertedToQuoteNumber || null,
@@ -323,6 +337,7 @@ window.BromarPages.quotes = {
        write fails because of it, we stop sending the field entirely so
        saves keep working; validity then lives only in memory. */
     let validDaysColumnMissing = false;
+    let acceptColsMissing = false;
 
     async function saveQuoteNow(q) {
       const supabase = sb();
@@ -333,11 +348,14 @@ window.BromarPages.quotes = {
         if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
         return true;
       } catch (e) {
-        // If the column is missing, drop it and retry once.
+        // If a not-yet-added column is the cause, drop it and retry.
         const msg = (e && (e.message || e.details || '')) + '';
-        if (!validDaysColumnMissing && /valid_days/.test(msg)) {
-          validDaysColumnMissing = true;
-          console.warn('valid_days column not found — saving without it. Add it with:  alter table quotes add column if not exists valid_days integer default 30;');
+        let retry = false;
+        if (!validDaysColumnMissing && /valid_days/.test(msg)) { validDaysColumnMissing = true; retry = true;
+          console.warn('valid_days column missing — saving without it. SQL: alter table quotes add column if not exists valid_days integer default 30;'); }
+        if (!acceptColsMissing && /(accepted_job_number|accepted_at|edited_after_publish)/.test(msg)) { acceptColsMissing = true; retry = true;
+          console.warn('accept columns missing — saving without them. SQL: alter table quotes add column if not exists accepted_job_number text; alter table quotes add column if not exists accepted_at timestamptz; alter table quotes add column if not exists edited_after_publish boolean default false;'); }
+        if (retry) {
           try {
             const { data, error } = await supabase.from('quotes').upsert(quoteToRow(q)).select();
             if (error) throw error;
@@ -839,7 +857,8 @@ window.BromarPages.quotes = {
           else if (action === 'preview') openPreview(id);
           else if (action === 'newVersion') newVersion(id);
           else if (action === 'convertEstimate') convertEstimateToQuote(id);
-          else if (action === 'convert') convertToJob(id);
+          else if (action === 'convert') openAcceptDialog(id);
+          else if (action === 'accept') openAcceptDialog(id);
           else if (action === 'delete') deleteQuote(id);
           else if (action === 'email') openEmailDialog(id);
         });
@@ -865,7 +884,8 @@ window.BromarPages.quotes = {
           <div class="row-status stat-${color}"></div>
           <div class="row-main">
             <div class="row-top">
-              <span class="row-number" data-action="renumber" data-id="${q.id}" title="Click to change number">${escape(displayNumber(q))}</span>
+              <span class="row-number" data-action="renumber" data-id="${q.id}" title="Click to change number">${escape(displayNumber(q))}${q.editedAfterPublish ? '<span class="edited-star" title="Edited after publishing">*</span>' : ''}</span>
+              ${q.acceptedJobNumber ? `<span class="row-badge badge-job" title="Job number">JOB ${escape(q.acceptedJobNumber)}</span>` : ''}
               ${q.nickname ? `<span class="row-nick">${escape(q.nickname)}</span>` : ''}
               ${isEstimate ? '<span class="row-badge badge-est">Estimate</span>' : ''}
               <span class="row-badge badge-${color}">${statusLabel(q)}</span>
@@ -886,7 +906,8 @@ window.BromarPages.quotes = {
             <button class="icon-btn" data-action="renumber" data-id="${q.id}" title="Change number">${ICON_HASH}</button>
             ${isPublished ? `<button class="icon-btn" data-action="email" data-id="${q.id}" title="Email">${ICON_MAIL}</button>` : ''}
             ${isEstimate ? `<button class="icon-btn" data-action="convertEstimate" data-id="${q.id}" title="Convert to Quote">${ICON_CONVERT}</button>` : `<button class="icon-btn" data-action="newVersion" data-id="${q.id}" title="New revision">${ICON_COPY}</button>`}
-            ${q.status === 'accepted' && isPublished && q.docType === 'quote' ? `<button class="icon-btn" data-action="convert" data-id="${q.id}" title="Convert to job">${ICON_CHECK}</button>` : ''}
+            ${isPublished && q.docType === 'quote' && q.status !== 'accepted' && q.status !== 'converted' ? `<button class="icon-btn icon-accept" data-action="accept" data-id="${q.id}" title="Approve &amp; create job">${ICON_CHECK}</button>` : ''}
+            ${q.status === 'accepted' && isPublished && q.docType === 'quote' ? `<button class="icon-btn icon-accept" data-action="accept" data-id="${q.id}" title="Edit job number">${ICON_CHECK}</button>` : ''}
             <button class="icon-btn icon-danger" data-action="delete" data-id="${q.id}" title="Delete">${ICON_TRASH}</button>
           </div>
         </div>`;
@@ -1047,11 +1068,53 @@ window.BromarPages.quotes = {
     }
 
     /* ── EDITOR ── */
+    /* Quotes the user has chosen to "Edit anyway" this session. */
+    const editUnlocked = new Set();
     function openEditor(id) {
-      activeQuoteId = id; view = 'editor';
       const q = quotes.find(x => x.id === id);
+      // Published/accepted docs open read-only until the user chooses.
+      if (q && q.publishedAt && !editUnlocked.has(id)) {
+        openPublishedEditPrompt(q);
+        return;
+      }
+      activeQuoteId = id; view = 'editor';
       activeSectionId = (q && q.sections && q.sections[0]) ? q.sections[0].id : '__details__';
       rerender();
+    }
+    function openPublishedEditPrompt(q) {
+      const accepted = q.status === 'accepted' || q.status === 'converted';
+      const dialog = document.createElement('div');
+      dialog.className = 'quote-modal-overlay';
+      dialog.innerHTML = `
+        <div class="quote-modal quote-modal-sm">
+          <div class="modal-header"><h2>${escape(displayNumber(q))} is ${accepted ? 'accepted' : 'published'}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-body">
+            <p class="hint">This document has been ${accepted ? 'accepted into a job' : 'published'}. How do you want to proceed?</p>
+            <div class="edit-choice">
+              <button class="btn-primary" id="pe-revision">Start new revision</button>
+              <span class="apply-note">Creates the next revision as a fresh, editable copy. The ${accepted ? 'accepted' : 'published'} document stays untouched.</span>
+            </div>
+            <div class="edit-choice">
+              <button class="btn-secondary" id="pe-edit">Edit anyway</button>
+              <span class="apply-note">Edit this document directly. It will be marked as edited (shown with an asterisk).</span>
+            </div>
+          </div>
+          <div class="modal-footer"><button class="btn-secondary" id="pe-cancel">Cancel</button></div>
+        </div>`;
+      document.body.appendChild(dialog);
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
+      const close = () => dialog.remove();
+      dialog.querySelector('#modal-close').addEventListener('click', close);
+      dialog.querySelector('#pe-cancel').addEventListener('click', close);
+      dialog.querySelector('#pe-revision').addEventListener('click', async () => { close(); await newVersion(q.id); });
+      dialog.querySelector('#pe-edit').addEventListener('click', async () => {
+        close();
+        editUnlocked.add(q.id);
+        if (!q.editedAfterPublish) { q.editedAfterPublish = true; await saveQuoteNow(q); }
+        openEditor(q.id);
+      });
     }
     function openPreview(id) { activeQuoteId = id; view = 'preview'; rerender(); }
     function backToDashboard() { activeQuoteId = null; view = 'dashboard'; rerender(); }
@@ -1072,13 +1135,13 @@ window.BromarPages.quotes = {
         <div class="page-title-wrapper editor-header">
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar">
-            <h1>${escape(displayNumber(q))} ${docTag} ${statusTag}</h1>
+            <h1>${escape(displayNumber(q))}${q.editedAfterPublish ? '<span class="edited-star" title="Edited after publishing">*</span>' : ''} ${docTag} ${statusTag}${q.acceptedJobNumber ? `<span class="pub-tag pub-job">JOB ${escape(q.acceptedJobNumber)}</span>` : ''}</h1>
             <p class="subtitle">${escape(q.nickname || q.siteName || q.client)} · ${revLabel} · ${escape(q.preparedBy || 'No preparer')}</p>
           </div>
           <div class="editor-actions">
             <span class="save-indicator" id="save-indicator">Saved</span>
             <button class="btn-secondary" id="preview-btn">Preview</button>
-            ${isPublished ? `<button class="btn-secondary" id="unpublish-btn">Unpublish</button><button class="btn-primary" id="email-btn">Email</button>` : `<button class="btn-primary" id="publish-btn">Publish</button>`}
+            ${isPublished ? `<button class="btn-secondary" id="unpublish-btn">Unpublish</button><button class="btn-secondary" id="email-btn">Email</button>${q.docType === 'quote' && q.status !== 'converted' ? `<button class="btn-primary" id="approve-btn">${q.status === 'accepted' ? 'Job ' + escape(q.acceptedJobNumber || '') : 'Approve → Job'}</button>` : ''}` : `<button class="btn-primary" id="publish-btn">Publish</button>`}
           </div>
         </div>
         <div class="builder-layout">
@@ -1173,6 +1236,8 @@ window.BromarPages.quotes = {
         if (q.status === 'draft' || q.status === 'allocated') q.status = 'sent';
         await saveQuoteNow(q); toast(`${displayNumber(q)} published.`); renderEditor();
       });
+      const approveBtn = get('approve-btn');
+      if (approveBtn) approveBtn.addEventListener('click', () => openAcceptDialog(q.id));
       const unpubBtn = get('unpublish-btn');
       if (unpubBtn) unpubBtn.addEventListener('click', async () => {
         if (!confirm('Unpublish this document? It will revert to draft.')) return;
@@ -2711,10 +2776,74 @@ ${q.preparedBy || COMPANY.name}`;
       const maxV = Math.max(...sameRoot.map(q => q.version));
       const copy = JSON.parse(JSON.stringify(src));
       copy.id = uid(); copy.version = maxV + 1; copy.status = 'draft'; copy.publishedAt = null; copy.createdAt = todayISO();
+      copy.acceptedJobNumber = ''; copy.acceptedAt = null; copy.editedAfterPublish = false;
       delete copy.convertedToQuoteId; delete copy.convertedToQuoteNumber; delete copy.convertedAt;
       (copy.sections || []).forEach(s => { s.id = sid(); if (s.data && s.data.scopes) s.data.scopes.forEach(sc => sc.id = gid()); });
       quotes.push(copy); await saveQuoteNow(copy); openEditor(copy.id);
     }
+    /* Approve a published quote into a job: mark Accepted and capture
+       a job number (keep the quote number or override, e.g. BAxxx).
+       The jobs-table row is stubbed until the schema is provided. */
+    function openAcceptDialog(id) {
+      const q = quotes.find(x => x.id === id); if (!q) return;
+      if (q.docType !== 'quote') { toast('Only quotes can be approved into jobs.'); return; }
+      if (!q.publishedAt) { toast('Publish the quote before approving it.'); return; }
+      const suggested = q.acceptedJobNumber || displayNumber(q);
+      const dialog = document.createElement('div');
+      dialog.className = 'quote-modal-overlay';
+      dialog.innerHTML = `
+        <div class="quote-modal quote-modal-sm">
+          <div class="modal-header"><h2>Approve &amp; Create Job</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-body">
+            <p class="hint">Marks <strong>${escape(displayNumber(q))}</strong> as Accepted and creates a job.</p>
+            <div class="form-row"><label>Job Number</label>
+              <input id="acc-jobnum" class="quote-input" value="${escape(suggested)}" autocomplete="off" spellcheck="false">
+              <span class="field-hint">Keep the quote number, or override (e.g. BA1042).</span>
+            </div>
+            <div class="quick-actions" style="display:flex;gap:0.5rem;margin-top:0.4rem">
+              <button type="button" class="btn-secondary preset-btn" id="acc-keep">Keep ${escape(displayNumber(q))}</button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" id="acc-cancel">Cancel</button>
+            <button class="btn-primary" id="acc-save">Approve &amp; Create Job</button>
+          </div>
+        </div>`;
+      document.body.appendChild(dialog);
+      let downOnBackdrop = false;
+      dialog.addEventListener('mousedown', e => { downOnBackdrop = (e.target === dialog); });
+      dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
+      const close = () => dialog.remove();
+      const input = dialog.querySelector('#acc-jobnum');
+      dialog.querySelector('#modal-close').addEventListener('click', close);
+      dialog.querySelector('#acc-cancel').addEventListener('click', close);
+      dialog.querySelector('#acc-keep').addEventListener('click', () => { input.value = displayNumber(q); input.focus(); });
+      dialog.querySelector('#acc-save').addEventListener('click', async () => {
+        const jobNum = input.value.trim();
+        if (!jobNum) { toast('Enter a job number.'); input.focus(); return; }
+        q.status = 'accepted';
+        q.acceptedJobNumber = jobNum;
+        q.acceptedAt = new Date().toISOString();
+        const ok = await saveQuoteNow(q);
+        if (!ok) { toast('Could not save — not approved.'); return; }
+        await createJobRecord(q);   // stubbed until jobs schema lands
+        close();
+        toast(`Approved — job ${jobNum} created.`);
+        rerender();
+      });
+      input.focus(); input.select();
+    }
+
+    /* STUB: writes the jobs-table row once the schema is provided.
+       For now it no-ops so the accept flow works end to end. */
+    async function createJobRecord(q) {
+      // TODO: insert into 'jobs' when schema is confirmed, e.g.:
+      // await sb().from('jobs').insert({ job_number: q.acceptedJobNumber,
+      //   quote_id: q.id, client: q.client, site_name: q.siteName,
+      //   total: quoteTotal(q), created_at: q.acceptedAt }).select();
+      return true;
+    }
+
     async function convertEstimateToQuote(id) {
       const src = quotes.find(q => q.id === id); if (!src) return;
       if (src.docType !== 'estimate') { toast('Only estimates can be converted.'); return; }
@@ -2731,13 +2860,6 @@ ${q.preparedBy || COMPANY.name}`;
       await Promise.all([saveQuoteNow(copy), saveQuoteNow(src)]);
       toast(`Estimate converted to ${newNum}.`);
       openEditor(copy.id);
-    }
-    async function convertToJob(id) {
-      const q = quotes.find(x => x.id === id); if (!q) return;
-      if (q.docType !== 'quote') { toast('Only quotes convert to jobs.'); return; }
-      if (!q.publishedAt) { toast('Quote must be published before converting.'); return; }
-      if (q.status !== 'accepted') { toast('Only accepted quotes can be converted.'); return; }
-      q.status = 'converted'; await saveQuoteNow(q); toast(`${displayNumber(q)} converted to a job.`); rerender();
     }
     async function deleteQuote(id) {
       const q = quotes.find(x => x.id === id); if (!q) return;
@@ -3195,6 +3317,14 @@ ${q.preparedBy || COMPANY.name}`;
         .row-status { width: 6px; height: 36px; border-radius: 3px; }
         .row-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; flex-wrap: wrap; }
         .row-number { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); cursor: pointer; border-bottom: 1px dashed transparent; }
+        .edited-star { color: var(--error); font-weight: 800; margin-left: 1px; }
+        .badge-job { background: rgba(21,128,61,0.15); color: var(--success); font-weight: 700; }
+        .pub-tag.pub-job { background: rgba(21,128,61,0.15); color: var(--success); }
+        .icon-accept { color: var(--success); }
+        .icon-accept:hover { color: #fff; background: var(--success); border-color: var(--success); }
+        .edit-choice { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+        .edit-choice:last-of-type { border-bottom: none; }
+        .edit-choice .btn-primary, .edit-choice .btn-secondary { align-self: flex-start; }
         .row-number:hover { border-bottom-color: var(--accent); }
         .quote-modal-sm { max-width: 460px; }
         .row-nick { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
