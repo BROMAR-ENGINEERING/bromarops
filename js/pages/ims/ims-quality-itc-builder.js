@@ -1,6 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS · QUALITY · ITC BUILDER
-   Version: V1.00
+   Path: js/pages/ims/ims-quality-itc-builder.js
+   Version: V1.01
    Registers into: window.BromarIMS.registerSubTab('quality', {...})
    Must load AFTER js/pages/ims.js in index.html.
 
@@ -42,7 +43,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V1.00';
+  const VERSION = 'V1.01';
 
   const FIELD_TYPES = [
     { type: 'text',      label: 'Text field' },
