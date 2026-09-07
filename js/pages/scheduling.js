@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.26
+   V1.27
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.26';
+  const PAGE_VERSION = 'V1.27';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -524,6 +524,19 @@ window.BromarPages.scheduling = (() => {
       .sched-staff-row{display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-main);font-size:0.85rem}
       .sched-staff-remove{background:none;border:none;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;line-height:1}
       .sched-staff-remove:hover{color:var(--error)}
+      .sched-staff-row2{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-main);flex-wrap:wrap}
+      .sched-staff-row2 .ssr-main{display:flex;flex-direction:column;gap:1px;flex:1;min-width:100px}
+      .sched-staff-row2 .ssr-name{font-size:0.85rem;font-weight:600}
+      .sched-staff-row2 .ssr-tag{font-size:0.65rem;font-weight:600}
+      .sched-staff-row2 .ssr-tag.ok{color:var(--success)}
+      .sched-staff-row2 .ssr-tag.pend{color:#f59e0b}
+      .sched-staff-row2 .ssr-times{display:flex;gap:0.25rem}
+      .sched-staff-row2 .ssr-time-in{padding:0.25rem 0.35rem;font-size:0.75rem;width:92px}
+      .sched-staff-row2 .ssr-actions{display:flex;gap:0.25rem}
+      .sched-staff-row2 .ssr-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-secondary);cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center}
+      .sched-staff-row2 .ssr-btn:hover{border-color:var(--accent);color:var(--accent)}
+      .sched-staff-row2 .ssr-btn.danger:hover{border-color:var(--error);color:var(--error)}
+      .sched-notify-all{margin-left:0.5rem;padding:0.2rem 0.6rem;border-radius:6px;border:none;background:var(--accent);color:white;font-family:'Outfit',sans-serif;font-size:0.7rem;font-weight:600;cursor:pointer}
       @media(max-width:900px){.sched-jobview-wrap{flex-direction:column}.sched-job-rail{width:100%;max-height:none}.sched-rail-list{flex-direction:row;flex-wrap:wrap}.sched-rail-chip{width:auto}}
       .sched-unassigned-strip{display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding:0.6rem 0.75rem;border-radius:var(--radius);background:var(--bg-secondary);border:1px solid var(--border);overflow:hidden}
       .sched-strip-label{font-size:0.8rem;font-weight:700;color:var(--text-primary);white-space:nowrap;display:flex;align-items:center;gap:0.4rem;flex-shrink:0}
@@ -904,38 +917,95 @@ window.BromarPages.scheduling = (() => {
   }
 
   function openStaffModal(container, job, dateKey) {
-    // job: { number, client, site } from rail drag, OR resolved from a tile groupKey
     const groupKey = job.number || job.site || job.groupKey;
     const overlay=document.createElement('div');overlay.className='sched-modal-overlay';
     function existing(){return assignments.filter(a=>(a.type==='job'||a.type==='site')&&groupKeyForAssignment(a)===groupKey&&assignmentActiveOnDate(a,dateKey));}
-    // Derive display metadata from an existing member if present, else from the passed job
     function meta(){const on=existing();const first=on[0];return {jobNumber:first?.jobNumber||job.number||'',siteName:first?.siteName||job.site||'',clientName:first?.clientName||job.client||''};}
+    // Derive current shared note/time from the group (first non-empty)
+    function sharedNote(){const on=existing();return on.find(a=>a.notes)?.notes||'';}
+    function sharedStart(){const on=existing();const vals=[...new Set(on.map(a=>a.startTime).filter(Boolean))];return vals.length===1?vals[0]:'';}
+    function sharedEnd(){const on=existing();const vals=[...new Set(on.map(a=>a.endTime).filter(Boolean))];return vals.length===1?vals[0]:'';}
+
     function rm(){
       const on=existing();const onNames=new Set(on.map(a=>a.employeeName));
       const avail=employees.filter(e=>!onNames.has(e.name));
       const m=meta();
       const title=(m.siteName?m.siteName:'')+(m.siteName&&m.jobNumber?' - ':'')+(m.jobNumber||'')||'Job';
+      const anyUnnotified=on.some(a=>!a.notified);
       overlay.innerHTML=`<div class="sched-modal">
         <button class="sched-modal-close" id="sm-close">×</button>
         <h3>Staff — ${title}</h3>
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem;">${m.clientName||''} · ${dateKey}</p>
-        <label>Assigned (${on.length})</label>
-        <div class="sched-staff-list">${on.length===0?'<div class="sched-empty" style="padding:0.6rem">No one assigned yet</div>':''}
-          ${on.map(a=>`<div class="sched-staff-row"><span>${a.employeeName} ${a.notified?'<span style="color:var(--success);font-size:0.7rem">✓ notified</span>':'<span style="color:#f59e0b;font-size:0.7rem">● not notified</span>'}</span><button class="sched-staff-remove" data-remove-staff="${a.id}">×</button></div>`).join('')}
+
+        <label>Global Times <span style="font-weight:400;color:var(--text-secondary)">(applies to everyone; blank = none)</span></label>
+        <div class="sched-time-row">
+          <div style="flex:1"><span class="sched-time-lbl">Start</span><input class="sched-input" id="sm-global-start" type="time" value="${sharedStart()}"></div>
+          <div style="flex:1"><span class="sched-time-lbl">End</span><input class="sched-input" id="sm-global-end" type="time" value="${sharedEnd()}"></div>
+          <button class="btn-secondary" id="sm-apply-times" style="align-self:flex-end;padding:0.5rem 0.8rem;font-size:0.8rem">Apply</button>
         </div>
-        <label>Add Employee</label>
+
+        <label>Shared Note <span style="font-weight:400;color:var(--text-secondary)">(visible to all assigned)</span></label>
+        <textarea class="sched-input" id="sm-note" rows="2" style="width:100%;resize:vertical;font-size:16px" placeholder="e.g. Site induction at 6:45, hi-vis required…">${sharedNote()}</textarea>
+        <button class="btn-secondary" id="sm-apply-note" style="margin-top:0.4rem;padding:0.45rem 0.8rem;font-size:0.8rem">Apply Note to All</button>
+
+        <label style="margin-top:1rem">Assigned (${on.length}) ${on.length&&anyUnnotified?'<button class="sched-notify-all" id="sm-notify-all">🔔 Notify All</button>':''}</label>
+        <div class="sched-staff-list">${on.length===0?'<div class="sched-empty" style="padding:0.6rem">No one assigned yet</div>':''}
+          ${on.map(a=>{const t=getAssignmentTimes(a);return`<div class="sched-staff-row2">
+            <div class="ssr-main"><span class="ssr-name">${a.employeeName}</span>${a.notified?'<span class="ssr-tag ok">✓ notified</span>':'<span class="ssr-tag pend">● not notified</span>'}</div>
+            <div class="ssr-times">
+              <input class="sched-input ssr-time-in" type="time" data-ptime-start="${a.id}" value="${a.startTime||''}" title="Individual start (overrides global)">
+              <input class="sched-input ssr-time-in" type="time" data-ptime-end="${a.id}" value="${a.endTime||''}" title="Individual end (overrides global)">
+            </div>
+            <div class="ssr-actions">
+              ${!a.notified?`<button class="ssr-btn" data-notify-one="${a.id}" title="Notify">🔔</button>`:''}
+              <button class="ssr-btn danger" data-remove-staff="${a.id}" title="Remove">×</button>
+            </div>
+          </div>`;}).join('')}
+        </div>
+
+        <label style="margin-top:0.75rem">Add Employee</label>
         <select class="sched-select" id="sm-emp-add" style="width:100%"><option value="">Choose…</option>${avail.map(e=>`<option value="${e.name}">${e.name}${e.role&&e.role!=='unassigned'?' ('+roleLabel(e.role)+')':''}</option>`).join('')}</select>
         ${avail.length===0?'<p style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.4rem">Everyone available is already assigned.</p>':''}
         <div class="sched-modal-actions"><button class="btn-secondary" id="sm-done">Done</button></div>
       </div>`;
+
       overlay.querySelector('#sm-close')?.addEventListener('click',close);
       overlay.querySelector('#sm-done')?.addEventListener('click',close);
+
+      // Apply global times to everyone
+      overlay.querySelector('#sm-apply-times')?.addEventListener('click',async()=>{
+        const st=overlay.querySelector('#sm-global-start')?.value||null;
+        const et=overlay.querySelector('#sm-global-end')?.value||null;
+        for(const a of existing()){a.startTime=st;a.endTime=et;a.notified=false;await DB.saveAssignment(a);}
+        rm();
+      });
+      // Apply shared note to everyone
+      overlay.querySelector('#sm-apply-note')?.addEventListener('click',async()=>{
+        const nt=overlay.querySelector('#sm-note')?.value||'';
+        for(const a of existing()){a.notes=nt;a.notified=false;await DB.saveAssignment(a);}
+        rm();
+      });
+      // Per-person time overrides (save on change)
+      overlay.querySelectorAll('[data-ptime-start]').forEach(inp=>inp.addEventListener('change',async e=>{const a=assignments.find(x=>x.id===inp.dataset.ptimeStart);if(!a)return;a.startTime=e.target.value||null;a.notified=false;await DB.saveAssignment(a);rm();}));
+      overlay.querySelectorAll('[data-ptime-end]').forEach(inp=>inp.addEventListener('change',async e=>{const a=assignments.find(x=>x.id===inp.dataset.ptimeEnd);if(!a)return;a.endTime=e.target.value||null;a.notified=false;await DB.saveAssignment(a);rm();}));
+
+      // Notify all
+      overlay.querySelector('#sm-notify-all')?.addEventListener('click',async(ev)=>{
+        const btn=ev.target;btn.disabled=true;btn.textContent='Sending…';
+        for(const a of existing()){if(a.notified)continue;await notifyAssignment(a);}
+        rm();
+      });
+      // Notify one
+      overlay.querySelectorAll('[data-notify-one]').forEach(b=>b.addEventListener('click',async(ev)=>{
+        const a=assignments.find(x=>x.id===b.dataset.notifyOne);if(!a)return;
+        ev.target.textContent='…';await notifyAssignment(a);rm();
+      }));
+
       overlay.querySelector('#sm-emp-add')?.addEventListener('change',async e=>{
         const name=e.target.value;if(!name)return;
-        // Guard against duplicates
         if(existing().some(a=>a.employeeName===name)){rm();return;}
-        const m2=meta();
-        const a={employeeName:name,type:m2.jobNumber?'job':'site',jobNumber:m2.jobNumber||null,siteName:m2.siteName||null,clientName:m2.clientName||null,schedule:'oneoff',startDate:dateKey,skipDates:[],notes:'',location:'site',notified:false,recentlyChanged:true};
+        const m2=meta();const gs=sharedStart(),ge=sharedEnd(),gn=sharedNote();
+        const a={employeeName:name,type:m2.jobNumber?'job':'site',jobNumber:m2.jobNumber||null,siteName:m2.siteName||null,clientName:m2.clientName||null,schedule:'oneoff',startDate:dateKey,skipDates:[],notes:gn||'',location:'site',startTime:gs||null,endTime:ge||null,notified:false,recentlyChanged:true};
         await DB.saveAssignment(a);assignments.push(a);rm();
       });
       overlay.querySelectorAll('[data-remove-staff]').forEach(b=>b.addEventListener('click',async()=>{await DB.deleteAssignment(b.dataset.removeStaff);rm();}));
@@ -1076,6 +1146,13 @@ window.BromarPages.scheduling = (() => {
       else inWeek=[...keys].some(k=>k>=a.startDate&&(!a.endDate||k<=a.endDate));
       if(inWeek){a.notified=true;await DB.markNotified(a.id);}
     }
+  }
+
+  // Notify a single assignment: send push/email + flip notified
+  async function notifyAssignment(a){
+    const msg=buildDefaultMessage(a);
+    try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:a.employeeName,message:msg,type:'schedule_change'});await sb.functions.invoke('send-notification',{body:{employee_name:a.employeeName,message:msg}});}catch(err){console.warn('notifyAssignment failed:',err);}
+    a.notified=true;await DB.markNotified(a.id);
   }
 
   function bindExtendArrows(root,container) {
