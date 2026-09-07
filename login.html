@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — LOGIN
-  V1.02
+  V1.03
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -111,8 +111,9 @@
     </div>
   </div>
 
-  <div class="revision-number">V1.02</div>
+  <div class="revision-number">V1.03</div>
 
+  <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script>
     const THEME_KEY = 'bromar_ops_theme';
@@ -139,7 +140,7 @@
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
 
-        const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
+        const { error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
 
         if (error) {
           errEl.textContent = error.message || 'Sign-in failed.';
@@ -149,8 +150,27 @@
           return;
         }
 
-        // Wait until session is actually confirmed by getSession() before redirecting.
-        // This prevents the race where index.html loads before the session is persisted.
+        // is_admin gate — Ops requires admin flag on employees row
+        try {
+          const { data: emp } = await window.supabaseClient
+            .from('employees')
+            .select('is_admin, full_name')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (!emp || !emp.is_admin) {
+            await window.supabaseClient.auth.signOut();
+            errEl.textContent = 'This account does not have Ops access. Contact your administrator.';
+            errEl.classList.add('show');
+            btn.disabled = false;
+            btn.textContent = 'Sign in';
+            return;
+          }
+        } catch (err) {
+          console.warn('[login] admin check failed:', err);
+        }
+
+        // Wait until session is confirmed before redirecting
         let tries = 0;
         while (tries < 20) {
           const { data: { session } } = await window.supabaseClient.auth.getSession();
@@ -162,7 +182,6 @@
           tries++;
         }
 
-        // Fallback: session never confirmed
         errEl.textContent = 'Signed in but session not confirmed. Please refresh.';
         errEl.classList.add('show');
         btn.disabled = false;
