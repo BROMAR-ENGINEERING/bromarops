@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS · QUALITY · ITC BUILDER
    Path: js/pages/ims/ims-quality-itc-builder.js
-   Version: V1.01
+   Version: V1.02
    Registers into: window.BromarIMS.registerSubTab('quality', {...})
    Must load AFTER js/pages/ims.js in index.html.
 
@@ -10,6 +10,8 @@
    create table if not exists itc_forms (
      id uuid primary key default gen_random_uuid(),
      title text not null,
+     form_code text,                                 -- human-readable "Form ID" e.g. ITC-ELEC-001
+     category text,                                  -- free-text, dynamically grown from existing values
      description text,
      status text not null default 'draft',        -- draft | published | archived
      published_revision int,                        -- revision currently live in Hub
@@ -18,6 +20,10 @@
      created_at timestamptz not null default now(),
      updated_at timestamptz not null default now()
    );
+
+   -- If itc_forms already exists from an earlier version, run:
+   -- alter table itc_forms add column if not exists form_code text;
+   -- alter table itc_forms add column if not exists category text;
 
    create table if not exists itc_form_revisions (
      id uuid primary key default gen_random_uuid(),
@@ -43,7 +49,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V1.01';
+  const VERSION = 'V1.02';
 
   const FIELD_TYPES = [
     { type: 'text',      label: 'Text field' },
@@ -74,6 +80,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     if (window.BromarUtils?.confirmDialog) return window.BromarUtils.confirmDialog(opts);
     return confirm(opts.message || 'Are you sure?');
   }
+  function getCategories() {
+    const set = new Set();
+    forms.forEach(f => { if (f.category) set.add(f.category); });
+    return Array.from(set).sort();
+  }
 
   /* ── DATA ── */
   async function loadForms() {
@@ -96,9 +107,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     return data || [];
   }
 
-  async function createForm(title, description) {
+  async function createForm({ title, formId, category, description }) {
     const { data: formRow, error: e1 } = await sb().from('itc_forms').insert({
-      title, description, status: 'draft', latest_revision: 1, created_by: currentUser()
+      title, form_code: formId, category, description, status: 'draft', latest_revision: 1, created_by: currentUser()
     }).select().single();
     if (e1 || !formRow) { alert('Could not create form: ' + (e1?.message || 'unknown error')); return null; }
 
@@ -116,7 +127,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       .update({ fields: currentRevision.fields })
       .eq('id', currentRevision.id).select().maybeSingle();
     if (error || !data) { alert('Save failed: ' + (error?.message || 'no row updated — check permissions')); return; }
-    await sb().from('itc_forms').update({ updated_at: new Date().toISOString() }).eq('id', currentForm.id);
+    await sb().from('itc_forms').update({
+      title: currentForm.title, form_code: currentForm.form_code,
+      category: currentForm.category, description: currentForm.description,
+      updated_at: new Date().toISOString()
+    }).eq('id', currentForm.id);
     flashSaved();
   }
 
@@ -142,7 +157,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     if (e1 || !revRow) { alert('Publish failed: ' + (e1?.message || 'unknown error')); return; }
 
     const { data: formRow, error: e2 } = await sb().from('itc_forms')
-      .update({ status: 'published', published_revision: currentRevision.revision, updated_at: new Date().toISOString() })
+      .update({
+        status: 'published', published_revision: currentRevision.revision,
+        title: currentForm.title, form_code: currentForm.form_code,
+        category: currentForm.category, description: currentForm.description,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', currentForm.id).select().maybeSingle();
     if (e2 || !formRow) { alert('Publish failed on form record: ' + (e2?.message || 'unknown error')); return; }
 
@@ -208,6 +228,70 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     renderView();
   }
 
+  /* ── NEW FORM MODAL ── */
+  function showNewFormModal() {
+    const categories = getCategories();
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `
+      <div class="card" style="max-width:460px;width:100%;padding:1.5rem;animation:none;">
+        <div class="section-label" style="margin-top:0;">New ITC Form</div>
+        <div style="display:flex;flex-direction:column;gap:0.9rem;">
+          <div>
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Form Title *</label>
+            <input type="text" id="itc-modal-title" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+          </div>
+          <div>
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Form ID *</label>
+            <input type="text" id="itc-modal-formid" placeholder="e.g. ITC-ELEC-001" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+          </div>
+          <div>
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Category *</label>
+            <select id="itc-modal-category" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              ${categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+              <option value="__new__">+ Add new category…</option>
+            </select>
+            <input type="text" id="itc-modal-new-category" placeholder="New category name"
+              style="display:none;width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.5rem;">
+          </div>
+          <div>
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Description</label>
+            <textarea id="itc-modal-description" rows="3" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;resize:vertical;"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.25rem;">
+          <button class="btn-secondary" id="itc-modal-cancel">Cancel</button>
+          <button class="btn-primary" id="itc-modal-create">Create</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const catSelect = overlay.querySelector('#itc-modal-category');
+    const newCatInput = overlay.querySelector('#itc-modal-new-category');
+    if (!categories.length) { catSelect.value = '__new__'; newCatInput.style.display = 'block'; }
+    catSelect.addEventListener('change', () => {
+      newCatInput.style.display = catSelect.value === '__new__' ? 'block' : 'none';
+    });
+
+    function close() { overlay.remove(); }
+    overlay.querySelector('#itc-modal-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    overlay.querySelector('#itc-modal-create').addEventListener('click', async () => {
+      const title = overlay.querySelector('#itc-modal-title').value.trim();
+      const formId = overlay.querySelector('#itc-modal-formid').value.trim();
+      let category = catSelect.value === '__new__' ? newCatInput.value.trim() : catSelect.value;
+      const description = overlay.querySelector('#itc-modal-description').value.trim();
+
+      if (!title || !formId || !category) { alert('Form Title, Form ID and Category are required.'); return; }
+
+      close();
+      const result = await createForm({ title, formId, category, description });
+      if (result) { await loadForms(); await openForEdit(result.formRow); }
+    });
+  }
+
   /* ── VIEWS ── */
   function flashSaved() {
     const btn = root.querySelector('[data-action="save-draft"]');
@@ -239,12 +323,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             ${forms.map(f => `
               <div class="card" style="padding:1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
                 <div>
-                  <div style="font-weight:600;">${esc(f.title)}</div>
+                  <div style="font-weight:600;">${esc(f.title)} ${f.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(f.category)}</span>` : ''}</div>
                   <div style="font-size:0.85rem;color:var(--text-secondary);">
                     ${esc(f.description || '')}
                   </div>
                   <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
-                    Rev ${f.latest_revision}${f.published_revision ? ` · live: Rev ${f.published_revision}` : ' · never published'}
+                    ${esc(f.form_code || '—')} · Rev ${f.latest_revision}${f.published_revision ? ` · live: Rev ${f.published_revision}` : ' · never published'}
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:0.6rem;">
@@ -319,6 +403,21 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
               style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
           </div>
           <div>
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Form ID</label>
+            <input type="text" value="${esc(f.form_code || '')}" data-meta="form_code" ${isPublished ? 'disabled' : ''}
+              style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+          </div>
+          <div>
+            <label style="font-size:0.8rem;color:var(--text-secondary);">Category</label>
+            <select data-meta="category" ${isPublished ? 'disabled' : ''}
+              style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              ${getCategories().map(c => `<option value="${esc(c)}" ${c === f.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+              ${!getCategories().includes(f.category) && f.category ? `<option value="${esc(f.category)}" selected>${esc(f.category)}</option>` : ''}
+              <option value="__new__">+ Add new category…</option>
+            </select>
+            <input type="text" id="itc-editor-new-category" placeholder="New category name" style="display:none;width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.4rem;font-size:0.85rem;">
+          </div>
+          <div>
             <label style="font-size:0.8rem;color:var(--text-secondary);">Description</label>
             <input type="text" value="${esc(f.description || '')}" data-meta="description" ${isPublished ? 'disabled' : ''}
               style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
@@ -373,19 +472,15 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
   /* ── EVENTS (delegated) ── */
   function bindEvents(container) {
+    if (container.dataset.itcBound === '1') return; // prevent duplicate listeners on re-mount
+    container.dataset.itcBound = '1';
+
     container.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const action = btn.dataset.action;
 
-      if (action === 'new-form') {
-        const title = prompt('New form title:');
-        if (!title) return;
-        const description = prompt('Short description (optional):') || '';
-        const result = await createForm(title.trim(), description.trim());
-        if (result) { await loadForms(); await openForEdit(result.formRow); }
-        return;
-      }
+      if (action === 'new-form') { showNewFormModal(); return; }
       if (action === 'edit') {
         const form = forms.find(f => f.id === btn.dataset.id);
         if (form) await openForEdit(form);
@@ -434,6 +529,10 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     });
 
     container.addEventListener('input', (e) => {
+      if (e.target.id === 'itc-editor-new-category' && currentForm) {
+        currentForm.category = e.target.value;
+        return;
+      }
       const metaTarget = e.target.closest('[data-meta]');
       if (metaTarget && currentForm) {
         currentForm[metaTarget.dataset.meta] = metaTarget.value;
@@ -451,6 +550,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     });
 
     container.addEventListener('change', (e) => {
+      const categorySelect = e.target.closest('select[data-meta="category"]');
+      if (categorySelect && currentForm) {
+        const newCatInput = root.querySelector('#itc-editor-new-category');
+        if (categorySelect.value === '__new__') {
+          newCatInput.style.display = 'block';
+        } else {
+          newCatInput.style.display = 'none';
+          currentForm.category = categorySelect.value;
+        }
+        return;
+      }
       const fieldTarget = e.target.closest('[data-field-prop="required"]');
       if (fieldTarget && currentRevision) {
         const idx = Number(fieldTarget.dataset.index);
