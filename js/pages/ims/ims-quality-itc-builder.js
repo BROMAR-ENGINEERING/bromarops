@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS · QUALITY · ITC BUILDER
    Path: js/pages/ims/ims-quality-itc-builder.js
-   Version: V1.03
+   Version: V1.04
    Registers into: window.BromarIMS.registerSubTab('quality', {...})
    Must load AFTER js/pages/ims.js in index.html.
 
@@ -49,15 +49,26 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V1.03';
+  const VERSION = 'V1.04';
 
   const FIELD_TYPES = [
-    { type: 'text',      label: 'Text field' },
-    { type: 'dropdown',  label: 'Dropdown' },
-    { type: 'checkbox',  label: 'Checkbox' },
-    { type: 'signature', label: 'Signature' },
-    { type: 'heading',   label: 'Section heading' }
+    { type: 'text',        label: 'Text field' },
+    { type: 'dropdown',    label: 'Dropdown' },
+    { type: 'checkbox',    label: 'Checkbox' },
+    { type: 'passfail',    label: 'Pass / Fail / N/A' },
+    { type: 'signature',   label: 'Signature' },
+    { type: 'photo',       label: 'Photo attachment' },
+    { type: 'dynamiclist', label: 'Dynamic list' },
+    { type: 'heading',     label: 'Section heading' }
   ];
+  const NO_REQUIRED_TOGGLE = ['heading', 'dynamiclist'];
+  function defaultLabelFor(type) {
+    return {
+      heading: 'New section', dynamiclist: 'Non-Compliance / Issues Identified',
+      passfail: 'New checklist item', photo: 'Photo', signature: 'Signature',
+      checkbox: 'New checkbox', dropdown: 'New dropdown'
+    }[type] || 'New field';
+  }
 
   let root = null;
   let view = 'list';          // 'list' | 'editor' | 'history'
@@ -336,14 +347,14 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
   function renderList() {
     root.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div class="section-label" style="margin:0;">ITC Builder</div>
+        <div class="section-label" style="margin:0;">Inspection &amp; Testing Checklists <span style="font-size:0.75rem;font-weight:400;color:var(--text-secondary);">(ITC)</span></div>
         <button class="btn-primary" data-action="new-form">+ New Form</button>
       </div>
       ${!forms.length
         ? `<div class="ims-empty-state">No test sheets yet. Click "New Form" to build one.</div>`
         : `<div style="display:flex;flex-direction:column;gap:0.75rem;">
             ${forms.map(f => `
-              <div class="card" style="padding:1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+              <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
                 <div>
                   <div style="font-weight:600;">${esc(f.title)} ${f.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(f.category)}</span>` : ''}</div>
                   <div style="font-size:0.85rem;color:var(--text-secondary);">
@@ -367,33 +378,97 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
   }
 
   function fieldRowHTML(field, index, total) {
-    const common = `
-      <div style="display:flex;gap:0.5rem;align-items:flex-start;">
-        <div style="flex:1;">
-          <input type="text" value="${esc(field.label)}" placeholder="Field label"
-            data-field-prop="label" data-index="${index}"
-            style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-bottom:0.4rem;">
-          ${field.type === 'dropdown' ? `
-            <input type="text" value="${esc((field.options || []).join(', '))}" placeholder="Options, comma separated"
-              data-field-prop="options" data-index="${index}"
-              style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;">
-          ` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;gap:0.3rem;align-items:center;">
-          <span style="font-size:0.7rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">${FIELD_TYPES.find(t => t.type === field.type)?.label || field.type}</span>
-          ${field.type !== 'heading' ? `
-            <label style="font-size:0.75rem;color:var(--text-secondary);display:flex;gap:0.3rem;align-items:center;">
-              <input type="checkbox" ${field.required ? 'checked' : ''} data-field-prop="required" data-index="${index}"> Req
-            </label>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;gap:0.2rem;">
-          <button class="btn-secondary" style="padding:0.3rem 0.5rem;" data-action="move-up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn-secondary" style="padding:0.3rem 0.5rem;" data-action="move-down" data-index="${index}" ${index === total - 1 ? 'disabled' : ''}>↓</button>
-          <button class="btn-secondary" style="padding:0.3rem 0.5rem;color:var(--error);" data-action="remove-field" data-index="${index}">✕</button>
+    const typeLabel = FIELD_TYPES.find(t => t.type === field.type)?.label || field.type;
+    const needsRequired = !NO_REQUIRED_TOGGLE.includes(field.type);
+    return `
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.25rem;${index < total - 1 ? 'border-bottom:1px solid var(--border);' : ''}flex-wrap:wrap;">
+        <span style="font-size:0.7rem;color:var(--text-secondary);width:1.1rem;text-align:right;flex-shrink:0;">${index + 1}</span>
+        <input type="text" value="${esc(field.label)}" placeholder="Field label"
+          data-field-prop="label" data-index="${index}"
+          style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;">
+        ${field.type === 'dropdown' ? `
+          <input type="text" value="${esc((field.options || []).join(', '))}" placeholder="Options, comma separated"
+            data-field-prop="options" data-index="${index}"
+            style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.8rem;">
+        ` : ''}
+        <span style="font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;">${typeLabel}</span>
+        ${needsRequired ? `
+          <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;">
+            <input type="checkbox" ${field.required ? 'checked' : ''} data-field-prop="required" data-index="${index}"> Req
+          </label>` : ''}
+        <div style="display:flex;gap:0.15rem;flex-shrink:0;">
+          <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-down" data-index="${index}" ${index === total - 1 ? 'disabled' : ''}>↓</button>
+          <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;color:var(--error);" data-action="remove-field" data-index="${index}">✕</button>
         </div>
       </div>
     `;
-    return `<div class="card" style="padding:0.9rem;">${common}</div>`;
+  }
+
+  function fieldPreviewHTML(field, index) {
+    const req = field.required ? ' *' : '';
+    if (field.type === 'heading') {
+      return `<div style="font-weight:700;font-style:italic;color:var(--text-primary);margin:${index === 0 ? '0' : '1.25rem'} 0 0.5rem;">${esc(field.label)}</div>`;
+    }
+    if (field.type === 'passfail') {
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0;border-bottom:1px solid var(--border);gap:0.75rem;">
+          <span style="display:flex;gap:0.6rem;align-items:center;"><span style="color:var(--text-secondary);font-size:0.8rem;">${index + 1}</span> ${esc(field.label)}${req}</span>
+          <span style="display:flex;gap:0.35rem;flex-shrink:0;">
+            <button class="btn-secondary" style="padding:0.3rem 0.6rem;" disabled>✓</button>
+            <button class="btn-secondary" style="padding:0.3rem 0.6rem;" disabled>✕</button>
+            <button class="btn-secondary" style="padding:0.3rem 0.6rem;" disabled>N/A</button>
+          </span>
+        </div>`;
+    }
+    if (field.type === 'checkbox') {
+      return `<label style="display:flex;gap:0.5rem;align-items:center;padding:0.5rem 0;border-bottom:1px solid var(--border);"><input type="checkbox" disabled> ${esc(field.label)}${req}</label>`;
+    }
+    if (field.type === 'dropdown') {
+      return `<div style="padding:0.5rem 0;border-bottom:1px solid var(--border);"><label style="font-size:0.8rem;color:var(--text-secondary);">${esc(field.label)}${req}</label>
+        <select disabled style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+          <option>Select…</option>${(field.options || []).map(o => `<option>${esc(o)}</option>`).join('')}
+        </select></div>`;
+    }
+    if (field.type === 'signature') {
+      return `<div style="padding:0.5rem 0;border-bottom:1px solid var(--border);"><label style="font-size:0.8rem;color:var(--text-secondary);">${esc(field.label)}${req}</label>
+        <div style="margin-top:0.3rem;height:64px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:0.8rem;">Sign here</div></div>`;
+    }
+    if (field.type === 'photo') {
+      return `<div style="padding:0.5rem 0;border-bottom:1px solid var(--border);"><label style="font-size:0.8rem;color:var(--text-secondary);">${esc(field.label)}${req}</label>
+        <div style="margin-top:0.4rem;"><button class="btn-secondary" disabled>📷 Attach Photo</button></div></div>`;
+    }
+    if (field.type === 'dynamiclist') {
+      return `<div style="padding:0.6rem 0;border-bottom:1px solid var(--border);">
+        <label style="font-size:0.85rem;font-weight:600;">${esc(field.label)}</label>
+        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:flex-start;">
+          <span style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.4rem;">1</span>
+          <textarea disabled placeholder="${esc(field.placeholder || 'Describe...')}" rows="2"
+            style="flex:1;padding:0.5rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);resize:vertical;"></textarea>
+        </div>
+        <button class="btn-secondary" style="width:100%;margin-top:0.5rem;border-style:dashed;" disabled>${esc(field.addButtonLabel || '+ Add Issue')}</button>
+      </div>`;
+    }
+    // text (default)
+    return `<div style="padding:0.5rem 0;border-bottom:1px solid var(--border);"><label style="font-size:0.8rem;color:var(--text-secondary);">${esc(field.label)}${req}</label>
+      <input type="text" disabled placeholder="Field response" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;"></div>`;
+  }
+
+  function showPreviewModal() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `
+      <div class="card" style="max-width:640px;width:100%;max-height:85vh;overflow-y:auto;padding:1.5rem;animation:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+          <div class="section-label" style="margin:0;">Preview — ${esc(currentForm.title)}</div>
+          <button class="btn-secondary" id="itc-preview-close">Close</button>
+        </div>
+        ${currentRevision.fields.length ? currentRevision.fields.map((f, i) => fieldPreviewHTML(f, i)).join('') : '<div class="ims-empty-state">No fields to preview yet.</div>'}
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#itc-preview-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   }
 
   function renderEditor() {
@@ -411,6 +486,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           </div>
         </div>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="btn-secondary" data-action="preview">Preview</button>
           ${canDiscard ? `<button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">Discard draft</button>` : ''}
           ${!isPublished ? `<button class="btn-secondary" data-action="save-draft">Save draft</button>` : ''}
           ${!isPublished ? `<button class="btn-primary" data-action="publish">Publish</button>` : ''}
@@ -449,15 +525,18 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       </div>
 
       ${isPublished ? `<div class="ims-empty-state">This revision is live. Click "Edit" from the list to start a new draft revision.</div>` : `
-        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1rem;">
-          ${FIELD_TYPES.map(t => `<button class="btn-secondary" data-action="add-field" data-type="${t.type}">+ ${t.label}</button>`).join('')}
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+          ${FIELD_TYPES.map(t => `<button class="btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.8rem;" data-action="add-field" data-type="${t.type}">+ ${t.label}</button>`).join('')}
         </div>
       `}
 
-      <div style="display:flex;flex-direction:column;gap:0.6rem;">
+      <div class="card" style="padding:${r.fields.length ? '0.25rem 0.75rem' : '2rem'};">
         ${r.fields.length
           ? r.fields.map((field, i) => isPublished
-              ? `<div class="card" style="padding:0.9rem;"><strong>${esc(field.label)}</strong> <span style="color:var(--text-secondary);font-size:0.8rem;">(${field.type}${field.required ? ', required' : ''})</span></div>`
+              ? `<div style="padding:0.45rem 0.25rem;${i < r.fields.length - 1 ? 'border-bottom:1px solid var(--border);' : ''}display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                  <span>${esc(field.label)}</span>
+                  <span style="color:var(--text-secondary);font-size:0.75rem;">${FIELD_TYPES.find(t => t.type === field.type)?.label || field.type}${field.required ? ', required' : ''}</span>
+                </div>`
               : fieldRowHTML(field, i, r.fields.length)
             ).join('')
           : `<div class="ims-empty-state">No fields yet. Add one above.</div>`}
@@ -526,13 +605,14 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (action === 'save-draft') { await saveDraft(); return; }
       if (action === 'publish') { await publishRevision(); return; }
       if (action === 'discard-draft') { await discardDraft(); return; }
+      if (action === 'preview') { showPreviewModal(); return; }
 
       if (action === 'add-field') {
-        currentRevision.fields.push({
-          id: newFieldId(), type: btn.dataset.type,
-          label: btn.dataset.type === 'heading' ? 'New section' : 'New field',
-          required: false, options: btn.dataset.type === 'dropdown' ? [] : undefined
-        });
+        const type = btn.dataset.type;
+        const field = { id: newFieldId(), type, label: defaultLabelFor(type), required: false };
+        if (type === 'dropdown') field.options = [];
+        if (type === 'dynamiclist') { field.placeholder = 'Describe...'; field.addButtonLabel = '+ Add Issue'; }
+        currentRevision.fields.push(field);
         renderEditor();
         return;
       }
@@ -595,7 +675,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
   /* ── MOUNT ── */
   window.BromarIMS.registerSubTab('quality', {
     id: 'itc-builder',
-    label: 'ITC Builder',
+    label: 'Inspection & Testing Checklists (ITC)',
     version: VERSION,
     async render(container) {
       root = container;
