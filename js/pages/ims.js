@@ -1,15 +1,15 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
-   Version: V1.00
-   Tabs: Safety (ISO 45001) / Quality (ISO 9001) / Environment (ISO 14001)
+   V1.02
+   Tabs: Safety (ISO 45001) / Quality (ISO 9001) / Environment (ISO 14001) / Bromar Hub
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy() })
-   sectionId = 'safety' | 'quality' | 'environment'
+   sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub'
    Sub-tab files must load AFTER ims.js in index.html.
    ============================================================ */
 
-window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [] } };
+window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], 'bromar-hub': [] } };
 window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (section, subtab) {
   if (!window.BromarIMS.subtabs[section]) window.BromarIMS.subtabs[section] = [];
   window.BromarIMS.subtabs[section].push(subtab);
@@ -18,12 +18,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.00';
+  const VERSION = 'V1.02';
 
   const SECTIONS = [
     { id: 'safety',      label: 'Safety',      iso: 'ISO 45001' },
     { id: 'quality',     label: 'Quality',     iso: 'ISO 9001' },
-    { id: 'environment', label: 'Environment', iso: 'ISO 14001' }
+    { id: 'environment', label: 'Environment', iso: 'ISO 14001' },
+    { id: 'bromar-hub',  label: 'Bromar Hub',  iso: '' }
   ];
 
   let activeSection = 'safety';
@@ -34,15 +35,15 @@ window.BromarPages.ims = (() => {
   function logoHTML() {
     return `
       <div class="page-logo">
-        <img class="light-logo" src="assets/Bromar-Primary-Logo-Full-Colour.png" alt="Bromar">
-        <img class="dark-logo" src="assets/Bromar-Primary-Logo-Reverse-White.png" alt="Bromar">
+        <img class="light-logo" src="assets/logo/bromar-logo-colour.png" alt="Bromar">
+        <img class="dark-logo"  src="assets/logo/bromar-logo-white.png"  alt="Bromar">
       </div>`;
   }
 
   function sectionTabsHTML() {
     return SECTIONS.map(s => `
       <button class="ims-tab ${s.id === activeSection ? 'active' : ''}" data-section="${s.id}">
-        ${s.label}<span class="ims-tab-iso">${s.iso}</span>
+        ${s.label}${s.iso ? `<span class="ims-tab-iso">${s.iso}</span>` : ''}
       </button>
     `).join('');
   }
@@ -65,7 +66,7 @@ window.BromarPages.ims = (() => {
   function renderBody(container) {
     const subs = window.BromarIMS.subtabs[activeSection] || [];
     const body = container.querySelector('#ims-body');
-    if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn(e); } }
+    if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn('[ims]', e); } }
     currentSub = null;
 
     if (!subs.length) {
@@ -117,7 +118,7 @@ window.BromarPages.ims = (() => {
   }
 
   function destroy() {
-    if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn(e); } }
+    if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn('[ims]', e); } }
     currentSub = null;
   }
 
