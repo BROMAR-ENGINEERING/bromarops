@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — MAIN SHELL
-  V1.20
+  V1.21
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -33,42 +33,53 @@
 <body>
   <div id="app"></div>
 
-  <!-- Config first: Supabase URL/key -->
+  <!-- ══════════════════════════════════════════════════════════════
+       Config, auth, utilities, report kit — REQUIRED for the app.
+       If any of these fail, the app cannot boot.
+       ══════════════════════════════════════════════════════════════ -->
   <script src="js/config.js"></script>
-
-  <!-- Auth: blocks SPA render until session confirmed -->
   <script src="js/auth.js"></script>
-
-  <!-- Utilities available to every page -->
   <script src="js/utils.js"></script>
-
-  <!-- Shared report styling kit -->
   <script src="js/bromar-report-kit.js"></script>
 
-  <!-- Page modules -->
-  <script src="js/pages/dashboard.js"></script>
-  <script src="js/pages/jobs.js"></script>
-  <script src="js/pages/quotes.js"></script>
-  <script src="js/pages/scheduling.js"></script>
-  <script src="js/pages/timesheets.js"></script>
-  <script src="js/pages/employees.js"></script>
-  <script src="js/pages/ims.js"></script>
-  <script src="js/pages/ims/ims-quality-itc-builder.js"></script>
-  <script src="js/pages/ims/ims-safety-approved-swms.js"></script>
-  <script src="js/pages/fleet.js"></script>
-  <script src="js/pages/equipment.js"></script>
-  <script src="js/pages/clients.js"></script>
-  <script src="js/pages/tasks.js"></script>
-  <script src="js/pages/materials.js"></script>
-  <script src="js/pages/admin.js"></script>
+  <!-- ══════════════════════════════════════════════════════════════
+       Page modules — each guarded with onerror. A missing file will
+       log a warning and skip that page but the app keeps booting.
+       ══════════════════════════════════════════════════════════════ -->
+  <script>
+    (function loadPages() {
+      const files = [
+        'js/pages/dashboard.js',
+        'js/pages/jobs.js',
+        'js/pages/quotes.js',
+        'js/pages/scheduling.js',
+        'js/pages/timesheets.js',
+        'js/pages/employees.js',
+        'js/pages/ims.js',
+        'js/pages/ims/ims-quality-itc-builder.js',
+        'js/pages/ims/ims-safety-approved-swms.js',
+        'js/pages/fleet.js',
+        'js/pages/equipment.js',
+        'js/pages/clients.js',
+        'js/pages/tasks.js',
+        'js/pages/materials.js',
+        'js/pages/admin.js',
+        'js/pages/testtag.js',
+        'js/pages/_components.js'
+      ];
+      files.forEach((src) => {
+        const s = document.createElement('script');
+        s.src = src;
+        // Synchronous load order preserved: async=false keeps DOM parse
+        // order for scripts inserted this way.
+        s.async = false;
+        s.onerror = () => console.warn('[shell] optional module missing:', src);
+        document.body.appendChild(s);
+      });
+    })();
+  </script>
 
-  <!-- Sub-modules -->
-  <script src="js/pages/testtag.js"></script>
-
-  <!-- Dev-only component library (accessible via #_components) -->
-  <script src="js/pages/_components.js"></script>
-
-  <!-- Core last -->
+  <!-- Core last: initialises the SPA after auth is ready -->
   <script src="js/core.js"></script>
 
   <!-- PWA service worker registration + iOS gesture block -->
