@@ -1,16 +1,16 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.03
-   Tabs: Safety / Quality / Environment / Bromar Hub
+   Version: V1.04
+   Tabs: Safety / Quality / Environment / Bromar Hub / Other
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy() })
-   sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub'
+   sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub' | 'other'
    Sub-tab files must load AFTER ims.js in index.html.
    ============================================================ */
 
-window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], 'bromar-hub': [] } };
+window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], 'bromar-hub': [], other: [] } };
 window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (section, subtab) {
   if (!window.BromarIMS.subtabs[section]) window.BromarIMS.subtabs[section] = [];
   window.BromarIMS.subtabs[section].push(subtab);
@@ -19,13 +19,14 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.03';
+  const VERSION = 'V1.04';
 
   const SECTIONS = [
     { id: 'safety',      label: 'Safety',      desc: 'SWMS, Incidents, Hazards' },
     { id: 'quality',     label: 'Quality',     desc: 'ITC, Testing, Policies' },
     { id: 'environment', label: 'Environment', desc: 'Policies, Procedures' },
-    { id: 'bromar-hub',  label: 'Bromar Hub',  desc: 'Job Types, Customisation' }
+    { id: 'bromar-hub',  label: 'Bromar Hub',  desc: 'Job Types, Customisation' },
+    { id: 'other',       label: 'Other',       desc: 'Forms, Policies, Plans' }
   ];
 
   let activeSection = 'safety';
