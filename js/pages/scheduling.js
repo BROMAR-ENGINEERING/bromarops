@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.30
+   V1.31
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.30';
+  const PAGE_VERSION = 'V1.31';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -501,6 +501,11 @@ window.BromarPages.scheduling = (() => {
       .card-edit-center{align-self:center;margin:0.2rem 0;padding:0.2rem 0.7rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);font-family:'Outfit',sans-serif;font-size:0.62rem;font-weight:600;color:var(--text-secondary);cursor:pointer;transition:all 0.15s;opacity:0}
       .sched-job-card:hover .card-edit-center{opacity:1}
       .card-edit-center:hover{border-color:var(--accent);color:var(--accent)}
+      .sched-job-card .job-sub-line{font-size:0.65rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;font-weight:600}
+      .card-people{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
+      .card-person{width:20px;height:20px;border-radius:50%;background:var(--accent);color:white;font-size:0.55rem;font-weight:700;display:flex;align-items:center;justify-content:center;opacity:0.6}
+      .card-person.notified{opacity:1;box-shadow:0 0 0 2px var(--success)}
+      .card-people .jt-empty{font-size:0.6rem;color:var(--error);font-weight:600}
       .sched-vt-btn{padding:0.4rem 0.9rem;border:none;background:var(--bg-main);font-family:'Outfit',sans-serif;font-size:0.8rem;font-weight:600;color:var(--text-secondary);cursor:pointer;transition:all 0.15s}
       .sched-vt-btn:hover{color:var(--text-primary)}
       .sched-vt-btn.active{background:var(--accent);color:white}
@@ -637,11 +642,11 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .ja-roster{font-size:0.7rem;opacity:0.6;padding:1px}
       .sm-roster-lock{font-size:0.75rem;opacity:0.6;display:flex;align-items:center}
       .sched-job-card .ja-btn.notif-btn:hover{color:var(--accent)}
-      .sched-job-card .card-extend{position:absolute;top:50%;width:20px;height:34px;border:none;background:var(--accent);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;opacity:0;transition:opacity 0.15s,background 0.15s;z-index:2;pointer-events:auto}
-      .sched-job-card:hover .card-extend{opacity:0.8}
+      .sched-job-card .card-extend{position:absolute;bottom:4px;width:18px;height:24px;border:none;background:var(--accent);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;opacity:0;transition:opacity 0.15s,background 0.15s;z-index:2;pointer-events:auto}
+      .sched-job-card:hover .card-extend{opacity:0.75}
       .sched-job-card:hover .card-extend:hover{opacity:1;background:var(--accent-light)}
-      .sched-job-card .card-extend-left{left:-11px;transform:translateY(-50%);border-radius:5px 0 0 5px}
-      .sched-job-card .card-extend-right{right:-11px;transform:translateY(-50%);border-radius:0 5px 5px 0}
+      .sched-job-card .card-extend-left{left:-9px;border-radius:5px 0 0 5px}
+      .sched-job-card .card-extend-right{right:-9px;border-radius:0 5px 5px 0}
       .sched-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.25rem}
       .sched-panel-title{font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;color:var(--text-primary)}
       .sched-list-scroll{display:flex;flex-direction:column;gap:0.4rem;max-height:260px;overflow-y:auto}
@@ -744,6 +749,33 @@ window.BromarPages.scheduling = (() => {
   }
 
   /* ═══════════════════════════════════════ DESKTOP ═══════════════════════════════════════ */
+  // Shared tile used by BOTH employee and job views.
+  // people = array of assignments on this tile (job view groups; employee view is single). Pass [a] for employee.
+  function renderCard(a, dk, people) {
+    const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isJobLike=(a.type==='job'||a.type==='site');
+    const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked&&!a.rdoAuto;
+    const st=isJobLike?cardStatus(a):'';
+    // Top line = site (or leave/workshop label); sub line = job number if present
+    let topLabel, subLabel='';
+    if(a.type==='workshop'){topLabel='Workshop/Office';}
+    else if(a.type==='leave'){topLabel=a.siteName||'Leave';}
+    else{topLabel=a.siteName||a.jobNumber||'?';subLabel=(a.siteName&&a.jobNumber)?a.jobNumber:'';}
+    const circles=(people&&people.length>1)?`<div class="card-people">${people.map(p=>`<span class="card-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':''}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>`:'';
+    return `<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${isWorkshop?'is-workshop':''} ${isJobLike?'jstatus-'+st:''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" ${!isJobLike?`style="border-left-color:${bc}"`:''}>
+      <button class="card-extend card-extend-left" data-extend-left="${a.id}" data-extend-date="${dk}" title="Extend to previous day">◂</button>
+      <button class="card-extend card-extend-right" data-extend-right="${a.id}" data-extend-date="${dk}" title="Extend to next day">▸</button>
+      ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}${isLeave?`<span class="job-type-tag" style="background:${bc}20;color:${bc};">LEAVE</span>`:''}${isWorkshop?'<span class="job-type-tag" style="background:#f59e0b20;color:#f59e0b;">🔧 WORKSHOP</span>':''}
+      <div class="job-top">${isLinked?`<span class="job-chain ${isSite?'is-site-chain':''}" title="${scheduleLabel(a.schedule)}">${CHAIN_ICON}</span>`:''}<span class="job-num">${topLabel}</span></div>
+      ${subLabel?`<span class="job-sub-line">${subLabel}</span>`:''}
+      ${getAssignmentTimes(a)?`<span class="job-times">🕑 ${getAssignmentTimes(a)}</span>`:''}
+      ${!isWorkshop&&a.location==='workshop'?'<span class="job-loc-badge">🔧 Workshop</span>':''}
+      ${a.notes?`<span class="job-notes" title="${a.notes.replace(/"/g,'&quot;')}">📝 ${a.notes.length>20?a.notes.slice(0,20)+'…':a.notes}</span>`:''}
+      ${circles}
+      ${!a.rdoAuto?`<button class="card-edit-center" data-editnote="${a.id}" title="Edit times & notes">✎ Edit</button>`:''}
+      <div class="job-actions">${a.rdoAuto?'<span class="ja-roster" title="From RDO roster">🔒</span>':`<button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify">🔔</button>${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}<button class="ja-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button>`}</div>
+    </div>`;
+  }
+
   function legendBar() {
     return `<div class="sched-legend">
       <div class="sched-legend-items">
@@ -801,18 +833,7 @@ window.BromarPages.scheduling = (() => {
             <button class="sched-emp-hide" data-hide-emp="${emp.id}" title="Hide">✕</button></div>
           ${days.map(d=>{const dk=formatDateKey(d);const ea=getEffectiveAssignments(emp.name,dk);return`
             <div class="sched-day-cell ${isToday(d)?'today-col':''}" data-emp="${emp.name}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${ea.map(a=>{const lbl=getAssignmentLabel(a);const bc=getAssignmentBorderColor(a);const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isJobLike=(a.type==='job'||a.type==='site');const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked&&!a.rdoAuto;const st=isJobLike?cardStatus(a):'';
-                return`<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${isWorkshop?'is-workshop':''} ${isJobLike?'jstatus-'+st:''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" ${!isJobLike?`style="border-left-color:${bc}"`:''}>
-                  <button class="card-extend card-extend-left" data-extend-left="${a.id}" data-extend-date="${dk}" title="Extend to previous day">◂</button>
-                  <button class="card-extend card-extend-right" data-extend-right="${a.id}" data-extend-date="${dk}" title="Extend to next day">▸</button>
-                  ${isSite?'<span class="job-type-tag" style="background:#0ea5e920;color:#0ea5e9;">SITE</span>':''}${isLeave?`<span class="job-type-tag" style="background:${bc}20;color:${bc};">LEAVE</span>`:''}${isWorkshop?'<span class="job-type-tag" style="background:#f59e0b20;color:#f59e0b;">🔧 WORKSHOP</span>':''}
-                  <div class="job-top">${isLinked?`<span class="job-chain ${isSite?'is-site-chain':''}" title="${scheduleLabel(a.schedule)}">${CHAIN_ICON}</span>`:''}<span class="job-num">${lbl}</span></div>
-                  ${getAssignmentTimes(a)?`<span class="job-times">🕑 ${getAssignmentTimes(a)}</span>`:''}
-                  ${!isWorkshop&&a.location==='workshop'?'<span class="job-loc-badge">🔧 Workshop</span>':''}
-                  ${a.notes?`<span class="job-notes" title="${a.notes.replace(/"/g,'&quot;')}">📝 ${a.notes.length>20?a.notes.slice(0,20)+'…':a.notes}</span>`:''}
-                  ${!a.rdoAuto?`<button class="card-edit-center" data-editnote="${a.id}" title="Edit times & notes">✎ Edit</button>`:''}
-                  <div class="job-actions">${a.rdoAuto?'<span class="ja-roster" title="From RDO roster">🔒</span>':`<button class="ja-btn notif-btn" data-notify="${a.id}" title="Notify employee">🔔</button>${isIndef&&isLinked?`<button class="ja-btn end-btn" data-end="${a.id}" data-end-date="${dk}" title="End assignment here">⏹</button>`:''}<button class="ja-btn" data-remove="${a.id}" data-remove-date="${dk}" data-remove-linked="${isLinked}" title="Remove">×</button>`}</div>
-                </div>`;}).join('')}
+              ${ea.map(a=>renderCard(a, dk, [a])).join('')}
               ${ea.length===0?`<button class="cell-add" data-cell-emp="${emp.name}" data-cell-date="${dk}" title="Assign">+</button>`:''}
             </div>`;}).join('')}`).join('')}
         ${filtered.length===0?'<div class="sched-empty" style="grid-column:1/-1;">No employees match your filter.</div>':''}
@@ -920,11 +941,15 @@ window.BromarPages.scheduling = (() => {
           ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
           ${days.map(d=>{const dk=formatDateKey(d);const groups=getJobGroupsForDate(dk);return`
             <div class="sched-job-daycell ${isToday(d)?'today-col':''}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${groups.map(g=>{const st=jobTileStatus(g);const lbl=(g.siteName?g.siteName:'')+(g.siteName&&g.jobNumber?' - ':'')+(g.jobNumber||'');const anyUn=g.people.some(p=>!p.notified);return`
-                <div class="sched-jobtile status-${st}" draggable="true" data-jobkey="${g.jobNumber||g.siteName}" data-date="${dk}">
-                  <div class="jt-top"><span class="jt-label">${lbl||'?'}</span><div class="jt-top-right">${g.people.length&&anyUn?`<button class="jt-bell" data-notify-tile="${g.jobNumber||g.siteName}" data-notify-date="${dk}" title="Notify all">🔔</button>`:''}<span class="jt-dot"></span></div></div>
-                  ${g.clientName?`<span class="jt-client">${g.clientName}</span>`:''}
-                  <div class="jt-people">${g.people.length===0?'<span class="jt-empty">⚠ No one assigned</span>':g.people.map(p=>`<span class="jt-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':' (not notified)'}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>
+              ${groups.map(g=>{const st=jobTileStatus(g);const rep=g.people[0];const bc=st==='red'?'var(--error)':st==='amber'?'#f59e0b':st==='green'?'var(--success)':'#3b82f6';const anyUn=g.people.some(p=>!p.notified);const times=rep?getAssignmentTimes(rep):'';const note=g.people.find(p=>p.notes)?.notes||'';return`
+                <div class="sched-job-card jstatus-${st}" draggable="true" data-jobkey="${g.jobNumber||g.siteName}" data-date="${dk}" style="cursor:pointer">
+                  ${g.siteName?`<div class="job-top"><span class="job-num">${g.siteName}</span></div>`:''}
+                  ${g.jobNumber?`<span class="job-sub-line">${g.jobNumber}</span>`:''}
+                  ${times?`<span class="job-times">🕑 ${times}</span>`:''}
+                  ${note?`<span class="job-notes" title="${note.replace(/"/g,'&quot;')}">📝 ${note.length>20?note.slice(0,20)+'…':note}</span>`:''}
+                  <div class="card-people">${g.people.length===0?'<span class="jt-empty">⚠ None</span>':g.people.map(p=>`<span class="card-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':' (not notified)'}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>
+                  <button class="card-edit-center" data-staff-group="${g.jobNumber||g.siteName}" data-staff-date="${dk}" title="Edit staff, times & notes">✎ Edit</button>
+                  <div class="job-actions">${anyUn&&g.people.length?`<button class="ja-btn notif-btn" data-notify-tile="${g.jobNumber||g.siteName}" data-notify-date="${dk}" title="Notify all">🔔</button>`:''}<button class="ja-btn" data-remove-group="${g.jobNumber||g.siteName}" data-remove-groupdate="${dk}" title="Remove job">×</button></div>
                 </div>`;}).join('')}
               ${groups.length===0?'<div class="sched-jobcell-empty">Drop a job here</div>':''}
             </div>`;}).join('')}
@@ -948,11 +973,12 @@ window.BromarPages.scheduling = (() => {
         if(!job)return;openStaffModal(container, job, dk);
       });
     });
-    dt.querySelectorAll('.sched-jobtile').forEach(tile=>{
-      tile.addEventListener('click',e=>{if(e.target.closest('[data-notify-tile]'))return;const jn=tile.dataset.jobkey;const dk=tile.dataset.date;const job=jobs.find(j=>j.number===jn)||{number:'',site:'',client:'',groupKey:jn};openStaffModal(container,job,dk);});
+    dt.querySelectorAll('.sched-job-card[data-jobkey]').forEach(tile=>{
+      tile.addEventListener('click',e=>{if(e.target.closest('[data-notify-tile]')||e.target.closest('[data-remove-group]')||e.target.closest('[data-staff-group]'))return;const jn=tile.dataset.jobkey;const dk=tile.dataset.date;const job=jobs.find(j=>j.number===jn)||{number:'',site:'',client:'',groupKey:jn};openStaffModal(container,job,dk);});
       tile.addEventListener('dragstart',e=>{e.stopPropagation();jobDragData={removeGroup:tile.dataset.jobkey,removeDate:tile.dataset.date};e.dataTransfer.effectAllowed='move';tile.style.opacity='0.5';});
       tile.addEventListener('dragend',()=>{tile.style.opacity='1';dt.querySelectorAll('.rail-drop').forEach(el=>el.classList.remove('rail-drop'));});
     });
+    dt.querySelectorAll('[data-staff-group]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const jn=b.dataset.staffGroup;const dk=b.dataset.staffDate;const job=jobs.find(j=>j.number===jn)||{number:'',site:'',client:'',groupKey:jn};openStaffModal(container,job,dk);}));
     dt.querySelectorAll('[data-notify-tile]').forEach(b=>b.addEventListener('click',async e=>{
       e.stopPropagation();
       const gk=b.dataset.notifyTile;const dk=b.dataset.notifyDate;
@@ -961,6 +987,17 @@ window.BromarPages.scheduling = (() => {
       for(const a of people){await notifyAssignment(a);}
       rerender(container);
     }));
+    dt.querySelectorAll('[data-remove-group]').forEach(b=>b.addEventListener('click',e=>{
+      e.stopPropagation();
+      const gk=b.dataset.removeGroup;const dk=b.dataset.removeGroupdate;
+      const toRemove=assignments.filter(a=>(a.type==='job'||a.type==='site')&&groupKeyForAssignment(a)===gk&&assignmentActiveOnDate(a,dk));
+      if(!toRemove.length)return;
+      showConfirm(`Remove <strong>${gk}</strong> and all ${toRemove.length} assigned ${toRemove.length===1?'person':'people'} from ${dk}?`,async()=>{
+        for(const a of toRemove){await DB.deleteAssignment(a.id);}
+        rerender(container);
+      });
+    }));
+    bindExtendArrows(dt, container);
     const rail=dt.querySelector('#sched-job-rail');
     if(rail){
       rail.addEventListener('drop',e=>{
