@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.28
+   V1.29
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.28';
+  const PAGE_VERSION = 'V1.29';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -92,24 +92,23 @@ window.BromarPages.scheduling = (() => {
     async fetchJobs() {
       try {
         const sb = await this.init();
-        let { data, error } = await sb.from('jobs').select('*').order('created_at', { ascending: false });
-        if (error && (error.code === '42703' || error.message?.includes('created_at'))) {
-          // created_at column doesn't exist — retry without ordering
-          ({ data, error } = await sb.from('jobs').select('*'));
-        }
+        const { data, error } = await sb.from('job_number_register')
+          .select('job_number, client_name, site_name, site_address, status')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false });
         if (error) {
           if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            console.warn('Jobs table does not exist yet');
+            console.warn('job_number_register table not found');
             return [];
           }
           throw error;
         }
         return (data || []).map(j => ({
-          number: j.job_number || j.number || j.job_no || '?',
-          client: j.client_name || j.client || '',
-          site: j.site_name || j.site_address || j.site || '',
+          number: j.job_number || '?',
+          client: j.client_name || '',
+          site: j.site_name || j.site_address || '',
           status: j.status || 'active',
-          priority: j.priority || 'medium'
+          priority: 'medium'
         }));
       } catch (err) {
         console.warn('Jobs fetch failed:', err.message);
@@ -611,7 +610,8 @@ window.BromarPages.scheduling = (() => {
       .sched-job-card .job-top{display:flex;align-items:center;gap:0.3rem}
       .sched-job-card .job-chain{color:var(--accent);display:flex;align-items:center;flex-shrink:0;opacity:0.7}
       .sched-job-card .job-chain.is-site-chain{color:#0ea5e9}
-      .sched-job-card .job-num{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:0.7rem}
+      .sched-job-card .job-num{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .sched-job-card .job-top{min-width:0}
       .sched-job-card .job-client{color:var(--text-secondary);font-size:0.65rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .sched-job-card .job-type-tag{font-size:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:0.02rem 0.25rem;border-radius:3px;align-self:flex-start}
       .sched-job-card .job-actions{position:absolute;top:2px;right:3px;display:flex;gap:2px;opacity:0;transition:opacity 0.15s}
@@ -683,7 +683,7 @@ window.BromarPages.scheduling = (() => {
       .sm-assign-card.is-site{border-left:3px solid #0ea5e9}
       .sm-assign-card.is-job{border-left:3px solid var(--accent)}
       .sm-assign-left{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
-      .sm-assign-left .a-label{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:0.8rem}
+      .sm-assign-left .a-label{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .sm-assign-left .a-sub{font-size:0.75rem;color:var(--text-secondary)}
       .sm-assign-left .a-type{font-size:0.55rem;font-weight:700;text-transform:uppercase;padding:0.05rem 0.3rem;border-radius:3px;align-self:flex-start}
       .sm-assign-left .a-sched{font-size:0.6rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.3rem}
@@ -1132,24 +1132,40 @@ window.BromarPages.scheduling = (() => {
 
   function openNotesEditor(container, a) {
     const overlay=document.createElement('div');overlay.className='sched-confirm-overlay';
-    overlay.innerHTML=`<div class="sched-confirm" style="text-align:left">
-      <p style="font-weight:700;margin-bottom:0.25rem">Notes — ${a.employeeName}</p>
-      <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.6rem">${getAssignmentLabel(a)} · ${a.startDate}</p>
+    overlay.innerHTML=`<div class="sched-confirm" style="text-align:left;max-width:420px">
+      <p style="font-weight:700;margin-bottom:0.25rem">Edit — ${a.employeeName}</p>
+      <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">${getAssignmentLabel(a)} · ${a.startDate}</p>
+      <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem">Times <span style="font-weight:400">(optional)</span></label>
+      <div class="sched-time-row" style="margin-bottom:0.5rem">
+        <div style="flex:1"><span class="sched-time-lbl">Start</span><input class="sched-input" id="ne-start" type="time" value="${a.startTime||''}" style="width:100%"></div>
+        <div style="flex:1"><span class="sched-time-lbl">End</span><input class="sched-input" id="ne-end" type="time" value="${a.endTime||''}" style="width:100%"></div>
+      </div>
+      <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem">Location</label>
+      <div class="sched-loc-toggle" style="margin-bottom:0.5rem">
+        <button class="sched-loc-btn ${(a.location||'site')==='site'?'active':''}" data-ne-loc="site">On Site</button>
+        <button class="sched-loc-btn ${a.location==='workshop'?'active':''}" data-ne-loc="workshop">Workshop/Office</button>
+      </div>
+      <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem">Additional Notes <span style="font-weight:400">(visible to employee)</span></label>
       <textarea class="sched-input" id="ne-msg" rows="3" style="width:100%;resize:vertical;font-size:16px" placeholder="Additional notes visible to the employee…">${a.notes||''}</textarea>
       <div class="sched-confirm-actions" style="margin-top:1rem"><button class="btn-secondary" id="ne-cancel">Cancel</button><button class="btn-primary" id="ne-save">Save</button></div>
     </div>`;
     const inner=overlay.querySelector('.sched-confirm');
     inner.addEventListener('mousedown',ev=>ev.stopPropagation());
+    let locVal=a.location||'site';
+    overlay.querySelectorAll('[data-ne-loc]').forEach(b=>b.addEventListener('click',()=>{locVal=b.dataset.neLoc;overlay.querySelectorAll('[data-ne-loc]').forEach(x=>x.classList.toggle('active',x.dataset.neLoc===locVal));}));
     overlay.querySelector('#ne-cancel').addEventListener('click',()=>overlay.remove());
     overlay.querySelector('#ne-save').addEventListener('click',async()=>{
+      a.startTime=overlay.querySelector('#ne-start')?.value||null;
+      a.endTime=overlay.querySelector('#ne-end')?.value||null;
+      a.location=locVal;
       a.notes=overlay.querySelector('#ne-msg')?.value||'';
-      a.notified=false; // note changed → needs re-notify
+      a.notified=false; // details changed → needs re-notify
       await DB.saveAssignment(a);
       overlay.remove();rerender(container);
     });
     overlay.addEventListener('mousedown',ev=>{if(ev.target===overlay)overlay.remove();});
     document.body.appendChild(overlay);
-    overlay.querySelector('#ne-msg')?.focus();
+    overlay.querySelector('#ne-start')?.focus();
   }
 
   async function removeAssignment(container,aId){await DB.deleteAssignment(aId);rerender(container);}
@@ -1277,7 +1293,7 @@ window.BromarPages.scheduling = (() => {
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem;">${empName} · starting ${date}</p>
         <div class="sched-modal-tabs">
           <button class="sched-modal-tab ${activeTab==='job'?'active':''}" data-tab="job">Job Number</button>
-          <button class="sched-modal-tab ${activeTab==='pinned'?'active':''}" data-tab="pinned">★ Pinned</button>
+          <button class="sched-modal-tab ${activeTab==='pinned'?'active':''}" data-tab="pinned">★ Favourites</button>
           <button class="sched-modal-tab ${activeTab==='site'?'active':''}" data-tab="site">Sites</button>
           <button class="sched-modal-tab ${activeTab==='leave'?'active':''}" data-tab="leave" style="${activeTab==='leave'?'color:#8b5cf6;border-bottom-color:#8b5cf6':''}">Leave</button>
         </div>
@@ -1287,9 +1303,9 @@ window.BromarPages.scheduling = (() => {
           <div class="sched-job-results">${fJobs.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs table found':'No matching jobs'}</div>`:''}
             ${fJobs.map(j=>`<div class="sched-job-result ${selectedJob?.number===j.number?'selected':''}" data-jnum="${j.number}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client}${j.site?' · '+j.site:''}</span></div><span class="sched-priority-tag" style="background:${priorityColor(j.priority)}20;color:${priorityColor(j.priority)}">${j.priority}</span></div>`).join('')}</div>
         `:activeTab==='pinned'?`
-          <label>Pinned Sites</label>
-          <div class="sched-job-results">${pinnedSites.length===0?'<div class="sched-empty">No pinned sites yet — star a site from the Sites tab</div>':''}
-            ${pinnedSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span></div><button class="sched-pin-btn pinned" data-unpin="${s.id}" title="Unpin">★</button></div></div>`).join('')}</div>
+          <label>Favourite Sites</label>
+          <div class="sched-job-results">${pinnedSites.length===0?'<div class="sched-empty">No favourites yet — tap the ☆ on a site in the Sites tab</div>':''}
+            ${pinnedSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span></div><button class="sched-pin-btn pinned" data-unpin="${s.id}" title="Remove favourite">★</button></div></div>`).join('')}</div>
           <label>Job Number <span style="font-weight:400;color:var(--text-secondary)">(optional)</span></label>
           <input class="sched-input" id="am-site-job" type="text" placeholder="Attach a job number…" value="${siteJobVal}">
         `:activeTab==='site'?`
