@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — MAIN SHELL
-  V1.21
+  V1.23
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -35,16 +35,18 @@
 
   <!-- ══════════════════════════════════════════════════════════════
        Config, auth, utilities, report kit — REQUIRED for the app.
-       If any of these fail, the app cannot boot.
        ══════════════════════════════════════════════════════════════ -->
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/bromar-report-kit.js"></script>
 
+  <!-- IMS-specific shared kit (extends bromar-report-kit for IMS docs) -->
+  <script src="js/pages/ims/ims-report-kit.js"></script>
+  <script src="js/pages/ims/ims-document-builder.js"></script>
+
   <!-- ══════════════════════════════════════════════════════════════
-       Page modules — each guarded with onerror. A missing file will
-       log a warning and skip that page but the app keeps booting.
+       Page modules — each guarded with onerror.
        ══════════════════════════════════════════════════════════════ -->
   <script>
     (function loadPages() {
@@ -56,7 +58,7 @@
         'js/pages/timesheets.js',
         'js/pages/employees.js',
         'js/pages/ims.js',
-        'js/pages/ims/ims-quality-itc-builder.js',
+        'js/pages/ims/ims-placeholders.js',
         'js/pages/ims/ims-safety-approved-swms.js',
         'js/pages/fleet.js',
         'js/pages/equipment.js',
@@ -70,8 +72,6 @@
       files.forEach((src) => {
         const s = document.createElement('script');
         s.src = src;
-        // Synchronous load order preserved: async=false keeps DOM parse
-        // order for scripts inserted this way.
         s.async = false;
         s.onerror = () => console.warn('[shell] optional module missing:', src);
         document.body.appendChild(s);
@@ -79,7 +79,7 @@
     })();
   </script>
 
-  <!-- Core last: initialises the SPA after auth is ready -->
+  <!-- Core last -->
   <script src="js/core.js"></script>
 
   <!-- PWA service worker registration + iOS gesture block -->
