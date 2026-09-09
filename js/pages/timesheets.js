@@ -7,13 +7,13 @@
    BROMAR OPS — TIMESHEETS PAGE
    File     : js/pages/timesheets.js
    Registers: window.BromarPages.timesheets
-   Version  : V1.07
+   Version  : V1.08
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.07',
+  version: 'V1.08',
 
   render(container) {
     // Display this page's version in the footer
@@ -88,6 +88,17 @@ window.BromarPages.timesheets = {
     function fmtDateShort(isoStr) {
       const d = parseISO(isoStr);
       return d ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '—';
+    }
+
+    // Derive an entry's date from the week start when e.date is missing/blank.
+    // e.day is the day name — Monday .. Sunday.
+    const DAY_OFFSETS = { monday:0, tuesday:1, wednesday:2, thursday:3, friday:4, saturday:5, sunday:6 };
+    function resolveEntryDate(entry, weekStartingISO) {
+      if (entry && entry.date) return entry.date;
+      if (!entry || !entry.day || !weekStartingISO) return null;
+      const offset = DAY_OFFSETS[String(entry.day).trim().toLowerCase()];
+      if (offset === undefined) return null;
+      return addDays(weekStartingISO, offset);
     }
 
     async function sbFetch(path, params = {}) {
@@ -910,7 +921,7 @@ window.BromarPages.timesheets = {
       const entryHead = [['Day', 'Date', 'Shift', 'Type', 'Normal', 'OT', 'Travel', 'Job #', 'Client', 'Allowances', 'Comment']];
       const entryBody = entries.map(e => [
         e.day || '—',
-        e.date ? fmtDateShort(e.date) : '—',
+        fmtDateShort(resolveEntryDate(e, t.week_starting)),
         e.shift || '—',
         e.type || '—',
         (+e.normal_hours || 0).toFixed(2),
@@ -1162,9 +1173,11 @@ window.BromarPages.timesheets = {
                 <th>Job #</th><th>Client</th><th>Allowances</th><th>Comment</th>
               </tr></thead>
               <tbody>
-                ${entries.map(e => `
+                ${entries.map(e => {
+                  const entryDate = resolveEntryDate(e, t.week_starting);
+                  return `
                   <tr>
-                    <td><strong>${e.day || '—'}</strong>${e.date ? `<br><span style="font-size:0.78rem;color:var(--text-secondary)">${fmtDateShort(e.date)}</span>` : ''}</td>
+                    <td><strong>${e.day || '—'}</strong>${entryDate ? `<br><span style="font-size:0.78rem;color:var(--text-secondary)">${fmtDateShort(entryDate)}</span>` : ''}</td>
                     <td>${e.shift || '—'}</td>
                     <td>${e.type || '—'}</td>
                     <td>${+e.normal_hours ? (+e.normal_hours).toFixed(2) : '—'}</td>
@@ -1175,7 +1188,8 @@ window.BromarPages.timesheets = {
                     <td>${e.allowances || '—'}</td>
                     <td>${e.comment || '—'}</td>
                   </tr>
-                `).join('')}
+                `;
+                }).join('')}
               </tbody>
             </table></div>`
         }
