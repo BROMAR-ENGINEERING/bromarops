@@ -1,5 +1,5 @@
 /* ============================================================
-   Jobs — V1.12 — 2026-09-08
+   Jobs — V1.13 — 2026-09-08
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (weekly rollup + PDF).
    Registers on window.BromarPages.jobs
@@ -7,7 +7,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.12',
+  version: 'V1.13',
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
@@ -443,6 +443,7 @@ window.BromarPages.jobs = {
 
     /* ══════════════ JOB OVERVIEW TAB (weekly) ══════════════ */
     function renderOverview() {
+      ovJobFilter = ''; // always default to ALL jobs when the tab opens
       const [f, t] = thisWeek();
       $('jobsTabContent').innerHTML = `
         <div class="jobs-toolbar">
