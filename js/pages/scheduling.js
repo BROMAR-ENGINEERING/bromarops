@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.35
+   V1.36
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.35';
+  const PAGE_VERSION = 'V1.36';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -758,11 +758,18 @@ window.BromarPages.scheduling = (() => {
     const isSite=a.type==='site';const isLeave=a.type==='leave';const isWorkshop=a.type==='workshop';const isJobLike=(a.type==='job'||a.type==='site');
     const isLinked=a.linked;const isIndef=a.schedule==='indefinite'&&!a.endDate;const canDrag=!isLinked&&!a.rdoAuto;
     const st=isJobLike?cardStatus(a):'';
-    // Top line = site (or leave/workshop label); sub line = job number if present
+    const bc=getAssignmentBorderColor(a);
+    // Top line = site name if present, else client, else job. Sub line = job number and/or client.
     let topLabel, subLabel='';
     if(a.type==='workshop'){topLabel='Workshop/Office';}
     else if(a.type==='leave'){topLabel=a.siteName||'Leave';}
-    else{topLabel=a.siteName||a.jobNumber||'?';subLabel=(a.siteName&&a.jobNumber)?a.jobNumber:'';}
+    else{
+      topLabel = a.siteName || a.clientName || a.jobNumber || '?';
+      const subBits=[];
+      if(a.jobNumber) subBits.push(a.jobNumber);
+      if(a.clientName && a.clientName!==topLabel) subBits.push(a.clientName);
+      subLabel = subBits.join(' · ');
+    }
     const circles=(people&&people.length>1)?`<div class="card-people">${people.map(p=>`<span class="card-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':''}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>`:'';
     return `<div class="sched-job-card ${a.recentlyChanged?'recently-changed':''} ${isSite?'is-site':''} ${isLeave?'is-leave':''} ${isWorkshop?'is-workshop':''} ${isJobLike?'jstatus-'+st:''} ${!canDrag?'no-drag':''}" draggable="${canDrag}" data-assign-id="${a.id}" data-date-key="${dk}" ${!isJobLike?`style="border-left-color:${bc}"`:''}>
       <button class="card-extend card-extend-left" data-extend-left="${a.id}" data-extend-date="${dk}" title="Extend to previous day">◂</button>
@@ -927,8 +934,8 @@ window.BromarPages.scheduling = (() => {
           <div class="sched-job-daycell ${isToday(d)?'today-col':''}" data-date="${dk}">
             ${groups.map(g=>{const all=[...g.people,...g.placeholders];const st=jobTileStatus(g);const rep=all[0];const anyUn=g.people.some(p=>!p.notified);const times=rep?getAssignmentTimes(rep):'';const note=all.find(p=>p.notes)?.notes||'';return`
               <div class="sched-job-card jstatus-${st}" data-jobkey="${g.jobNumber||g.siteName}" data-date="${dk}" style="cursor:pointer">
-                ${g.siteName?`<div class="job-top"><span class="job-num">${g.siteName}</span></div>`:(g.jobNumber?`<div class="job-top"><span class="job-num">${g.jobNumber}</span></div>`:'')}
-                ${g.siteName&&g.jobNumber?`<span class="job-sub-line">${g.jobNumber}</span>`:''}
+                ${g.siteName?`<div class="job-top"><span class="job-num">${g.siteName}</span></div>`:(g.clientName?`<div class="job-top"><span class="job-num">${g.clientName}</span></div>`:(g.jobNumber?`<div class="job-top"><span class="job-num">${g.jobNumber}</span></div>`:''))}
+                ${(()=>{const top=g.siteName||g.clientName||g.jobNumber;const sub=[];if(g.jobNumber&&g.jobNumber!==top)sub.push(g.jobNumber);if(g.clientName&&g.clientName!==top)sub.push(g.clientName);return sub.length?`<span class="job-sub-line">${sub.join(' · ')}</span>`:'';})()}
                 ${times?`<span class="job-times">🕑 ${times}</span>`:''}
                 ${note?`<span class="job-notes" title="${note.replace(/"/g,'&quot;')}">📝 ${note.length>20?note.slice(0,20)+'…':note}</span>`:''}
                 <div class="card-people">${g.people.length===0?'<span class="jt-empty">⚠ No one assigned</span>':g.people.map(p=>`<span class="card-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':' (not notified)'}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>
