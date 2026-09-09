@@ -7,13 +7,13 @@
    BROMAR OPS — TIMESHEETS PAGE
    File     : js/pages/timesheets.js
    Registers: window.BromarPages.timesheets
-   Version  : V1.08
+   Version  : V1.09
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.08',
+  version: 'V1.09',
 
   render(container) {
     // Display this page's version in the footer
@@ -90,11 +90,16 @@ window.BromarPages.timesheets = {
       return d ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '—';
     }
 
-    // Derive an entry's date from the week start when e.date is missing/blank.
+    // Derive an entry's date from the week start when e.date is missing/blank/invalid.
     // e.day is the day name — Monday .. Sunday.
     const DAY_OFFSETS = { monday:0, tuesday:1, wednesday:2, thursday:3, friday:4, saturday:5, sunday:6 };
     function resolveEntryDate(entry, weekStartingISO) {
-      if (entry && entry.date) return entry.date;
+      // Prefer entry.date if it's a valid parseable date
+      if (entry && entry.date) {
+        const parsed = parseISO(entry.date);
+        if (parsed) return isoDate(parsed);
+      }
+      // Otherwise compute from week_starting + day-of-week offset
       if (!entry || !entry.day || !weekStartingISO) return null;
       const offset = DAY_OFFSETS[String(entry.day).trim().toLowerCase()];
       if (offset === undefined) return null;
