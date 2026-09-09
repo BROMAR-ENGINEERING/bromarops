@@ -81,12 +81,16 @@
    open read-only with a prompt: Start new revision, or Edit anyway
    (which flags the quote as edited with an asterisk). Jobs-table write
    is stubbed pending the schema.
+   V1.68 — Fix: preview Back now returns to the dashboard (was
+   re-triggering the published-edit prompt). Preview gains an
+   "Internal view" toggle that reveals hidden prices, part numbers,
+   internal notes and internal-only sections.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.67',
+  version: 'V1.68',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -192,6 +196,7 @@ window.BromarPages.quotes = {
     let view = 'dashboard';
     let activeQuoteId = null;
     let activeSectionId = '__details__';
+    let previewInternal = false;
     let filterStatus = 'all';
     let filterDocType = 'all';
     let searchTerm = '';
@@ -1116,7 +1121,7 @@ window.BromarPages.quotes = {
         openEditor(q.id);
       });
     }
-    function openPreview(id) { activeQuoteId = id; view = 'preview'; rerender(); }
+    function openPreview(id) { activeQuoteId = id; view = 'preview'; previewInternal = false; rerender(); }
     function backToDashboard() { activeQuoteId = null; view = 'dashboard'; rerender(); }
 
     function renderEditor() {
@@ -2264,21 +2269,23 @@ window.BromarPages.quotes = {
       const q = quotes.find(x => x.id === activeQuoteId);
       if (!q) { backToDashboard(); return; }
       setVersionBadge(false);
-      const visible = (q.sections || []).filter(clientVisible);
+      const internal = !!previewInternal;
+      const visible = (q.sections || []).filter(s => internal ? true : clientVisible(s));
       const canAccept = q.docType === 'quote';
       container.innerHTML = `
         <div class="page-title-wrapper editor-header preview-chrome">
           <button class="btn-secondary" id="back-btn">← Back</button>
-          <div class="editor-titlebar"><h1>Preview</h1><p class="subtitle">${escape(displayNumber(q))} — ${escape(q.nickname || q.siteName || q.client)}</p></div>
+          <div class="editor-titlebar"><h1>Preview${internal ? ' · Internal' : ''}</h1><p class="subtitle">${escape(displayNumber(q))} — ${escape(q.nickname || q.siteName || q.client)}</p></div>
           <div class="editor-actions">
+            <label class="toggle-lbl internal-toggle"><input type="checkbox" id="internal-view" ${internal ? 'checked' : ''}><span>Internal view (show hidden items)</span></label>
             <button class="btn-secondary" id="edit-from-preview">Edit</button>
             <button class="btn-primary" id="export-from-preview">Export PDF</button>
           </div>
         </div>
-        <div class="doc-page">
+        <div class="doc-page ${internal ? 'doc-internal' : ''}">
           ${renderDocumentHeader(q)}
           <div class="doc-content">
-            ${visible.map(s => renderPreviewSection(s, q)).join('')}
+            ${visible.map(s => renderPreviewSection(s, q, internal)).join('')}
             ${hasQuoteTotalSection(q) ? '' : `<div class="doc-total-block">
               ${stageLines(q).map(st => `<div class="doc-stage-row"><span>${escape(st.name)}</span><strong>${fmt(st.total)}</strong></div>`).join('')}
               ${hasGrandAllocation(q) ? `<div class="doc-total-row" id="preview-total"><span>Total ${q.docType === 'estimate' ? '(Indicative)' : '(ex GST)'}</span><strong>${fmt(quoteTotal(q, { clientView: true }))}</strong></div>` : ''}
@@ -2290,7 +2297,9 @@ window.BromarPages.quotes = {
           </div>
         </div>
       `;
-      document.getElementById('back-btn').addEventListener('click', () => openEditor(q.id));
+      document.getElementById('back-btn').addEventListener('click', backToDashboard);
+      const intView = document.getElementById('internal-view');
+      if (intView) intView.addEventListener('change', e => { previewInternal = e.target.checked; renderPreview(); });
       document.getElementById('edit-from-preview').addEventListener('click', () => openEditor(q.id));
       document.getElementById('export-from-preview').addEventListener('click', () => exportPDF(q));
       document.querySelectorAll('.option-toggle').forEach(cb => {
@@ -2348,7 +2357,7 @@ window.BromarPages.quotes = {
         </header>
       `;
     }
-    function renderPreviewSection(s, q) {
+    function renderPreviewSection(s, q, internal) {
       const meta = SECTION_TYPES[s.type], d = s.data || {};
       if (meta.shape === 'pagebreak') return '<div class="doc-pagebreak"><span>Page break</span></div>';
       let body = '';
@@ -2369,16 +2378,16 @@ window.BromarPages.quotes = {
         case 'materials':
           if (!(d.items || []).length) return '';
           const matTotal = sectionSellTotal(s, q);
-          if (costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(matTotal)}</strong></div>`;
+          if (!internal && costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(matTotal)}</strong></div>`;
           else {
-            const mc = matColumns(d);
+            const mc = internal ? { part: true, unit: true, qty: true } : matColumns(d);
             const head = ['<th>Description</th>']
               .concat(mc.part ? ['<th>Part #</th>'] : [])
               .concat(mc.unit ? ['<th class="num">Unit</th>'] : [])
               .concat(mc.qty ? ['<th class="num">Qty</th>'] : [])
               .concat(['<th class="num">Total</th>']).join('');
             const span = 1 + (mc.part ? 1 : 0) + (mc.unit ? 1 : 0) + (mc.qty ? 1 : 0);
-            const rows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
+            const rows = d.items.map(it => ['<td>' + escape(it.desc) + (internal && it.note ? '<div class="doc-internal-note">' + escape(it.note) + '</div>' : '') + '</td>']
               .concat(mc.part ? ['<td>' + escape(it.part || '—') + '</td>'] : [])
               .concat(mc.unit ? ['<td class="num">' + fmt(materialItemTotal({ ...it, qty: 1 }, sectionMarkup(s))) + '</td>'] : [])
               .concat(mc.qty ? ['<td class="num">' + it.qty + '</td>'] : [])
@@ -2390,9 +2399,9 @@ window.BromarPages.quotes = {
         case 'labour':
           if (!(d.items || []).length) return '';
           const labTotal = sectionSellTotal(s, q);
-          if (costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(labTotal)}</strong></div>`;
+          if (!internal && costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(labTotal)}</strong></div>`;
           else {
-            const lc = labColumns(d);
+            const lc = internal ? { rate: true, hours: true, days: true, workers: true } : labColumns(d);
             const lhead = ['<th>Description</th>']
               .concat(lc.rate ? ['<th class="num">Rate</th>'] : [])
               .concat(lc.hours ? ['<th class="num">Hrs</th>'] : [])
@@ -2400,7 +2409,7 @@ window.BromarPages.quotes = {
               .concat(lc.workers ? ['<th class="num">Workers</th>'] : [])
               .concat(['<th class="num">Total</th>']).join('');
             const lspan = 1 + (lc.rate ? 1 : 0) + (lc.hours ? 1 : 0) + (lc.days ? 1 : 0) + (lc.workers ? 1 : 0);
-            const lrows = d.items.map(it => ['<td>' + escape(it.desc) + '</td>']
+            const lrows = d.items.map(it => ['<td>' + escape(it.desc) + (internal && it.note ? '<div class="doc-internal-note">' + escape(it.note) + '</div>' : '') + '</td>']
               .concat(lc.rate ? ['<td class="num">' + fmt(it.rate) + '</td>'] : [])
               .concat(lc.hours ? ['<td class="num">' + (it.hours === undefined ? (it.qty ?? 0) : it.hours) + '</td>'] : [])
               .concat(lc.days ? ['<td class="num">' + (it.days === undefined ? 1 : it.days) + '</td>'] : [])
@@ -2454,7 +2463,8 @@ window.BromarPages.quotes = {
         </section>`;
       }
       const headHtml = s.hideHeading ? '' : `<h3${s.hideDivider ? ' class="no-divider"' : ''}>${escape(s.name)}</h3>`;
-      return `<section class="doc-section">${headHtml}${body}</section>`;
+      const hiddenTag = (internal && !clientVisible(s)) ? '<span class="doc-hidden-tag">hidden from client</span>' : '';
+      return `<section class="doc-section${hiddenTag ? ' doc-section-hidden' : ''}">${hiddenTag}${headHtml}${body}</section>`;
     }
 
     /* ── BULLET LIBRARY MANAGER ── */
@@ -3325,6 +3335,10 @@ ${q.preparedBy || COMPANY.name}`;
         .edit-choice { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
         .edit-choice:last-of-type { border-bottom: none; }
         .edit-choice .btn-primary, .edit-choice .btn-secondary { align-self: flex-start; }
+        .internal-toggle { margin-right: 0.5rem; font-size: 0.82rem; }
+        .doc-internal .doc-section-hidden { position: relative; background: rgba(234,88,12,0.05); border: 1px dashed rgba(234,88,12,0.4); border-radius: 8px; padding: 12px; margin: 12px 0; }
+        .doc-hidden-tag { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #ea580c; background: rgba(234,88,12,0.12); padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
+        .doc-internal-note { font-size: 11px; font-style: italic; color: #ea580c; margin-top: 3px; }
         .row-number:hover { border-bottom-color: var(--accent); }
         .quote-modal-sm { max-width: 460px; }
         .row-nick { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
