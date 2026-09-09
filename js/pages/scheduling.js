@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.34
+   V1.35
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.34';
+  const PAGE_VERSION = 'V1.35';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -417,7 +417,7 @@ window.BromarPages.scheduling = (() => {
     return pool.filter(j => j.number.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.site.toLowerCase().includes(q));
   }
   function searchSitesLocal(query) {
-    if (!query) return sites.slice(0, 12);
+    if (!query) return [];
     const q = query.toLowerCase();
     return sites.filter(s => s.name.toLowerCase().includes(q) || s.clientName.toLowerCase().includes(q) || s.address.toLowerCase().includes(q));
   }
@@ -1380,14 +1380,14 @@ window.BromarPages.scheduling = (() => {
         `:activeTab==='site'?`
           <label>Search Site</label>
           <input class="sched-input" id="am-site-search" type="text" placeholder="Search by site name, client or address…" value="${siteQuery}" autofocus>
-          <div class="sched-job-results">${fSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found':'No matching sites'}</div>`:''}
+          <div class="sched-job-results">${fSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found':siteQuery?'No matching sites':'Start typing to search sites…'}</div>`:''}
             ${fSites.map(s=>`<div class="sched-site-result ${selectedSite?.id===s.id?'selected':''}" data-sid="${s.id}"><div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem"><div style="min-width:0"><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span>${s.address?`<span class="sr-addr">${s.address}${s.city?', '+s.city:''}</span>`:''}</div><button class="sched-pin-btn ${pinnedIds.has(s.id)?'pinned':''}" data-pin="${s.id}" title="${pinnedIds.has(s.id)?'Unpin':'Pin'}">${pinnedIds.has(s.id)?'★':'☆'}</button></div></div>`).join('')}</div>
           <label>Job Number <span style="font-weight:400;color:var(--text-secondary)">(optional)</span></label>
           <input class="sched-input" id="am-site-job" type="text" placeholder="Attach a job number…" value="${siteJobVal}">
-        `:`
+        `:activeTab==='leave'?`
           <label>Leave Type</label>
           <div class="sched-leave-types">${leaveTypes.map(lt=>`<button class="sched-leave-btn ${selectedLeave===lt?'active':''}" data-leave="${lt}" style="--lc:${leaveColor(lt)}">${lt}</button>`).join('')}</div>
-        `}
+        `:''}
         <label>Schedule Type</label>
         <div class="sched-schedule-type">
           <button class="sched-stype-btn ${schedType==='oneoff'?'active':''}" data-stype="oneoff">One-off</button>
@@ -1433,7 +1433,7 @@ window.BromarPages.scheduling = (() => {
         overlay.querySelector('#am-site-job')?.addEventListener('input',e=>{siteJobVal=e.target.value;});
         overlay.querySelectorAll('.sched-site-result').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('[data-unpin]'))return;selectedSite=pinnedSites.find(s=>s.id===el.dataset.sid);rm();}));
         overlay.querySelectorAll('[data-unpin]').forEach(b=>b.addEventListener('click',async e=>{e.stopPropagation();const sid=b.dataset.unpin;await DB.unpinSite(sid);pinnedSites=pinnedSites.filter(p=>p.id!==sid);if(selectedSite?.id===sid)selectedSite=null;rm();}));
-      } else {
+      } else if(activeTab==='leave'){
         overlay.querySelectorAll('.sched-leave-btn').forEach(el=>el.addEventListener('click',()=>{selectedLeave=el.dataset.leave;rm();}));
       }
       overlay.querySelector('#am-end-date')?.addEventListener('change',e=>{endDateVal=e.target.value;});
