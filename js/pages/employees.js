@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.10
+   V1.11
    Supabase: employees, employee_cert_history, inductions,
              employee_skills, employee_cert_images
    Storage:  employee-documents bucket
@@ -9,7 +9,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.10',
+  version: 'V1.11',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -1088,7 +1088,7 @@ window.BromarPages.employees = {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
       const PW = 210, PH = 297;
-      const ML = 14, MR = 14, MT = 14, MB = 22;
+      const ML = 14, MR = 14, MT = 14, MB = 28;
       const CW = PW - ML - MR;
       const ORANGE = [234, 88, 12];
       const DARK   = [26, 26, 30];
@@ -1121,9 +1121,10 @@ window.BromarPages.employees = {
 
       /* ── EMPLOYEE SUMMARY ── */
       async function drawSummary() {
+        const CARD_H = 38;
         /* background card */
         doc.setFillColor(245, 245, 248);
-        doc.roundedRect(ML, y, CW, 32, 3, 3, 'F');
+        doc.roundedRect(ML, y, CW, CARD_H, 3, 3, 'F');
 
         /* profile photo */
         let photoX = ML + 4;
@@ -1135,6 +1136,7 @@ window.BromarPages.employees = {
           }
         } catch (_) { photoX = ML + 4; }
 
+        /* employee details — left */
         const tx = photoX + 4;
         doc.setFont('helvetica','bold');
         doc.setFontSize(13);
@@ -1155,12 +1157,33 @@ window.BromarPages.employees = {
         if (emp.mobile) { doc.text(`Ph: ${emp.mobile}`, tx, metaY); metaY += 5; }
         if (emp.email)  { doc.text(`Email: ${emp.email}`, tx, metaY); }
 
-        /* generated date */
+        /* company details — right */
+        const rx = PW - MR - 2;
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8);
+        doc.setTextColor(...DARK);
+        doc.text('Bromar Electrical Services', rx, y + 9, { align: 'right' });
+
+        doc.setFont('helvetica','normal');
         doc.setFontSize(7);
         doc.setTextColor(...GREY);
-        doc.text(`Generated: ${new Date().toLocaleDateString('en-AU')}`, PW - MR, y + 28, { align: 'right' });
+        const companyLines = [
+          'REC 30340',
+          '12 Hanrahan Place',
+          'Westmeadows VIC 3049',
+          'admin@bromar.com.au',
+          'www.bromar.com.au',
+        ];
+        companyLines.forEach((line, i) => {
+          doc.text(line, rx, y + 15 + (i * 4.5), { align: 'right' });
+        });
 
-        y += 38;
+        /* vertical divider */
+        doc.setDrawColor(...LGREY);
+        doc.setLineWidth(0.3);
+        doc.line(PW / 2 + 10, y + 5, PW / 2 + 10, y + CARD_H - 5);
+
+        y += CARD_H + 4;
       }
 
       /* ── TABLE HEADER ── */
@@ -1262,11 +1285,7 @@ window.BromarPages.employees = {
               const backData = await loadImageAsDataUrl(backUrl);
               if (backData) doc.addImage(backData, 'JPEG', imgAreaX, imgY + IMG_H + 1, IMG_W, IMG_H);
             }
-          } else {
-            doc.setFontSize(6.5);
-            doc.setTextColor(...LGREY);
-            doc.text('No image', imgAreaX + 4, imgY + 6);
-          }
+          } // no text if no image
         } catch (_) {}
 
         y += ROW_H;
@@ -1274,27 +1293,33 @@ window.BromarPages.employees = {
 
       /* ── FOOTER ── */
       function drawFooter(pageNum, total) {
-        /* confidentiality bar */
+        const genDate = new Date().toLocaleDateString('en-AU');
+
+        /* confidentiality disclaimer — above the rule */
         doc.setFillColor(245, 245, 248);
-        doc.rect(ML, PH - 16, CW, 9, 'F');
+        doc.rect(ML, PH - 22, CW, 8, 'F');
         doc.setFont('helvetica','italic');
-        doc.setFontSize(6);
+        doc.setFontSize(5.8);
         doc.setTextColor(...GREY);
         doc.text(
           'CONFIDENTIAL: This document contains personal information and is intended solely for the named recipient. ' +
           'It must not be distributed, copied or disclosed to any unauthorised person. ' +
           'If received in error, please notify Bromar Electrical Services immediately.',
-          ML + 1, PH - 11, { maxWidth: CW - 2 }
+          ML + 1, PH - 18, { maxWidth: CW - 2 }
         );
-        /* page line */
+
+        /* page rule */
         doc.setDrawColor(...LGREY);
         doc.setLineWidth(0.2);
-        doc.line(ML, PH - 18, ML + CW, PH - 18);
+        doc.line(ML, PH - 13, ML + CW, PH - 13);
+
+        /* page line: company left, generated date centre, page number right */
         doc.setFont('helvetica','normal');
         doc.setFontSize(7);
         doc.setTextColor(...GREY);
-        doc.text('Bromar Electrical Services  |  REC 30340', ML, PH - 19);
-        doc.text(`Page ${pageNum} of ${total}`, PW - MR, PH - 19, { align: 'right' });
+        doc.text('Bromar Electrical Services  |  REC 30340', ML, PH - 9);
+        doc.text(`Generated: ${genDate}`, PW / 2, PH - 9, { align: 'center' });
+        doc.text(`Page ${pageNum} of ${total}`, PW - MR, PH - 9, { align: 'right' });
       }
 
       /* ── BUILD ── */
