@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.32
+   V1.33
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.32';
+  const PAGE_VERSION = 'V1.33';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -525,6 +525,9 @@ window.BromarPages.scheduling = (() => {
       .sched-rail-chip .rc-pri{position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%}
       .sched-jobgrid .sched-col-head{position:sticky;top:0}
       .sched-job-daycell{padding:0.4rem;border-bottom:1px solid var(--border);border-right:1px solid var(--border);min-height:100px;display:flex;flex-direction:column;gap:0.4rem;transition:background 0.15s}
+      .sched-job-daycell .jobcell-add{position:static;transform:none;opacity:0.5;width:100%;height:28px;border-radius:8px;border:1px dashed var(--border);background:none;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:auto;transition:all 0.15s}
+      .sched-job-daycell:hover .jobcell-add{opacity:0.8}
+      .sched-job-daycell .jobcell-add:hover{opacity:1;border-color:var(--accent);color:var(--accent);background:var(--card-hover);transform:none}
       .sched-job-daycell.today-col{background:rgba(234,88,12,0.03)}
       .sched-job-daycell.drag-over{background:rgba(234,88,12,0.08);outline:2px dashed var(--accent);outline-offset:-2px}
       .sched-jobcell-empty{font-size:0.65rem;color:var(--text-secondary);opacity:0.5;text-align:center;padding:1rem 0;font-style:italic}
@@ -914,7 +917,6 @@ window.BromarPages.scheduling = (() => {
   }
 
   function buildJobView(viewToggle, days, dayNames, weekEnd) {
-    const jobChips = jobs.filter(j=>j.status==='active'||j.status==='in_progress');
     return `
       <div class="sched-filterbar">
         <div class="sched-fb-week">
@@ -929,32 +931,23 @@ window.BromarPages.scheduling = (() => {
         </div>
       </div>
       ${legendBar()}
-      <div class="sched-jobview-wrap">
-        <div class="sched-job-rail" id="sched-job-rail" ondragover="event.preventDefault();this.classList.add('rail-drop')" ondragleave="this.classList.remove('rail-drop')">
-          <div class="sched-rail-title">Jobs — drag to a day</div>
-          <div class="sched-rail-list">
-            ${jobChips.length===0?'<div class="sched-empty" style="font-size:0.75rem">No jobs found</div>':''}
-            ${jobChips.map(j=>`<div class="sched-rail-chip" draggable="true" data-job-num="${j.number}"><span class="rc-num">${j.number}</span><span class="rc-client">${j.client}${j.site?' · '+j.site:''}</span><span class="rc-pri" style="background:${priorityColor(j.priority)}"></span></div>`).join('')}
-          </div>
-        </div>
-        <div class="sched-grid-wrap" style="flex:1"><div class="sched-grid sched-jobgrid" style="grid-template-columns:repeat(${days.length},1fr);">
-          ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
-          ${days.map(d=>{const dk=formatDateKey(d);const groups=getJobGroupsForDate(dk);return`
-            <div class="sched-job-daycell ${isToday(d)?'today-col':''}" data-date="${dk}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
-              ${groups.map(g=>{const st=jobTileStatus(g);const rep=g.people[0];const bc=st==='red'?'var(--error)':st==='amber'?'#f59e0b':st==='green'?'var(--success)':'#3b82f6';const anyUn=g.people.some(p=>!p.notified);const times=rep?getAssignmentTimes(rep):'';const note=g.people.find(p=>p.notes)?.notes||'';return`
-                <div class="sched-job-card jstatus-${st}" draggable="true" data-jobkey="${g.jobNumber||g.siteName}" data-date="${dk}" style="cursor:pointer">
-                  ${g.siteName?`<div class="job-top"><span class="job-num">${g.siteName}</span></div>`:''}
-                  ${g.jobNumber?`<span class="job-sub-line">${g.jobNumber}</span>`:''}
-                  ${times?`<span class="job-times">🕑 ${times}</span>`:''}
-                  ${note?`<span class="job-notes" title="${note.replace(/"/g,'&quot;')}">📝 ${note.length>20?note.slice(0,20)+'…':note}</span>`:''}
-                  <div class="card-people">${g.people.length===0?'<span class="jt-empty">⚠ None</span>':g.people.map(p=>`<span class="card-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':' (not notified)'}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>
-                  <button class="card-edit-center" data-staff-group="${g.jobNumber||g.siteName}" data-staff-date="${dk}" title="Edit staff, times & notes">✎ Edit</button>
-                  <div class="job-actions">${anyUn&&g.people.length?`<button class="ja-btn notif-btn" data-notify-tile="${g.jobNumber||g.siteName}" data-notify-date="${dk}" title="Notify all">🔔</button>`:''}<button class="ja-btn" data-remove-group="${g.jobNumber||g.siteName}" data-remove-groupdate="${dk}" title="Remove job">×</button></div>
-                </div>`;}).join('')}
-              ${groups.length===0?'<div class="sched-jobcell-empty">Drop a job here</div>':''}
-            </div>`;}).join('')}
-        </div></div>
-      </div>`;
+      <div class="sched-grid-wrap"><div class="sched-grid sched-jobgrid" style="grid-template-columns:repeat(${days.length},1fr);">
+        ${days.map(d=>`<div class="sched-col-head ${isToday(d)?'today':''}">${dayNames[d.getDay()===0?6:d.getDay()-1]}<br>${formatDate(d)}</div>`).join('')}
+        ${days.map(d=>{const dk=formatDateKey(d);const groups=getJobGroupsForDate(dk);return`
+          <div class="sched-job-daycell ${isToday(d)?'today-col':''}" data-date="${dk}">
+            ${groups.map(g=>{const st=jobTileStatus(g);const rep=g.people[0];const anyUn=g.people.some(p=>!p.notified);const times=rep?getAssignmentTimes(rep):'';const note=g.people.find(p=>p.notes)?.notes||'';return`
+              <div class="sched-job-card jstatus-${st}" data-jobkey="${g.jobNumber||g.siteName}" data-date="${dk}" style="cursor:pointer">
+                ${g.siteName?`<div class="job-top"><span class="job-num">${g.siteName}</span></div>`:''}
+                ${g.jobNumber?`<span class="job-sub-line">${g.jobNumber}</span>`:''}
+                ${times?`<span class="job-times">🕑 ${times}</span>`:''}
+                ${note?`<span class="job-notes" title="${note.replace(/"/g,'&quot;')}">📝 ${note.length>20?note.slice(0,20)+'…':note}</span>`:''}
+                <div class="card-people">${g.people.length===0?'<span class="jt-empty">⚠ None</span>':g.people.map(p=>`<span class="card-person ${p.notified?'notified':''}" title="${p.employeeName}${p.notified?' (notified)':' (not notified)'}">${(p.employeeName||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</span>`).join('')}</div>
+                <button class="card-edit-center" data-staff-group="${g.jobNumber||g.siteName}" data-staff-date="${dk}" title="Edit staff, times & notes">✎ Edit</button>
+                <div class="job-actions">${anyUn&&g.people.length?`<button class="ja-btn notif-btn" data-notify-tile="${g.jobNumber||g.siteName}" data-notify-date="${dk}" title="Notify all">🔔</button>`:''}<button class="ja-btn" data-remove-group="${g.jobNumber||g.siteName}" data-remove-groupdate="${dk}" title="Remove job">×</button></div>
+              </div>`;}).join('')}
+            <button class="cell-add jobcell-add" data-jobcell-date="${dk}" title="Add job to this day">+</button>
+          </div>`;}).join('')}
+      </div></div>`;
   }
 
   function bindJobView(dt, container) {
@@ -963,20 +956,11 @@ window.BromarPages.scheduling = (() => {
     dt.querySelector('#dt-next')?.addEventListener('click',()=>{currentWeekStart.setDate(currentWeekStart.getDate()+7);rerender(container);});
     dt.querySelector('#dt-today')?.addEventListener('click',()=>{currentWeekStart=getMonday(new Date());rerender(container);});
     dt.querySelector('#dt-weekends')?.addEventListener('change',e=>{showWeekends=e.target.checked;rerender(container);});
-    dt.querySelectorAll('.sched-rail-chip[draggable]').forEach(item=>{
-      item.addEventListener('dragstart',e=>{jobDragData={jobNumber:item.dataset.jobNum};e.dataTransfer.effectAllowed='copy';item.style.opacity='0.5';});
-      item.addEventListener('dragend',()=>{item.style.opacity='1';jobDragData=null;dt.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));});
-    });
-    dt.querySelectorAll('.sched-job-daycell').forEach(cell=>{
-      cell.addEventListener('drop',e=>{e.preventDefault();cell.classList.remove('drag-over');if(!jobDragData)return;
-        const job=jobs.find(j=>j.number===jobDragData.jobNumber);const dk=cell.dataset.date;jobDragData=null;
-        if(!job)return;openStaffModal(container, job, dk);
-      });
-    });
+    // + button on each day column → pick a job/site, then staff it
+    dt.querySelectorAll('.jobcell-add').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openNewJobModal(container, b.dataset.jobcellDate);}));
+    // Tile click / edit → staff modal
     dt.querySelectorAll('.sched-job-card[data-jobkey]').forEach(tile=>{
       tile.addEventListener('click',e=>{if(e.target.closest('[data-notify-tile]')||e.target.closest('[data-remove-group]')||e.target.closest('[data-staff-group]'))return;const jn=tile.dataset.jobkey;const dk=tile.dataset.date;const job=jobs.find(j=>j.number===jn)||{number:'',site:'',client:'',groupKey:jn};openStaffModal(container,job,dk);});
-      tile.addEventListener('dragstart',e=>{e.stopPropagation();jobDragData={removeGroup:tile.dataset.jobkey,removeDate:tile.dataset.date};e.dataTransfer.effectAllowed='move';tile.style.opacity='0.5';});
-      tile.addEventListener('dragend',()=>{tile.style.opacity='1';dt.querySelectorAll('.rail-drop').forEach(el=>el.classList.remove('rail-drop'));});
     });
     dt.querySelectorAll('[data-staff-group]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const jn=b.dataset.staffGroup;const dk=b.dataset.staffDate;const job=jobs.find(j=>j.number===jn)||{number:'',site:'',client:'',groupKey:jn};openStaffModal(container,job,dk);}));
     dt.querySelectorAll('[data-notify-tile]').forEach(b=>b.addEventListener('click',async e=>{
@@ -997,21 +981,48 @@ window.BromarPages.scheduling = (() => {
         rerender(container);
       });
     }));
-    bindExtendArrows(dt, container);
-    const rail=dt.querySelector('#sched-job-rail');
-    if(rail){
-      rail.addEventListener('drop',e=>{
-        e.preventDefault();rail.classList.remove('rail-drop');
-        if(!jobDragData||!jobDragData.removeGroup)return;
-        const gk=jobDragData.removeGroup;const dk=jobDragData.removeDate;jobDragData=null;
-        const toRemove=assignments.filter(a=>(a.type==='job'||a.type==='site')&&groupKeyForAssignment(a)===gk&&assignmentActiveOnDate(a,dk));
-        if(!toRemove.length)return;
-        showConfirm(`Remove <strong>${gk}</strong> and all ${toRemove.length} assigned ${toRemove.length===1?'person':'people'} from ${dk}?`,async()=>{
-          for(const a of toRemove){await DB.deleteAssignment(a.id);}
-          rerender(container);
-        });
-      });
+  }
+
+  // Job view: + on a day → pick job or site → open staffing for it
+  function openNewJobModal(container, dateKey) {
+    let tab='job',jobQuery='',siteQuery='';
+    const overlay=document.createElement('div');overlay.className='sched-modal-overlay';
+    function rm(){
+      const fJobs=searchJobsLocal(jobQuery);const fSites=searchSitesLocal(siteQuery);
+      overlay.innerHTML=`<div class="sched-modal">
+        <button class="sched-modal-close" id="nj-close">×</button>
+        <h3>Add to ${formatDateFull(parseDateKey(dateKey))}</h3>
+        <div class="sched-modal-tabs">
+          <button class="sched-modal-tab ${tab==='job'?'active':''}" data-njtab="job">Job Number</button>
+          <button class="sched-modal-tab ${tab==='site'?'active':''}" data-njtab="site">Site</button>
+        </div>
+        ${tab==='job'?`
+          <label>Search Job</label>
+          <input class="sched-input" id="nj-job-search" type="text" placeholder="Search job number, client or site…" value="${jobQuery}" autofocus>
+          <div class="sched-job-results">${fJobs.length===0?`<div class="sched-empty">${jobs.length===0?'No jobs found':'No matching jobs'}</div>`:''}
+            ${fJobs.map(j=>`<div class="sched-job-result" data-nj-job="${j.number}"><div><span class="jr-num">${j.number}</span> <span class="jr-client">${j.client}${j.site?' · '+j.site:''}</span></div></div>`).join('')}</div>
+        `:`
+          <label>Search Site</label>
+          <input class="sched-input" id="nj-site-search" type="text" placeholder="Search site name, client or address…" value="${siteQuery}" autofocus>
+          <div class="sched-job-results">${fSites.length===0?`<div class="sched-empty">${sites.length===0?'No sites found':'No matching sites'}</div>`:''}
+            ${fSites.map(s=>`<div class="sched-site-result" data-nj-site="${s.id}"><span class="sr-name">${s.name}</span><span class="sr-client">${s.clientName}</span></div>`).join('')}</div>
+        `}
+        <div class="sched-modal-actions"><button class="btn-secondary" id="nj-cancel">Cancel</button></div>
+      </div>`;
+      overlay.querySelector('#nj-close')?.addEventListener('click',close);
+      overlay.querySelector('#nj-cancel')?.addEventListener('click',close);
+      overlay.querySelectorAll('[data-njtab]').forEach(t=>t.addEventListener('click',()=>{tab=t.dataset.njtab;jobQuery='';siteQuery='';rm();}));
+      if(tab==='job'){
+        overlay.querySelector('#nj-job-search')?.addEventListener('input',e=>{jobQuery=e.target.value;const p=e.target.selectionStart;rm();const i=overlay.querySelector('#nj-job-search');if(i){i.value=jobQuery;i.focus();i.setSelectionRange(p,p);}});
+        overlay.querySelectorAll('[data-nj-job]').forEach(el=>el.addEventListener('click',()=>{const job=jobs.find(j=>j.number===el.dataset.njJob);close();if(job)openStaffModal(container,job,dateKey);}));
+      } else {
+        overlay.querySelector('#nj-site-search')?.addEventListener('input',e=>{siteQuery=e.target.value;const p=e.target.selectionStart;rm();const i=overlay.querySelector('#nj-site-search');if(i){i.value=siteQuery;i.focus();i.setSelectionRange(p,p);}});
+        overlay.querySelectorAll('[data-nj-site]').forEach(el=>el.addEventListener('click',()=>{const s=sites.find(x=>x.id===el.dataset.njSite);close();if(s)openStaffModal(container,{number:'',site:s.name,client:s.clientName,groupKey:s.name,siteId:s.id},dateKey);}));
+      }
     }
+    function close(){overlay.remove();activeModal=null;}
+    overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close();});
+    rm();document.body.appendChild(overlay);activeModal=overlay;
   }
 
   function openStaffModal(container, job, dateKey) {
