@@ -3,6 +3,13 @@
    Default view: submission status for current/past pay week
    ============================================================ */
 
+/* ============================================================
+   BROMAR OPS — TIMESHEETS PAGE
+   File     : js/pages/timesheets.js
+   Registers: window.BromarPages.timesheets
+   Version  : V1.07
+   ============================================================ */
+
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
