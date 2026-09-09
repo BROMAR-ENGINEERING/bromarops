@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.08
+   V1.10
    Supabase: employees, employee_cert_history, inductions,
              employee_skills, employee_cert_images
    Storage:  employee-documents bucket
@@ -9,7 +9,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.08',
+  version: 'V1.10',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -773,8 +773,8 @@ window.BromarPages.employees = {
         if (!rows) return '';
         return `<div class="cert-group"><div class="cert-group-title">${group.label}</div><div class="cert-rows">${rows}</div></div>`;
       }).filter(Boolean).join('');
-      const pdfBtn = `<div style="margin-top:1.25rem;display:flex;justify-content:flex-end"><button class="btn-primary" id="generate-pdf-btn" style="padding:0.6rem 1.2rem;font-size:0.86rem">📄 Generate PDF</button></div>`;
-      return (groups || `<p style="color:var(--text-secondary);padding:1rem 0">No certifications recorded.</p>`) + pdfBtn;
+      const pdfBtn = `<div style="margin-bottom:1rem;display:flex;justify-content:flex-end"><button class="btn-primary" id="generate-pdf-btn" style="padding:0.6rem 1.2rem;font-size:0.86rem">📄 Licences &amp; Accreditations PDF</button></div>`;
+      return pdfBtn + (groups || `<p style="color:var(--text-secondary);padding:1rem 0">No certifications recorded.</p>`);
     }
 
     /* ── EDIT FORM ── */
@@ -1088,7 +1088,7 @@ window.BromarPages.employees = {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
       const PW = 210, PH = 297;
-      const ML = 14, MR = 14, MT = 14, MB = 14;
+      const ML = 14, MR = 14, MT = 14, MB = 22;
       const CW = PW - ML - MR;
       const ORANGE = [234, 88, 12];
       const DARK   = [26, 26, 30];
@@ -1114,7 +1114,7 @@ window.BromarPages.employees = {
         doc.setFont('helvetica','bold');
         doc.setFontSize(9);
         doc.setTextColor(...WHITE);
-        doc.text('EMPLOYEE CREDENTIALS', PW - MR, 11, { align: 'right' });
+        doc.text('LICENCES & ACCREDITATIONS', PW - MR, 11, { align: 'right' });
 
         y = 26;
       }
@@ -1152,8 +1152,8 @@ window.BromarPages.employees = {
         doc.setFontSize(8);
         doc.setTextColor(...GREY);
         let metaY = y + 23;
-        if (emp.mobile) { doc.text(`📱 ${emp.mobile}`, tx, metaY); metaY += 5; }
-        if (emp.email)  { doc.text(`✉  ${emp.email}`,  tx, metaY); }
+        if (emp.mobile) { doc.text(`Ph: ${emp.mobile}`, tx, metaY); metaY += 5; }
+        if (emp.email)  { doc.text(`Email: ${emp.email}`, tx, metaY); }
 
         /* generated date */
         doc.setFontSize(7);
@@ -1217,6 +1217,20 @@ window.BromarPages.employees = {
         const labelLines = doc.splitTextToSize(cert.label, 52);
         doc.text(labelLines, cols.label + 1, y + 6);
 
+        /* licence number if applicable */
+        let licenceNum = null;
+        if (cert.isText && emp[cert.key]) licenceNum = emp[cert.key];
+        else if (cert.key === 'heavy_vehicle_licence' && emp.heavy_vehicle_licence_class) licenceNum = `Class: ${emp.heavy_vehicle_licence_class}`;
+        else if (cert.key === 'high_risk_work_over_11m' && emp.high_risk_work_classes) licenceNum = emp.high_risk_work_classes;
+        else if (cert.key === 'ewp_under_11m' && emp.ewp_under_11m_classes) licenceNum = emp.ewp_under_11m_classes;
+        else if (cert.key === 'confined_space_code' && emp.confined_space_code) licenceNum = emp.confined_space_code;
+        if (licenceNum) {
+          doc.setFont('helvetica','normal');
+          doc.setFontSize(6.5);
+          doc.setTextColor(...GREY);
+          doc.text(licenceNum, cols.label + 1, y + 6 + (labelLines.length * 3.5));
+        }
+
         /* expiry */
         const expVal = cert.expiry ? emp[cert.expiry] : null;
         doc.setFont('helvetica','normal');
@@ -1260,11 +1274,27 @@ window.BromarPages.employees = {
 
       /* ── FOOTER ── */
       function drawFooter(pageNum, total) {
+        /* confidentiality bar */
+        doc.setFillColor(245, 245, 248);
+        doc.rect(ML, PH - 16, CW, 9, 'F');
+        doc.setFont('helvetica','italic');
+        doc.setFontSize(6);
+        doc.setTextColor(...GREY);
+        doc.text(
+          'CONFIDENTIAL: This document contains personal information and is intended solely for the named recipient. ' +
+          'It must not be distributed, copied or disclosed to any unauthorised person. ' +
+          'If received in error, please notify Bromar Electrical Services immediately.',
+          ML + 1, PH - 11, { maxWidth: CW - 2 }
+        );
+        /* page line */
+        doc.setDrawColor(...LGREY);
+        doc.setLineWidth(0.2);
+        doc.line(ML, PH - 18, ML + CW, PH - 18);
         doc.setFont('helvetica','normal');
         doc.setFontSize(7);
         doc.setTextColor(...GREY);
-        doc.text(`Bromar Electrical Services  |  Confidential`, ML, PH - 6);
-        doc.text(`Page ${pageNum} of ${total}`, PW - MR, PH - 6, { align: 'right' });
+        doc.text('Bromar Electrical Services  |  REC 30340', ML, PH - 19);
+        doc.text(`Page ${pageNum} of ${total}`, PW - MR, PH - 19, { align: 'right' });
       }
 
       /* ── BUILD ── */
