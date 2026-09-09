@@ -1,69 +1,68 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.07
-   Supabase: employees, employee_cert_history, inductions, employee_skills
+   V1.08
+   Supabase: employees, employee_cert_history, inductions,
+             employee_skills, employee_cert_images
+   Storage:  employee-documents bucket
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.07',
+  version: 'V1.08',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+    const BUCKET = 'employee-documents';
+    const STORAGE_URL = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}`;
 
     const EMPLOYEE_TYPES = ['Apprentice','Electrician','Senior Electrician','Junior Engineer','Engineer','Admin','Operations'];
 
-    /* ── CERT GROUPS (view) ── */
-    const CERT_GROUPS = [
-      { label: 'Licences & Registrations', certs: [
-        { key: 'a_grade',                         label: 'A-Grade Electrician',       expiry: 'a_grade_expiry',                        notes: 'a_grade_notes' },
-        { key: 'registered_professional_engineer', label: 'Registered Prof. Engineer', expiry: 'registered_professional_engineer_expiry' },
-        { key: 'cabler',                           label: 'Cabler',                    expiry: null },
-        { key: 'car_licence_number',               label: 'Car Licence',               expiry: 'car_licence_expiry',                    isText: true },
-        { key: 'heavy_vehicle_licence',            label: 'Heavy Vehicle Licence',     expiry: 'heavy_vehicle_licence_expiry' },
-        { key: 'marine_licence_expiry',            label: 'Marine Licence',            expiry: 'marine_licence_expiry',                 expiryOnly: true },
-      ]},
-      { label: 'Medical & Health', certs: [
-        { key: 'cat3_medical',      label: 'Cat 3 Medical',         expiry: 'cat3_medical_expiry',      notes: 'cat3_medical_notes' },
-        { key: 'drug_lung_hearing', label: 'Drug / Lung / Hearing', expiry: 'drug_lung_hearing_expiry', notes: 'drug_lung_hearing_notes' },
-        { key: 'hearing',           label: 'Hearing',               expiry: 'hearing_expiry',           notes: 'hearing_notes' },
-      ]},
-      { label: 'First Aid & Safety', certs: [
-        { key: 'cpr_refresher',           label: 'CPR Refresher',          expiry: 'cpr_refresher_expiry' },
-        { key: 'first_aid',               label: 'First Aid',              expiry: 'first_aid_expiry' },
-        { key: 'mental_health_first_aid', label: 'Mental Health First Aid', expiry: 'mental_health_first_aid_expiry' },
-        { key: 'low_voltage_rescue',      label: 'Low Voltage Rescue',     expiry: 'lvr_cpr_first_aid_expiry' },
-        { key: 'working_at_heights',      label: 'Working at Heights',     expiry: 'working_at_heights_expiry' },
-        { key: 'hv_safety',               label: 'HV Safety',              expiry: 'hv_safety_expiry' },
-        { key: 'ttsa',                    label: 'TTSA',                   expiry: 'ttsa_expiry' },
-      ]},
-      { label: 'Confined Space & Heights', certs: [
-        { key: 'cmse_melbourne',          label: 'CMSE Melbourne',        expiry: 'cmse_melbourne_expiry' },
-        { key: 'confined_space_code',     label: 'Confined Space Code',   expiry: null,                             isText: true },
-        { key: 'high_risk_work_over_11m', label: 'High Risk Work (>11m)', expiry: 'high_risk_work_over_11m_expiry', notes: 'high_risk_work_over_11m_notes' },
-        { key: 'high_risk_work_voc',      label: 'High Risk Work VOC',    expiry: null },
-        { key: 'ewp_under_11m',           label: 'EWP Under 11m',         expiry: 'ewp_under_11m_expiry' },
-        { key: 'boom_lift_under_11m',     label: 'Boom Lift Under 11m',   expiry: 'boom_lift_under_11m_expiry' },
-      ]},
-      { label: 'Hazardous & Electrical', certs: [
-        { key: 'hazardous_area_training',    label: 'Hazardous Area Training',    expiry: 'hazardous_area_training_expiry_5yr' },
-        { key: 'construction_wiring_course', label: 'Construction Wiring Course', expiry: 'construction_wiring_course_expiry' },
-        { key: 'red_card',                   label: 'Red Card',                   expiry: null },
-        { key: 'white_card',                 label: 'White Card',                 expiry: null },
-      ]},
-      { label: 'MW Specific', certs: [
-        { key: 'mw_hse',                   label: 'MW HSE',                   expiry: 'mw_hse_expiry' },
-        { key: 'mw_integrated_management', label: 'MW Integrated Management', expiry: 'mw_integrated_management_expiry' },
-        { key: 'mw_chlorine_awareness',    label: 'MW Chlorine Awareness',    expiry: 'mw_chlorine_awareness_expiry' },
-        { key: 'mw_hazardous_area',        label: 'MW Hazardous Area',        expiry: 'mw_hazardous_area_expiry' },
-        { key: 'mw_mhf_awareness',         label: 'MW MHF Awareness',         expiry: null },
-        { key: 'mw_tertiary_gas',          label: 'MW Tertiary Gas',          expiry: 'mw_tertiary_gas_expiry' },
-      ]},
+    /* ── ALL CERTS (flat list used for cert view, edit, and image uploads) ── */
+    const ALL_CERTS = [
+      { key: 'a_grade',                         label: 'A-Grade Electrician',        expiry: 'a_grade_expiry',                        notes: 'a_grade_notes',              group: 'Licences & Registrations' },
+      { key: 'registered_professional_engineer', label: 'Registered Prof. Engineer',  expiry: 'registered_professional_engineer_expiry',                                    group: 'Licences & Registrations' },
+      { key: 'cabler',                           label: 'Cabler',                     expiry: null,                                                                         group: 'Licences & Registrations' },
+      { key: 'car_licence_number',               label: 'Car Licence',                expiry: 'car_licence_expiry',                    isText: true,                        group: 'Licences & Registrations' },
+      { key: 'heavy_vehicle_licence',            label: 'Heavy Vehicle Licence',      expiry: 'heavy_vehicle_licence_expiry',                                               group: 'Licences & Registrations' },
+      { key: 'marine_licence_expiry',            label: 'Marine Licence',             expiry: 'marine_licence_expiry',                 expiryOnly: true,                    group: 'Licences & Registrations' },
+      { key: 'cat3_medical',                     label: 'Cat 3 Medical',              expiry: 'cat3_medical_expiry',                   notes: 'cat3_medical_notes',         group: 'Medical & Health' },
+      { key: 'drug_lung_hearing',                label: 'Drug / Lung / Hearing',      expiry: 'drug_lung_hearing_expiry',              notes: 'drug_lung_hearing_notes',    group: 'Medical & Health' },
+      { key: 'hearing',                          label: 'Hearing',                    expiry: 'hearing_expiry',                        notes: 'hearing_notes',              group: 'Medical & Health' },
+      { key: 'cpr_refresher',                    label: 'CPR Refresher',              expiry: 'cpr_refresher_expiry',                                                       group: 'First Aid & Safety' },
+      { key: 'first_aid',                        label: 'First Aid',                  expiry: 'first_aid_expiry',                                                           group: 'First Aid & Safety' },
+      { key: 'mental_health_first_aid',          label: 'Mental Health First Aid',    expiry: 'mental_health_first_aid_expiry',                                             group: 'First Aid & Safety' },
+      { key: 'low_voltage_rescue',               label: 'Low Voltage Rescue',         expiry: 'lvr_cpr_first_aid_expiry',                                                   group: 'First Aid & Safety' },
+      { key: 'working_at_heights',               label: 'Working at Heights',         expiry: 'working_at_heights_expiry',                                                  group: 'First Aid & Safety' },
+      { key: 'hv_safety',                        label: 'HV Safety',                  expiry: 'hv_safety_expiry',                                                           group: 'First Aid & Safety' },
+      { key: 'ttsa',                             label: 'TTSA',                       expiry: 'ttsa_expiry',                                                                group: 'First Aid & Safety' },
+      { key: 'cmse_melbourne',                   label: 'CMSE Melbourne',             expiry: 'cmse_melbourne_expiry',                                                      group: 'Confined Space & Heights' },
+      { key: 'confined_space_code',              label: 'Confined Space Code',        expiry: null,                                    isText: true,                        group: 'Confined Space & Heights' },
+      { key: 'high_risk_work_over_11m',          label: 'High Risk Work (>11m)',       expiry: 'high_risk_work_over_11m_expiry',         notes: 'high_risk_work_over_11m_notes', group: 'Confined Space & Heights' },
+      { key: 'high_risk_work_voc',               label: 'High Risk Work VOC',         expiry: null,                                                                         group: 'Confined Space & Heights' },
+      { key: 'ewp_under_11m',                    label: 'EWP Under 11m',              expiry: 'ewp_under_11m_expiry',                                                       group: 'Confined Space & Heights' },
+      { key: 'boom_lift_under_11m',              label: 'Boom Lift Under 11m',        expiry: 'boom_lift_under_11m_expiry',                                                 group: 'Confined Space & Heights' },
+      { key: 'hazardous_area_training',          label: 'Hazardous Area Training',    expiry: 'hazardous_area_training_expiry_5yr',                                         group: 'Hazardous & Electrical' },
+      { key: 'construction_wiring_course',       label: 'Construction Wiring Course', expiry: 'construction_wiring_course_expiry',                                          group: 'Hazardous & Electrical' },
+      { key: 'red_card',                         label: 'Red Card',                   expiry: null,                                                                         group: 'Hazardous & Electrical' },
+      { key: 'white_card',                       label: 'White Card',                 expiry: null,                                                                         group: 'Hazardous & Electrical' },
+      { key: 'mw_hse',                           label: 'MW HSE',                     expiry: 'mw_hse_expiry',                                                              group: 'MW Specific' },
+      { key: 'mw_integrated_management',         label: 'MW Integrated Management',   expiry: 'mw_integrated_management_expiry',                                            group: 'MW Specific' },
+      { key: 'mw_chlorine_awareness',            label: 'MW Chlorine Awareness',      expiry: 'mw_chlorine_awareness_expiry',                                               group: 'MW Specific' },
+      { key: 'mw_hazardous_area',                label: 'MW Hazardous Area',          expiry: 'mw_hazardous_area_expiry',                                                   group: 'MW Specific' },
+      { key: 'mw_mhf_awareness',                 label: 'MW MHF Awareness',           expiry: null,                                                                         group: 'MW Specific' },
+      { key: 'mw_tertiary_gas',                  label: 'MW Tertiary Gas',            expiry: 'mw_tertiary_gas_expiry',                                                     group: 'MW Specific' },
     ];
 
-    /* ── CERT FIELDS (edit form) ── */
+    /* Derive CERT_GROUPS from ALL_CERTS */
+    const CERT_GROUPS = [];
+    ALL_CERTS.forEach(c => {
+      let g = CERT_GROUPS.find(x => x.label === c.group);
+      if (!g) { g = { label: c.group, certs: [] }; CERT_GROUPS.push(g); }
+      g.certs.push(c);
+    });
+
     const ALL_CERT_FIELDS = [
       { key: 'a_grade',                            label: 'A-Grade Electrician',           type: 'bool', expiry: 'a_grade_expiry',                        notes: 'a_grade_notes' },
       { key: 'registered_professional_engineer',   label: 'Registered Prof. Engineer',     type: 'bool', expiry: 'registered_professional_engineer_expiry' },
@@ -119,12 +118,12 @@ window.BromarPages.employees = {
     let searchVal    = '';
     let filterMode   = 'all';
     let showInactive = false;
-    /* autocomplete suggestion caches loaded once */
     let inductionTypeSuggestions = [];
     let skillSuggestions         = [];
 
     /* ── HELPERS ── */
     const sbH = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+    const sbHnoPrefer = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
 
     function expiryStatus(d) {
       if (!d) return null;
@@ -153,7 +152,7 @@ window.BromarPages.employees = {
       let expired = 0, expiring = 0;
       for (const g of CERT_GROUPS) {
         for (const c of g.certs) {
-          const ef = c.expiryOnly ? c.expiry : (c.expiry && (c.expiryOnly || c.isText || emp[c.key]) ? c.expiry : null);
+          const ef = c.expiryOnly ? c.expiry : (c.expiry && (c.isText || emp[c.key]) ? c.expiry : null);
           if (!ef) continue;
           if (!c.expiryOnly && !c.isText && !emp[c.key]) continue;
           const s = expiryStatus(emp[ef]);
@@ -162,6 +161,9 @@ window.BromarPages.employees = {
       }
       return { expired, expiring };
     }
+    function safePath(name) { return encodeURIComponent(name.replace(/[^a-zA-Z0-9 _-]/g, '_')); }
+    function profilePhotoUrl(name) { return `${STORAGE_URL}/${safePath(name)}/profile/photo`; }
+    function certImageUrl(name, key, side) { return `${STORAGE_URL}/${safePath(name)}/certs/${key}/${side}`; }
 
     /* ── SUPABASE ── */
     async function sbFetch(path) {
@@ -182,11 +184,41 @@ window.BromarPages.employees = {
     }
     async function sbDelete(table, match) {
       const params = Object.entries(match).map(([k,v]) => `${k}=eq.${encodeURIComponent(v)}`).join('&');
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, { method: 'DELETE', headers: sbH });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, { method: 'DELETE', headers: sbHnoPrefer });
       if (!r.ok) throw new Error(`DB error ${r.status}`);
     }
     async function logHistory(employeeName, field, oldVal, newVal) {
       await sbPost('employee_cert_history', { employee_name: employeeName, changed_field: field, old_value: oldVal != null ? String(oldVal) : null, new_value: newVal != null ? String(newVal) : null });
+    }
+
+    /* ── STORAGE UPLOAD ── */
+    async function uploadToStorage(path, file) {
+      const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+        body: file,
+      });
+      if (!r.ok) { const t = await r.text(); throw new Error(t); }
+    }
+    async function deleteFromStorage(path) {
+      await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+      });
+    }
+    function imgExists(url) {
+      return new Promise(res => {
+        const img = new Image();
+        img.onload  = () => res(true);
+        img.onerror = () => res(false);
+        img.src = url + '?t=' + Date.now();
+      });
+    }
+    async function loadImageAsDataUrl(url) {
+      const r = await fetch(url + '?t=' + Date.now(), { headers: { 'apikey': SUPABASE_KEY } });
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
     }
 
     /* ── STYLES ── */
@@ -209,9 +241,12 @@ window.BromarPages.employees = {
       .badge-expiring { background:rgba(202,138,4,0.1);   color:#ca8a04; border-color:rgba(202,138,4,0.3); }
       .badge-inactive { background:rgba(100,100,120,0.1); color:var(--text-secondary); border-color:var(--border); }
       .emp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:1rem; margin-bottom:2rem; }
-      .emp-card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:14px; padding:1.1rem 1.4rem; cursor:pointer; transition:all 0.2s; }
+      .emp-card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:14px; padding:1.1rem 1.4rem; cursor:pointer; transition:all 0.2s; display:flex; gap:0.85rem; align-items:flex-start; }
       .emp-card:hover { transform:translateY(-3px); box-shadow:0 8px 24px var(--shadow); border-color:var(--accent); }
       .emp-card.inactive-card { opacity:0.6; }
+      .emp-card-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0; background:var(--bg-main); }
+      .emp-card-avatar-placeholder { width:44px; height:44px; border-radius:50%; background:var(--bg-main); border:2px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.1rem; color:var(--text-secondary); font-weight:700; }
+      .emp-card-body { flex:1; min-width:0; }
       .emp-card-name { font-size:1rem; font-weight:700; color:var(--text-primary); margin-bottom:0.1rem; }
       .emp-card-role { font-size:0.78rem; color:var(--accent); font-weight:600; margin-bottom:0.3rem; }
       .emp-card-contact { font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.6rem; display:flex; flex-direction:column; gap:0.1rem; }
@@ -221,18 +256,23 @@ window.BromarPages.employees = {
       /* MODAL */
       .emp-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:200; display:flex; align-items:center; justify-content:center; padding:1rem; animation:empFadeIn 0.2s ease; }
       @keyframes empFadeIn { from{opacity:0} to{opacity:1} }
-      .emp-panel { background:var(--bg-secondary); border:1px solid var(--border); border-radius:20px; width:100%; max-width:820px; max-height:90vh; overflow-y:auto; padding:2rem; position:relative; animation:empSlideUp 0.25s ease; }
-      @keyframes empSlideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+      .emp-panel { background:var(--bg-secondary); border:1px solid var(--border); border-radius:20px; width:100%; max-width:860px; max-height:90vh; overflow-y:auto; padding:2rem; position:relative; animation:empSlideUp 0.25s ease; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
       .emp-panel::-webkit-scrollbar { width:6px; }
       .emp-panel::-webkit-scrollbar-track { background:transparent; }
       .emp-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
       .emp-panel::-webkit-scrollbar-thumb:hover { background:var(--accent); }
-      .emp-panel { scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+      @keyframes empSlideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
       .emp-panel-close { position:absolute; top:1.25rem; right:1.25rem; width:34px; height:34px; border:1px solid var(--border); background:var(--bg-main); border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:1rem; transition:all 0.2s; }
       .emp-panel-close:hover { border-color:var(--accent); color:var(--accent); }
+      .emp-panel-header { display:flex; gap:1.25rem; align-items:flex-start; margin-bottom:1.25rem; }
+      .emp-panel-avatar { width:72px; height:72px; border-radius:50%; object-fit:cover; border:3px solid var(--border); flex-shrink:0; cursor:pointer; transition:border-color 0.2s; }
+      .emp-panel-avatar:hover { border-color:var(--accent); }
+      .emp-panel-avatar-placeholder { width:72px; height:72px; border-radius:50%; background:var(--bg-main); border:3px dashed var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
+      .emp-panel-avatar-placeholder:hover { border-color:var(--accent); color:var(--accent); }
+      .emp-panel-info { flex:1; }
       .emp-panel-name { font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; color:var(--text-primary); margin-bottom:0.15rem; }
       .emp-panel-role { font-size:0.88rem; color:var(--accent); font-weight:600; margin-bottom:0.5rem; }
-      .emp-panel-meta { display:flex; gap:1.25rem; flex-wrap:wrap; margin-bottom:1.25rem; font-size:0.86rem; color:var(--text-secondary); }
+      .emp-panel-meta { display:flex; gap:1.25rem; flex-wrap:wrap; font-size:0.86rem; color:var(--text-secondary); }
       .emp-panel-meta a { color:var(--accent); text-decoration:none; }
       .emp-panel-meta a:hover { text-decoration:underline; }
       .emp-panel-tabs { display:flex; gap:0.4rem; margin-bottom:1.5rem; border-bottom:1px solid var(--border); flex-wrap:wrap; }
@@ -245,14 +285,17 @@ window.BromarPages.employees = {
       .cert-group { margin-bottom:1.4rem; }
       .cert-group-title { font-size:0.72rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-secondary); margin-bottom:0.5rem; padding-bottom:0.35rem; border-bottom:1px solid var(--border); }
       .cert-rows { display:flex; flex-direction:column; gap:0.25rem; }
-      .cert-row { display:flex; align-items:center; justify-content:space-between; padding:0.4rem 0.65rem; border-radius:8px; font-size:0.84rem; gap:1rem; }
+      .cert-row { display:flex; align-items:center; padding:0.4rem 0.65rem; border-radius:8px; font-size:0.84rem; gap:0.6rem; }
       .cert-row:hover { background:var(--card-hover); }
       .cert-label { color:var(--text-primary); font-weight:500; flex:1; }
-      .cert-right { display:flex; align-items:center; gap:0.55rem; flex-shrink:0; }
+      .cert-right { display:flex; align-items:center; gap:0.5rem; flex-shrink:0; }
       .cert-expiry { font-size:0.76rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; }
       .cert-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
       .dot-expired{background:#dc2626;} .dot-expiring{background:#ca8a04;} .dot-valid{background:#15803d;} .dot-none{background:var(--border);}
       .cert-notes { font-size:0.73rem; color:var(--text-secondary); font-style:italic; }
+      .cert-img-btn { width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); cursor:pointer; font-size:0.75rem; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
+      .cert-img-btn:hover { border-color:var(--accent); color:var(--accent); }
+      .cert-img-btn.has-img { border-color:rgba(21,128,61,0.4); color:#15803d; background:rgba(21,128,61,0.08); }
 
       /* EDIT FORM */
       .edit-section-title { font-size:0.72rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-secondary); padding:0.75rem 0 0.35rem; border-bottom:1px solid var(--border); margin-bottom:0.5rem; }
@@ -281,6 +324,21 @@ window.BromarPages.employees = {
       .btn-sm { font-family:'Outfit',sans-serif; font-size:0.85rem; font-weight:600; padding:0.6rem 1.2rem; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
       .btn-sm:hover { border-color:var(--accent); color:var(--text-primary); }
 
+      /* IMAGE UPLOAD PANEL */
+      .img-upload-panel { background:var(--bg-main); border:1px solid var(--border); border-radius:12px; padding:1rem; margin-top:0.5rem; }
+      .img-upload-panel h4 { font-size:0.82rem; font-weight:700; color:var(--text-primary); margin-bottom:0.75rem; }
+      .img-slots { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
+      .img-slot { display:flex; flex-direction:column; gap:0.4rem; }
+      .img-slot label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); }
+      .img-preview { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:var(--bg-secondary); display:block; }
+      .img-placeholder { width:100%; aspect-ratio:16/10; border-radius:8px; border:2px dashed var(--border); background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:0.78rem; cursor:pointer; transition:all 0.15s; }
+      .img-placeholder:hover { border-color:var(--accent); color:var(--accent); }
+      .img-slot-actions { display:flex; gap:0.4rem; }
+      .img-upload-btn { flex:1; font-family:'Outfit',sans-serif; font-size:0.75rem; font-weight:600; padding:0.35rem 0.6rem; border-radius:6px; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer; transition:all 0.15s; text-align:center; }
+      .img-upload-btn:hover { border-color:var(--accent); color:var(--accent); }
+      .img-del-btn { font-size:0.75rem; font-weight:600; padding:0.35rem 0.6rem; border-radius:6px; border:1px solid rgba(220,38,38,0.3); background:rgba(220,38,38,0.07); color:#dc2626; cursor:pointer; }
+      .img-del-btn:hover { background:rgba(220,38,38,0.14); }
+
       /* HISTORY */
       .hist-header,.hist-row { display:grid; grid-template-columns:150px 1fr 1fr 1fr; gap:0.75rem; padding:0.5rem 0.65rem; border-radius:8px; font-size:0.82rem; }
       .hist-row { border-bottom:1px solid var(--border); }
@@ -302,32 +360,35 @@ window.BromarPages.employees = {
       .ind-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
       .ind-del,.skill-del { background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1rem; padding:0.2rem 0.4rem; border-radius:6px; transition:all 0.15s; flex-shrink:0; }
       .ind-del:hover,.skill-del:hover { color:#dc2626; background:rgba(220,38,38,0.08); }
-
-      /* AUTOCOMPLETE */
       .ac-wrap { position:relative; }
       .ac-list { position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-sm); z-index:50; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px var(--shadow); display:none; }
       .ac-list.open { display:block; }
       .ac-item { padding:0.5rem 0.85rem; font-size:0.86rem; cursor:pointer; color:var(--text-primary); }
       .ac-item:hover { background:var(--card-hover); color:var(--accent); }
-
-      /* ADD FORM PANELS */
       .add-form { background:var(--bg-main); border:1px solid var(--border); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1rem; display:none; }
       .add-form.open { display:block; }
       .add-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
       @media(max-width:600px){ .add-form-grid{grid-template-columns:1fr;} }
-      .add-form-grid .edit-field { grid-column:auto; }
       .add-form-grid .full { grid-column:1/-1; }
+
+      /* PDF MODAL */
+      .pdf-cert-list { display:flex; flex-direction:column; gap:0.4rem; max-height:260px; overflow-y:auto; margin-bottom:1rem; padding-right:0.25rem; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+      .pdf-cert-list::-webkit-scrollbar { width:4px; }
+      .pdf-cert-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
+      .pdf-cert-check { display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.6rem; border-radius:8px; font-size:0.86rem; cursor:pointer; }
+      .pdf-cert-check:hover { background:var(--card-hover); }
+      .pdf-cert-check input[type=checkbox] { accent-color:var(--accent); width:15px; height:15px; cursor:pointer; }
+      .pdf-side-toggle { display:flex; gap:0.5rem; margin-bottom:1rem; }
+      .pdf-side-btn { flex:1; padding:0.5rem; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); font-family:'Outfit',sans-serif; font-size:0.84rem; font-weight:600; cursor:pointer; transition:all 0.2s; text-align:center; }
+      .pdf-side-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
 
       .emp-loading { display:flex; align-items:center; justify-content:center; padding:3rem; color:var(--text-secondary); gap:0.75rem; }
       .emp-spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
       @keyframes spin { to{transform:rotate(360deg)} }
       .emp-empty { text-align:center; padding:2.5rem 1rem; color:var(--text-secondary); font-size:0.92rem; }
-
       .add-emp-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-      @media(max-width:600px){ .add-emp-grid{grid-column:1fr;} }
       .add-emp-grid .edit-section-title { grid-column:1/-1; }
-
-      @media(max-width:600px){ .emp-panel{padding:1.25rem;} .emp-panel-name{font-size:1.2rem;} .hist-header,.hist-row{grid-template-columns:1fr 1fr;} }
+      @media(max-width:600px){ .add-emp-grid{grid-template-columns:1fr;} .emp-panel{padding:1.25rem;} .emp-panel-name{font-size:1.2rem;} .hist-header,.hist-row{grid-template-columns:1fr 1fr;} .img-slots{grid-template-columns:1fr;} }
     `;
     document.head.appendChild(styleEl);
 
@@ -400,29 +461,46 @@ window.BromarPages.employees = {
         });
       }
       if (!list.length) { grid.innerHTML = `<div class="emp-empty">No employees match your filter.</div>`; return; }
-      const age = e => calcAge(e.dob);
       grid.innerHTML = list.map(emp => {
         const { expired, expiring } = empSummary(emp);
         const inactive = emp.is_active === false;
-        const a = age(emp);
+        const a = calcAge(emp.dob);
+        const initials = (emp.full_name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
         const badges = [
           inactive                           ? `<span class="emp-badge badge-inactive">Former</span>` : '',
           expired  > 0                       ? `<span class="emp-badge badge-expired">${expired} Expired</span>` : '',
           expiring > 0                       ? `<span class="emp-badge badge-expiring">${expiring} Expiring</span>` : '',
           !inactive && !expired && !expiring ? `<span class="emp-badge badge-ok">All Clear</span>` : '',
         ].join('');
+        const avatarUrl = profilePhotoUrl(emp.full_name);
         return `
           <div class="emp-card${inactive?' inactive-card':''}" data-name="${emp.full_name}">
-            <div class="emp-card-name">${emp.full_name}</div>
-            ${emp.employee_type ? `<div class="emp-card-role">${emp.employee_type}</div>` : ''}
-            <div class="emp-card-contact">
-              ${emp.mobile ? `<span>📱 ${emp.mobile}</span>` : ''}
-              ${emp.email  ? `<span>✉️ ${emp.email}</span>`  : ''}
-              ${a != null  ? `<span>Age ${a}</span>`         : ''}
+            <div class="emp-card-avatar-placeholder" data-avatar-init="${initials}" data-avatar-url="${avatarUrl}">${initials}</div>
+            <div class="emp-card-body">
+              <div class="emp-card-name">${emp.full_name}</div>
+              ${emp.employee_type ? `<div class="emp-card-role">${emp.employee_type}</div>` : ''}
+              <div class="emp-card-contact">
+                ${emp.mobile ? `<span>📱 ${emp.mobile}</span>` : ''}
+                ${emp.email  ? `<span>✉️ ${emp.email}</span>`  : ''}
+                ${a != null  ? `<span>Age ${a}</span>`         : ''}
+              </div>
+              <div class="emp-badges">${badges}</div>
             </div>
-            <div class="emp-badges">${badges}</div>
           </div>`;
       }).join('');
+
+      /* try to load profile photos */
+      grid.querySelectorAll('[data-avatar-url]').forEach(el => {
+        imgExists(el.dataset.avatarUrl).then(exists => {
+          if (!exists) return;
+          const img = document.createElement('img');
+          img.className = 'emp-card-avatar';
+          img.src = el.dataset.avatarUrl + '?t=' + Date.now();
+          img.alt = '';
+          el.replaceWith(img);
+        });
+      });
+
       grid.querySelectorAll('.emp-card').forEach(card => {
         card.addEventListener('click', () => {
           const emp = allEmployees.find(e => e.full_name === card.dataset.name);
@@ -437,7 +515,6 @@ window.BromarPages.employees = {
       if (!wrap) return;
       let list = wrap.querySelector('.ac-list');
       if (!list) { list = document.createElement('div'); list.className = 'ac-list'; wrap.appendChild(list); }
-
       function update() {
         const q = input.value.trim().toLowerCase();
         const matches = getSuggestions().filter(s => s.toLowerCase().includes(q) && s.toLowerCase() !== q);
@@ -445,11 +522,7 @@ window.BromarPages.employees = {
         list.innerHTML = matches.slice(0,8).map(s => `<div class="ac-item">${s}</div>`).join('');
         list.classList.add('open');
         list.querySelectorAll('.ac-item').forEach(item => {
-          item.addEventListener('mousedown', e => {
-            e.preventDefault();
-            input.value = item.textContent;
-            list.classList.remove('open');
-          });
+          item.addEventListener('mousedown', e => { e.preventDefault(); input.value = item.textContent; list.classList.remove('open'); });
         });
       }
       input.addEventListener('input', update);
@@ -463,17 +536,23 @@ window.BromarPages.employees = {
       overlay.id = 'emp-detail-overlay';
       const inactive = emp.is_active === false;
       const a = calcAge(emp.dob);
+      const initials = (emp.full_name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
       overlay.innerHTML = `
         <div class="emp-panel">
           <button class="emp-panel-close">✕</button>
-          <div class="emp-panel-name">${emp.full_name}</div>
-          ${emp.employee_type ? `<div class="emp-panel-role">${emp.employee_type}</div>` : ''}
-          <div class="emp-panel-meta">
-            ${emp.mobile ? `<span>📱 <a href="tel:${emp.mobile}">${emp.mobile}</a></span>` : ''}
-            ${emp.email  ? `<span>✉️ <a href="mailto:${emp.email}">${emp.email}</a></span>` : ''}
-            ${emp.dob    ? `<span>DOB: ${fmtDob(emp.dob)}${a != null ? ` (Age ${a})` : ''}</span>` : ''}
-            ${inactive   ? `<span class="emp-badge badge-inactive" style="align-self:center">Former — left ${fmtDate(emp.departed_at)}</span>` : ''}
+          <div class="emp-panel-header">
+            <div class="emp-panel-avatar-placeholder" id="panel-avatar-wrap" title="Click to upload photo">${initials}</div>
+            <div class="emp-panel-info">
+              <div class="emp-panel-name">${emp.full_name}</div>
+              ${emp.employee_type ? `<div class="emp-panel-role">${emp.employee_type}</div>` : ''}
+              <div class="emp-panel-meta">
+                ${emp.mobile ? `<span>📱 <a href="tel:${emp.mobile}">${emp.mobile}</a></span>` : ''}
+                ${emp.email  ? `<span>✉️ <a href="mailto:${emp.email}">${emp.email}</a></span>` : ''}
+                ${emp.dob    ? `<span>DOB: ${fmtDob(emp.dob)}${a!=null?` (Age ${a})`:''}</span>` : ''}
+                ${inactive   ? `<span class="emp-badge badge-inactive" style="align-self:center">Former — left ${fmtDate(emp.departed_at)}</span>` : ''}
+              </div>
+            </div>
           </div>
           <div class="emp-panel-tabs">
             <button class="emp-tab active" data-tab="certs">Certifications</button>
@@ -493,6 +572,22 @@ window.BromarPages.employees = {
       overlay.querySelector('.emp-panel-close').addEventListener('click', () => overlay.remove());
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
+      /* profile photo */
+      const avatarWrap = overlay.querySelector('#panel-avatar-wrap');
+      const photoUrl = profilePhotoUrl(emp.full_name);
+      imgExists(photoUrl).then(exists => {
+        if (exists) {
+          const img = document.createElement('img');
+          img.className = 'emp-panel-avatar';
+          img.src = photoUrl + '?t=' + Date.now();
+          img.title = 'Click to change photo';
+          avatarWrap.replaceWith(img);
+          overlay.querySelector('.emp-panel-avatar, #panel-avatar-wrap').addEventListener('click', () => triggerProfileUpload(emp, overlay));
+        } else {
+          avatarWrap.addEventListener('click', () => triggerProfileUpload(emp, overlay));
+        }
+      });
+
       /* tabs */
       overlay.querySelectorAll('.emp-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -500,13 +595,13 @@ window.BromarPages.employees = {
           overlay.querySelectorAll('.emp-tab-content').forEach(t => t.classList.remove('active'));
           tab.classList.add('active');
           overlay.querySelector(`#tab-${tab.dataset.tab}`)?.classList.add('active');
-          if (tab.dataset.tab === 'history')   loadHistory(emp.full_name, overlay);
+          if (tab.dataset.tab === 'history')    loadHistory(emp.full_name, overlay);
           if (tab.dataset.tab === 'inductions') loadInductions(emp.full_name, overlay);
           if (tab.dataset.tab === 'skills')     loadSkills(emp.full_name, overlay);
         });
       });
 
-      /* cert expand/collapse */
+      /* cert expand/collapse in edit */
       overlay.querySelectorAll('.cert-edit-header').forEach(header => {
         header.addEventListener('click', e => {
           if (e.target.classList.contains('cert-add-btn') || e.target.classList.contains('cert-remove-btn')) return;
@@ -529,10 +624,125 @@ window.BromarPages.employees = {
         });
       });
 
+      /* cert image upload buttons */
+      overlay.querySelectorAll('.cert-img-btn').forEach(btn => {
+        btn.addEventListener('click', e => { e.stopPropagation(); openCertImagePanel(emp, btn.dataset.certKey, btn.dataset.certLabel, overlay, btn); });
+      });
+
       overlay.querySelector('#edit-cancel-btn').addEventListener('click', () => overlay.remove());
       overlay.querySelector('#edit-save-btn').addEventListener('click', () => saveEdit(emp, overlay, true));
-      overlay.querySelector('#former-btn')?.addEventListener('click', () => {
-        if (inactive) reactivate(emp, overlay); else markFormer(emp, overlay);
+      overlay.querySelector('#former-btn')?.addEventListener('click', () => { if (inactive) reactivate(emp, overlay); else markFormer(emp, overlay); });
+      overlay.querySelector('#generate-pdf-btn')?.addEventListener('click', () => openPdfModal(emp, overlay));
+    }
+
+    /* ── PROFILE PHOTO UPLOAD ── */
+    function triggerProfileUpload(emp, overlay) {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = 'image/*';
+      input.onchange = async () => {
+        const file = input.files[0]; if (!file) return;
+        try {
+          await uploadToStorage(`${safePath(emp.full_name)}/profile/photo`, file);
+          /* refresh avatar in panel */
+          const newUrl = profilePhotoUrl(emp.full_name) + '?t=' + Date.now();
+          const existing = overlay.querySelector('.emp-panel-avatar, #panel-avatar-wrap');
+          if (existing) {
+            const img = document.createElement('img');
+            img.className = 'emp-panel-avatar';
+            img.src = newUrl;
+            img.title = 'Click to change photo';
+            existing.replaceWith(img);
+            img.addEventListener('click', () => triggerProfileUpload(emp, overlay));
+          }
+          renderGrid();
+        } catch (err) { alert('Upload failed: ' + err.message); }
+      };
+      input.click();
+    }
+
+    /* ── CERT IMAGE PANEL ── */
+    function openCertImagePanel(emp, certKey, certLabel, overlay, triggerBtn) {
+      /* remove any existing panel */
+      overlay.querySelectorAll('.img-upload-panel').forEach(p => p.remove());
+
+      const panel = document.createElement('div');
+      panel.className = 'img-upload-panel';
+      panel.innerHTML = `
+        <h4>📎 ${certLabel} — Images</h4>
+        <div class="img-slots">
+          <div class="img-slot" id="slot-front">
+            <label>Front</label>
+            <div class="img-placeholder" id="front-placeholder">Click to upload</div>
+            <div class="img-slot-actions">
+              <label class="img-upload-btn">Upload<input type="file" accept="image/*" style="display:none" data-side="front"></label>
+              <button class="img-del-btn" data-side="front" style="display:none">Delete</button>
+            </div>
+          </div>
+          <div class="img-slot" id="slot-back">
+            <label>Back</label>
+            <div class="img-placeholder" id="back-placeholder">Click to upload</div>
+            <div class="img-slot-actions">
+              <label class="img-upload-btn">Upload<input type="file" accept="image/*" style="display:none" data-side="back"></label>
+              <button class="img-del-btn" data-side="back" style="display:none">Delete</button>
+            </div>
+          </div>
+        </div>`;
+
+      /* insert after the cert row containing the trigger button */
+      const certRow = triggerBtn.closest('.cert-row');
+      certRow.insertAdjacentElement('afterend', panel);
+
+      async function loadSlot(side) {
+        const url = certImageUrl(emp.full_name, certKey, side);
+        const exists = await imgExists(url);
+        const placeholder = panel.querySelector(`#${side}-placeholder`);
+        const delBtn = panel.querySelector(`.img-del-btn[data-side="${side}"]`);
+        if (exists) {
+          const img = document.createElement('img');
+          img.className = 'img-preview';
+          img.src = url + '?t=' + Date.now();
+          placeholder.replaceWith(img);
+          delBtn.style.display = 'block';
+          triggerBtn.classList.add('has-img');
+        }
+      }
+      loadSlot('front'); loadSlot('back');
+
+      /* upload handlers */
+      panel.querySelectorAll('input[type=file]').forEach(input => {
+        input.addEventListener('change', async () => {
+          const file = input.files[0]; if (!file) return;
+          const side = input.dataset.side;
+          try {
+            await uploadToStorage(`${safePath(emp.full_name)}/certs/${certKey}/${side}`, file);
+            /* reload slot */
+            const url = certImageUrl(emp.full_name, certKey, side) + '?t=' + Date.now();
+            const slot = panel.querySelector(`#slot-${side}`);
+            const old = slot.querySelector('.img-preview,.img-placeholder');
+            const img = document.createElement('img');
+            img.className = 'img-preview'; img.src = url;
+            if (old) old.replaceWith(img); else slot.prepend(img);
+            slot.querySelector('.img-del-btn').style.display = 'block';
+            triggerBtn.classList.add('has-img');
+          } catch (err) { alert('Upload failed: ' + err.message); }
+        });
+      });
+
+      /* delete handlers */
+      panel.querySelectorAll('.img-del-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this image?')) return;
+          const side = btn.dataset.side;
+          await deleteFromStorage(`${safePath(emp.full_name)}/certs/${certKey}/${side}`);
+          const slot = panel.querySelector(`#slot-${side}`);
+          const img = slot.querySelector('.img-preview');
+          if (img) { const ph = document.createElement('div'); ph.className='img-placeholder'; ph.textContent='Click to upload'; img.replaceWith(ph); }
+          btn.style.display = 'none';
+          /* check if any images remain */
+          const frontExists = await imgExists(certImageUrl(emp.full_name, certKey, 'front'));
+          const backExists  = await imgExists(certImageUrl(emp.full_name, certKey, 'back'));
+          if (!frontExists && !backExists) triggerBtn.classList.remove('has-img');
+        });
       });
     }
 
@@ -540,26 +750,31 @@ window.BromarPages.employees = {
     function buildCertView(emp) {
       const groups = CERT_GROUPS.map(group => {
         const rows = group.certs.map(cert => {
+          const imgBtn = `<button class="cert-img-btn" data-cert-key="${cert.key}" data-cert-label="${cert.label}" title="Upload images">📎</button>`;
           if (cert.isText && !cert.expiryOnly) {
             const val = emp[cert.key]; if (!val) return '';
             const s = expiryStatus(cert.expiry ? emp[cert.expiry] : null);
-            return `<div class="cert-row"><span class="cert-label">${cert.label}</span><div class="cert-right"><span class="cert-expiry">${val}</span>${cert.expiry&&emp[cert.expiry]?`<span class="cert-expiry">${fmtDate(emp[cert.expiry])}</span>`:''}<div class="cert-dot ${s?`dot-${s}`:'dot-none'}"></div></div></div>`;
+            return `<div class="cert-row"><span class="cert-label">${cert.label}</span><div class="cert-right"><span class="cert-expiry">${val}</span>${cert.expiry&&emp[cert.expiry]?`<span class="cert-expiry">${fmtDate(emp[cert.expiry])}</span>`:''}<div class="cert-dot ${s?`dot-${s}`:'dot-none'}"></div>${imgBtn}</div></div>`;
           }
           if (cert.expiryOnly) {
             const val = emp[cert.expiry]; if (!val) return '';
             const s = expiryStatus(val);
-            return `<div class="cert-row"><span class="cert-label">${cert.label}</span><div class="cert-right"><span class="cert-expiry">${fmtDate(val)}</span><div class="cert-dot dot-${s}"></div></div></div>`;
+            return `<div class="cert-row"><span class="cert-label">${cert.label}</span><div class="cert-right"><span class="cert-expiry">${fmtDate(val)}</span><div class="cert-dot dot-${s}"></div>${imgBtn}</div></div>`;
           }
-          if (!emp[cert.key]) return '';
+          /* show all certs with + button, dim if not held */
+          const held = !!emp[cert.key];
           const expVal = cert.expiry ? emp[cert.expiry] : null;
           const s = expiryStatus(expVal);
+          const dot = held ? (s ? `dot-${s}` : 'dot-valid') : 'dot-none';
           const note = cert.notes && emp[cert.notes] ? `<div class="cert-notes">${emp[cert.notes]}</div>` : '';
-          return `<div class="cert-row"><div style="flex:1"><div class="cert-label">${cert.label}</div>${note}</div><div class="cert-right"><span class="cert-expiry">${expVal?fmtDate(expVal):'No expiry'}</span><div class="cert-dot ${s?`dot-${s}`:'dot-valid'}"></div></div></div>`;
+          const style = held ? '' : 'opacity:0.4';
+          return `<div class="cert-row" style="${style}"><div style="flex:1"><div class="cert-label">${cert.label}${held?'':' <span style="font-size:0.72rem;color:var(--text-secondary)">(not held)</span>'}</div>${note}</div><div class="cert-right">${held?`<span class="cert-expiry">${expVal?fmtDate(expVal):'No expiry'}</span>`:''}<div class="cert-dot ${dot}"></div>${imgBtn}</div></div>`;
         }).filter(Boolean).join('');
         if (!rows) return '';
         return `<div class="cert-group"><div class="cert-group-title">${group.label}</div><div class="cert-rows">${rows}</div></div>`;
       }).filter(Boolean).join('');
-      return groups || `<p style="color:var(--text-secondary);padding:1rem 0">No certifications recorded.</p>`;
+      const pdfBtn = `<div style="margin-top:1.25rem;display:flex;justify-content:flex-end"><button class="btn-primary" id="generate-pdf-btn" style="padding:0.6rem 1.2rem;font-size:0.86rem">📄 Generate PDF</button></div>`;
+      return (groups || `<p style="color:var(--text-secondary);padding:1rem 0">No certifications recorded.</p>`) + pdfBtn;
     }
 
     /* ── EDIT FORM ── */
@@ -638,10 +853,12 @@ window.BromarPages.employees = {
         if (idx >= 0) allEmployees[idx] = emp;
         renderStats(); renderGrid();
         overlay.querySelector('#tab-certs').innerHTML = buildCertView(emp);
+        /* re-bind pdf and img buttons */
+        overlay.querySelectorAll('.cert-img-btn').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openCertImagePanel(emp, b.dataset.certKey, b.dataset.certLabel, overlay, b); }));
+        overlay.querySelector('#generate-pdf-btn')?.addEventListener('click', () => openPdfModal(emp, overlay));
         if (closeAfter) { overlay.remove(); return; }
-        btn.textContent = '✓ Saved';
-        setTimeout(() => { btn.textContent = 'Save & Close'; btn.disabled = false; }, 1500);
-      } catch (err) { btn.textContent = 'Save & Close'; btn.disabled = false; console.error(err); alert('Save failed: ' + err.message); }
+        btn.textContent = 'Save & Close'; btn.disabled = false;
+      } catch (err) { btn.textContent = 'Save & Close'; btn.disabled = false; alert('Save failed: ' + err.message); }
     }
 
     /* ── MARK FORMER / REACTIVATE ── */
@@ -677,17 +894,11 @@ window.BromarPages.employees = {
         if (!rows.length) { tab.innerHTML = `<div class="emp-empty">No history recorded yet.</div>`; return; }
         tab.innerHTML = `
           <div class="hist-header hist-label"><span>Date</span><span>Field</span><span>Previous</span><span>New</span></div>
-          ${rows.map(r => `
-            <div class="hist-row">
-              <span class="hist-date">${new Date(r.changed_at).toLocaleString('en-AU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-              <span class="hist-field">${r.changed_field.replace(/_/g,' ')}</span>
-              <span class="hist-old">${r.old_value??'—'}</span>
-              <span class="hist-new">${r.new_value??'—'}</span>
-            </div>`).join('')}`;
+          ${rows.map(r=>`<div class="hist-row"><span class="hist-date">${new Date(r.changed_at).toLocaleString('en-AU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span class="hist-field">${r.changed_field.replace(/_/g,' ')}</span><span class="hist-old">${r.old_value??'—'}</span><span class="hist-new">${r.new_value??'—'}</span></div>`).join('')}`;
       } catch { tab.innerHTML = `<div class="emp-empty">Failed to load history.</div>`; }
     }
 
-    /* ── INDUCTIONS TAB ── */
+    /* ── INDUCTIONS ── */
     async function loadInductions(name, overlay) {
       const tab = overlay.querySelector('#tab-inductions');
       try {
@@ -695,58 +906,23 @@ window.BromarPages.employees = {
         renderInductionsTab(name, rows, tab);
       } catch { tab.innerHTML = `<div class="emp-empty">Failed to load inductions.</div>`; }
     }
-
     function renderInductionsTab(name, rows, tab) {
       const listHTML = rows.length ? rows.map(r => {
         const s = expiryStatus(r.expiry_date);
         const dot = s ? `dot-${s}` : 'dot-none';
-        return `
-          <div class="ind-row" data-id="${r.id}">
-            <div class="ind-main">
-              <div class="ind-type">${r.induction_type}</div>
-              <div class="ind-meta">
-                ${r.site_or_client ? `📍 ${r.site_or_client}` : ''}
-                ${r.document_name  ? ` · ${r.document_name}` : ''}
-                ${r.notes          ? ` · <em>${r.notes}</em>` : ''}
-              </div>
-              <div class="ind-meta">Completed: ${fmtDate(r.completed_date)}</div>
-            </div>
-            ${r.expiry_date ? `<span class="ind-expiry">${fmtDate(r.expiry_date)}</span><div class="ind-dot ${dot}"></div>` : `<div class="ind-dot dot-none"></div>`}
-            <button class="ind-del" data-id="${r.id}" title="Delete">✕</button>
-          </div>`;
+        return `<div class="ind-row" data-id="${r.id}"><div class="ind-main"><div class="ind-type">${r.induction_type}</div><div class="ind-meta">${r.site_or_client?`📍 ${r.site_or_client}`:''}${r.document_name?` · ${r.document_name}`:''}${r.notes?` · <em>${r.notes}</em>`:''}</div><div class="ind-meta">Completed: ${fmtDate(r.completed_date)}</div></div>${r.expiry_date?`<span class="ind-expiry">${fmtDate(r.expiry_date)}</span><div class="ind-dot ${dot}"></div>`:`<div class="ind-dot dot-none"></div>`}<button class="ind-del" data-id="${r.id}" title="Delete">✕</button></div>`;
       }).join('') : `<div class="emp-empty" style="padding:1rem">No inductions recorded yet.</div>`;
-
       tab.innerHTML = `
         <div class="ind-list">${listHTML}</div>
         <button class="btn-sm" id="ind-add-toggle" style="margin-bottom:0.75rem">+ Add Induction</button>
         <div class="add-form" id="ind-add-form">
           <div class="add-form-grid">
-            <div class="edit-field full">
-              <label>Induction Type <span style="color:#dc2626">*</span></label>
-              <div class="ac-wrap">
-                <input class="edit-input" id="ind-type" type="text" placeholder="e.g. Site Induction, SOP Sign-off…" autocomplete="off">
-              </div>
-            </div>
-            <div class="edit-field">
-              <label>Site / Client</label>
-              <input class="edit-input" id="ind-site" type="text" placeholder="e.g. Southern Cross Station">
-            </div>
-            <div class="edit-field">
-              <label>Document / SOP Name</label>
-              <input class="edit-input" id="ind-doc" type="text" placeholder="Optional">
-            </div>
-            <div class="edit-field">
-              <label>Completed Date <span style="color:#dc2626">*</span></label>
-              <input class="edit-input" id="ind-date" type="date">
-            </div>
-            <div class="edit-field">
-              <label>Expiry Date</label>
-              <input class="edit-input" id="ind-expiry" type="date">
-            </div>
-            <div class="edit-field full">
-              <label>Notes</label>
-              <input class="edit-input" id="ind-notes" type="text" placeholder="Optional">
-            </div>
+            <div class="edit-field full"><label>Induction Type <span style="color:#dc2626">*</span></label><div class="ac-wrap"><input class="edit-input" id="ind-type" type="text" placeholder="e.g. Site Induction…" autocomplete="off"></div></div>
+            <div class="edit-field"><label>Site / Client</label><input class="edit-input" id="ind-site" type="text"></div>
+            <div class="edit-field"><label>Document / SOP Name</label><input class="edit-input" id="ind-doc" type="text"></div>
+            <div class="edit-field"><label>Completed Date <span style="color:#dc2626">*</span></label><input class="edit-input" id="ind-date" type="date"></div>
+            <div class="edit-field"><label>Expiry Date</label><input class="edit-input" id="ind-expiry" type="date"></div>
+            <div class="edit-field full"><label>Notes</label><input class="edit-input" id="ind-notes" type="text"></div>
           </div>
           <div id="ind-err" style="color:#dc2626;font-size:0.8rem;margin-top:0.5rem;display:none"></div>
           <div class="edit-actions" style="margin-top:0.85rem">
@@ -754,55 +930,33 @@ window.BromarPages.employees = {
             <button class="btn-primary" id="ind-save" style="padding:0.6rem 1.2rem;font-size:0.86rem">Save Induction</button>
           </div>
         </div>`;
-
-      /* autocomplete */
       attachAutocomplete(tab.querySelector('#ind-type'), () => inductionTypeSuggestions);
-
-      tab.querySelector('#ind-add-toggle').addEventListener('click', () => {
-        tab.querySelector('#ind-add-form').classList.toggle('open');
-      });
-      tab.querySelector('#ind-cancel').addEventListener('click', () => {
-        tab.querySelector('#ind-add-form').classList.remove('open');
-      });
+      tab.querySelector('#ind-add-toggle').addEventListener('click', () => tab.querySelector('#ind-add-form').classList.toggle('open'));
+      tab.querySelector('#ind-cancel').addEventListener('click', () => tab.querySelector('#ind-add-form').classList.remove('open'));
       tab.querySelector('#ind-save').addEventListener('click', async () => {
         const btn = tab.querySelector('#ind-save');
         const errEl = tab.querySelector('#ind-err');
         const type = tab.querySelector('#ind-type').value.trim();
         const date = tab.querySelector('#ind-date').value;
-        if (!type || !date) { errEl.textContent = 'Induction type and completed date are required.'; errEl.style.display='block'; return; }
-        btn.textContent = 'Saving…'; btn.disabled = true;
+        if (!type||!date) { errEl.textContent='Induction type and completed date are required.'; errEl.style.display='block'; return; }
+        btn.textContent='Saving…'; btn.disabled=true;
         try {
-          const rec = {
-            employee_name:  name,
-            induction_type: type,
-            site_or_client: tab.querySelector('#ind-site').value.trim()   || null,
-            document_name:  tab.querySelector('#ind-doc').value.trim()    || null,
-            completed_date: date,
-            expiry_date:    tab.querySelector('#ind-expiry').value        || null,
-            notes:          tab.querySelector('#ind-notes').value.trim()  || null,
-          };
-          await sbPost('inductions', rec);
-          /* refresh suggestions */
+          await sbPost('inductions', { employee_name:name, induction_type:type, site_or_client:tab.querySelector('#ind-site').value.trim()||null, document_name:tab.querySelector('#ind-doc').value.trim()||null, completed_date:date, expiry_date:tab.querySelector('#ind-expiry').value||null, notes:tab.querySelector('#ind-notes').value.trim()||null });
           if (!inductionTypeSuggestions.includes(type)) { inductionTypeSuggestions.push(type); inductionTypeSuggestions.sort(); }
           const rows = await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`);
           renderInductionsTab(name, rows, tab);
-        } catch (err) { errEl.textContent = 'Failed: ' + err.message; errEl.style.display='block'; btn.textContent='Save Induction'; btn.disabled=false; }
+        } catch (err) { errEl.textContent='Failed: '+err.message; errEl.style.display='block'; btn.textContent='Save Induction'; btn.disabled=false; }
       });
-
-      /* delete */
       tab.querySelectorAll('.ind-del').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm('Delete this induction record?')) return;
-          try {
-            await sbDelete('inductions', { id: btn.dataset.id });
-            const rows = await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`);
-            renderInductionsTab(name, rows, tab);
-          } catch (err) { alert('Failed: ' + err.message); }
+          try { await sbDelete('inductions',{id:btn.dataset.id}); const rows=await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`); renderInductionsTab(name,rows,tab); }
+          catch (err) { alert('Failed: '+err.message); }
         });
       });
     }
 
-    /* ── SKILLS TAB ── */
+    /* ── SKILLS ── */
     async function loadSkills(name, overlay) {
       const tab = overlay.querySelector('#tab-skills');
       try {
@@ -810,32 +964,15 @@ window.BromarPages.employees = {
         renderSkillsTab(name, rows, tab);
       } catch { tab.innerHTML = `<div class="emp-empty">Failed to load skills.</div>`; }
     }
-
     function renderSkillsTab(name, rows, tab) {
-      const listHTML = rows.length ? rows.map(r => `
-        <div class="skill-row" data-id="${r.id}">
-          <div class="skill-main">
-            <div class="skill-name">${r.skill_name}</div>
-            ${r.notes ? `<div class="skill-notes">${r.notes}</div>` : ''}
-          </div>
-          <button class="skill-del" data-id="${r.id}" title="Delete">✕</button>
-        </div>`).join('') : `<div class="emp-empty" style="padding:1rem">No skills recorded yet.</div>`;
-
+      const listHTML = rows.length ? rows.map(r=>`<div class="skill-row"><div class="skill-main"><div class="skill-name">${r.skill_name}</div>${r.notes?`<div class="skill-notes">${r.notes}</div>`:''}</div><button class="skill-del" data-id="${r.id}" title="Delete">✕</button></div>`).join('') : `<div class="emp-empty" style="padding:1rem">No skills recorded yet.</div>`;
       tab.innerHTML = `
         <div class="skill-list">${listHTML}</div>
         <button class="btn-sm" id="skill-add-toggle" style="margin-bottom:0.75rem">+ Add Skill</button>
         <div class="add-form" id="skill-add-form">
           <div class="add-form-grid">
-            <div class="edit-field full">
-              <label>Skill / Experience <span style="color:#dc2626">*</span></label>
-              <div class="ac-wrap">
-                <input class="edit-input" id="skill-name" type="text" placeholder="e.g. Thermal Imaging, AutoCAD, HV Switching…" autocomplete="off">
-              </div>
-            </div>
-            <div class="edit-field full">
-              <label>Notes</label>
-              <input class="edit-input" id="skill-notes" type="text" placeholder="Optional — e.g. 5 years experience">
-            </div>
+            <div class="edit-field full"><label>Skill / Experience <span style="color:#dc2626">*</span></label><div class="ac-wrap"><input class="edit-input" id="skill-name" type="text" placeholder="e.g. Thermal Imaging…" autocomplete="off"></div></div>
+            <div class="edit-field full"><label>Notes</label><input class="edit-input" id="skill-notes" type="text" placeholder="Optional"></div>
           </div>
           <div id="skill-err" style="color:#dc2626;font-size:0.8rem;margin-top:0.5rem;display:none"></div>
           <div class="edit-actions" style="margin-top:0.85rem">
@@ -843,40 +980,311 @@ window.BromarPages.employees = {
             <button class="btn-primary" id="skill-save" style="padding:0.6rem 1.2rem;font-size:0.86rem">Save Skill</button>
           </div>
         </div>`;
-
       attachAutocomplete(tab.querySelector('#skill-name'), () => skillSuggestions);
-
-      tab.querySelector('#skill-add-toggle').addEventListener('click', () => {
-        tab.querySelector('#skill-add-form').classList.toggle('open');
-      });
-      tab.querySelector('#skill-cancel').addEventListener('click', () => {
-        tab.querySelector('#skill-add-form').classList.remove('open');
-      });
+      tab.querySelector('#skill-add-toggle').addEventListener('click', () => tab.querySelector('#skill-add-form').classList.toggle('open'));
+      tab.querySelector('#skill-cancel').addEventListener('click', () => tab.querySelector('#skill-add-form').classList.remove('open'));
       tab.querySelector('#skill-save').addEventListener('click', async () => {
-        const btn = tab.querySelector('#skill-save');
-        const errEl = tab.querySelector('#skill-err');
-        const skillName = tab.querySelector('#skill-name').value.trim();
-        if (!skillName) { errEl.textContent = 'Skill name is required.'; errEl.style.display='block'; return; }
-        btn.textContent = 'Saving…'; btn.disabled = true;
+        const btn=tab.querySelector('#skill-save'); const errEl=tab.querySelector('#skill-err');
+        const sn=tab.querySelector('#skill-name').value.trim();
+        if (!sn){errEl.textContent='Skill name is required.';errEl.style.display='block';return;}
+        btn.textContent='Saving…';btn.disabled=true;
         try {
-          const rec = { employee_name: name, skill_name: skillName, notes: tab.querySelector('#skill-notes').value.trim() || null };
-          await sbPost('employee_skills', rec);
-          if (!skillSuggestions.includes(skillName)) { skillSuggestions.push(skillName); skillSuggestions.sort(); }
-          const rows = await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);
-          renderSkillsTab(name, rows, tab);
-        } catch (err) { errEl.textContent = 'Failed: ' + err.message; errEl.style.display='block'; btn.textContent='Save Skill'; btn.disabled=false; }
+          await sbPost('employee_skills',{employee_name:name,skill_name:sn,notes:tab.querySelector('#skill-notes').value.trim()||null});
+          if (!skillSuggestions.includes(sn)){skillSuggestions.push(sn);skillSuggestions.sort();}
+          const rows=await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);
+          renderSkillsTab(name,rows,tab);
+        } catch(err){errEl.textContent='Failed: '+err.message;errEl.style.display='block';btn.textContent='Save Skill';btn.disabled=false;}
       });
-
-      tab.querySelectorAll('.skill-del').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Remove this skill?')) return;
-          try {
-            await sbDelete('employee_skills', { id: btn.dataset.id });
-            const rows = await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);
-            renderSkillsTab(name, rows, tab);
-          } catch (err) { alert('Failed: ' + err.message); }
+      tab.querySelectorAll('.skill-del').forEach(btn=>{
+        btn.addEventListener('click',async()=>{
+          if(!confirm('Remove this skill?'))return;
+          try{await sbDelete('employee_skills',{id:btn.dataset.id});const rows=await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);renderSkillsTab(name,rows,tab);}
+          catch(err){alert('Failed: '+err.message);}
         });
       });
+    }
+
+    /* ── PDF MODAL ── */
+    function openPdfModal(emp, detailOverlay) {
+      const heldCerts = ALL_CERTS.filter(c => {
+        if (c.expiryOnly) return !!emp[c.expiry];
+        if (c.isText)     return !!emp[c.key];
+        return !!emp[c.key];
+      });
+
+      const pdfOverlay = document.createElement('div');
+      pdfOverlay.className = 'emp-overlay';
+      pdfOverlay.style.zIndex = '300';
+      pdfOverlay.innerHTML = `
+        <div class="emp-panel" style="max-width:520px">
+          <button class="emp-panel-close">✕</button>
+          <div class="emp-panel-name" style="font-size:1.2rem;margin-bottom:1rem">Generate PDF</div>
+          <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem">Show images:</div>
+          <div class="pdf-side-toggle">
+            <button class="pdf-side-btn active" data-side="front">Front only</button>
+            <button class="pdf-side-btn" data-side="both">Front &amp; Back</button>
+          </div>
+          <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.5rem">Select certifications to include:</div>
+          <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+            <button class="btn-sm" id="pdf-select-all" style="font-size:0.78rem;padding:0.3rem 0.75rem">Select All</button>
+            <button class="btn-sm" id="pdf-clear-all" style="font-size:0.78rem;padding:0.3rem 0.75rem">Clear All</button>
+          </div>
+          <div class="pdf-cert-list">
+            ${heldCerts.length ? heldCerts.map(c => {
+              const expVal = c.expiry ? emp[c.expiry] : null;
+              const s = expiryStatus(expVal);
+              const dot = s ? `<span style="width:7px;height:7px;border-radius:50%;background:${s==='expired'?'#dc2626':s==='expiring'?'#ca8a04':'#15803d'};display:inline-block;margin-right:0.35rem"></span>` : '';
+              return `<label class="pdf-cert-check"><input type="checkbox" value="${c.key}" checked>${dot}<span>${c.label}${expVal?` — ${fmtDate(expVal)}`:''}</span></label>`;
+            }).join('') : '<div class="emp-empty" style="padding:0.5rem">No held certifications found.</div>'}
+          </div>
+          <div id="pdf-err" style="color:#dc2626;font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>
+          <div class="edit-actions">
+            <button class="btn-sm" id="pdf-cancel">Cancel</button>
+            <button class="btn-primary" id="pdf-generate" style="padding:0.65rem 1.4rem;font-size:0.88rem">Generate PDF</button>
+          </div>
+        </div>`;
+
+      document.body.appendChild(pdfOverlay);
+      pdfOverlay.querySelector('.emp-panel-close').addEventListener('click', () => pdfOverlay.remove());
+      pdfOverlay.querySelector('#pdf-cancel').addEventListener('click', () => pdfOverlay.remove());
+      pdfOverlay.addEventListener('click', e => { if (e.target === pdfOverlay) pdfOverlay.remove(); });
+
+      let showSide = 'front';
+      pdfOverlay.querySelectorAll('.pdf-side-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          showSide = btn.dataset.side;
+          pdfOverlay.querySelectorAll('.pdf-side-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+      });
+      pdfOverlay.querySelector('#pdf-select-all').addEventListener('click', () => pdfOverlay.querySelectorAll('.pdf-cert-list input').forEach(cb => cb.checked = true));
+      pdfOverlay.querySelector('#pdf-clear-all').addEventListener('click',  () => pdfOverlay.querySelectorAll('.pdf-cert-list input').forEach(cb => cb.checked = false));
+
+      pdfOverlay.querySelector('#pdf-generate').addEventListener('click', async () => {
+        const btn = pdfOverlay.querySelector('#pdf-generate');
+        const errEl = pdfOverlay.querySelector('#pdf-err');
+        const selected = [...pdfOverlay.querySelectorAll('.pdf-cert-list input:checked')].map(cb => cb.value);
+        if (!selected.length) { errEl.textContent = 'Select at least one certification.'; errEl.style.display='block'; return; }
+        btn.textContent = 'Generating…'; btn.disabled = true;
+        try {
+          await generatePdf(emp, selected, showSide);
+          pdfOverlay.remove();
+        } catch (err) { errEl.textContent = 'PDF failed: ' + err.message; errEl.style.display='block'; btn.textContent='Generate PDF'; btn.disabled=false; }
+      });
+    }
+
+    /* ── PDF GENERATION ── */
+    async function generatePdf(emp, selectedKeys, showSide) {
+      /* jsPDF loaded via index.html CDN — check availability */
+      if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+        /* load on demand */
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      const { jsPDF } = window.jspdf || window;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+      const PW = 210, PH = 297;
+      const ML = 14, MR = 14, MT = 14, MB = 14;
+      const CW = PW - ML - MR;
+      const ORANGE = [234, 88, 12];
+      const DARK   = [26, 26, 30];
+      const GREY   = [99, 99, 105];
+      const LGREY  = [230, 230, 235];
+      const WHITE  = [255, 255, 255];
+
+      let y = MT;
+
+      /* ── HEADER (every page) ── */
+      async function drawHeader() {
+        /* orange bar */
+        doc.setFillColor(...ORANGE);
+        doc.rect(0, 0, PW, 18, 'F');
+
+        /* logo */
+        try {
+          const logoData = await loadImageAsDataUrl('assets/logo/bromar-logo-white.png');
+          if (logoData) doc.addImage(logoData, 'PNG', ML, 3, 52, 12);
+        } catch (_) {}
+
+        /* OPS label */
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...WHITE);
+        doc.text('EMPLOYEE CREDENTIALS', PW - MR, 11, { align: 'right' });
+
+        y = 26;
+      }
+
+      /* ── EMPLOYEE SUMMARY ── */
+      async function drawSummary() {
+        /* background card */
+        doc.setFillColor(245, 245, 248);
+        doc.roundedRect(ML, y, CW, 32, 3, 3, 'F');
+
+        /* profile photo */
+        let photoX = ML + 4;
+        try {
+          const photoData = await loadImageAsDataUrl(profilePhotoUrl(emp.full_name));
+          if (photoData) {
+            doc.addImage(photoData, 'JPEG', photoX, y + 4, 24, 24);
+            photoX += 28;
+          }
+        } catch (_) { photoX = ML + 4; }
+
+        const tx = photoX + 4;
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(13);
+        doc.setTextColor(...DARK);
+        doc.text(emp.full_name, tx, y + 11);
+
+        if (emp.employee_type) {
+          doc.setFont('helvetica','normal');
+          doc.setFontSize(8);
+          doc.setTextColor(...ORANGE);
+          doc.text(emp.employee_type, tx, y + 17);
+        }
+
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...GREY);
+        let metaY = y + 23;
+        if (emp.mobile) { doc.text(`📱 ${emp.mobile}`, tx, metaY); metaY += 5; }
+        if (emp.email)  { doc.text(`✉  ${emp.email}`,  tx, metaY); }
+
+        /* generated date */
+        doc.setFontSize(7);
+        doc.setTextColor(...GREY);
+        doc.text(`Generated: ${new Date().toLocaleDateString('en-AU')}`, PW - MR, y + 28, { align: 'right' });
+
+        y += 38;
+      }
+
+      /* ── TABLE HEADER ── */
+      function drawTableHeader() {
+        doc.setFillColor(...ORANGE);
+        doc.rect(ML, y, CW, 7, 'F');
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...WHITE);
+        const cols = getColX();
+        doc.text('CERTIFICATION', cols.label + 1, y + 5);
+        doc.text('EXPIRY',        cols.expiry + 1, y + 5);
+        doc.text('STATUS',        cols.status + 1, y + 5);
+        doc.text('IMAGE(S)',      cols.img + 1,    y + 5);
+        y += 7;
+      }
+
+      function getColX() {
+        /* label | expiry | status | images */
+        const label  = ML;
+        const expiry = ML + 56;
+        const status = ML + 90;
+        const img    = ML + 112;
+        return { label, expiry, status, img };
+      }
+
+      /* ── CERT ROW ── */
+      async function drawCertRow(cert, rowIndex) {
+        const ROW_H = showSide === 'both' ? 36 : 22;
+        const IMG_W = showSide === 'both' ? 38 : 36;
+        const IMG_H = showSide === 'both' ? 22 : 16;
+
+        /* page break */
+        if (y + ROW_H > PH - MB - 10) {
+          doc.addPage();
+          await drawHeader();
+          drawTableHeader();
+        }
+
+        const cols = getColX();
+        const bg = rowIndex % 2 === 0 ? WHITE : [248, 248, 252];
+        doc.setFillColor(...bg);
+        doc.rect(ML, y, CW, ROW_H, 'F');
+
+        /* border */
+        doc.setDrawColor(...LGREY);
+        doc.setLineWidth(0.2);
+        doc.rect(ML, y, CW, ROW_H);
+
+        /* label */
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8);
+        doc.setTextColor(...DARK);
+        const labelLines = doc.splitTextToSize(cert.label, 52);
+        doc.text(labelLines, cols.label + 1, y + 6);
+
+        /* expiry */
+        const expVal = cert.expiry ? emp[cert.expiry] : null;
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...GREY);
+        doc.text(expVal ? fmtDate(expVal) : 'No expiry', cols.expiry + 1, y + 6);
+
+        /* status dot + text */
+        const s = expiryStatus(expVal);
+        const statusColor = s === 'expired' ? [220,38,38] : s === 'expiring' ? [202,138,4] : [21,128,61];
+        const statusText  = s === 'expired' ? 'EXPIRED' : s === 'expiring' ? 'EXPIRING' : 'VALID';
+        doc.setFillColor(...statusColor);
+        doc.circle(cols.status + 2.5, y + 4.5, 2, 'F');
+        doc.setTextColor(...statusColor);
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(7);
+        doc.text(statusText, cols.status + 6, y + 6);
+
+        /* images */
+        const imgAreaX = cols.img;
+        const imgY = y + 3;
+        try {
+          const frontUrl = certImageUrl(emp.full_name, cert.key, 'front');
+          const frontData = await loadImageAsDataUrl(frontUrl);
+          if (frontData) {
+            doc.addImage(frontData, 'JPEG', imgAreaX, imgY, IMG_W, IMG_H);
+            if (showSide === 'both') {
+              const backUrl = certImageUrl(emp.full_name, cert.key, 'back');
+              const backData = await loadImageAsDataUrl(backUrl);
+              if (backData) doc.addImage(backData, 'JPEG', imgAreaX, imgY + IMG_H + 1, IMG_W, IMG_H);
+            }
+          } else {
+            doc.setFontSize(6.5);
+            doc.setTextColor(...LGREY);
+            doc.text('No image', imgAreaX + 4, imgY + 6);
+          }
+        } catch (_) {}
+
+        y += ROW_H;
+      }
+
+      /* ── FOOTER ── */
+      function drawFooter(pageNum, total) {
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...GREY);
+        doc.text(`Bromar Electrical Services  |  Confidential`, ML, PH - 6);
+        doc.text(`Page ${pageNum} of ${total}`, PW - MR, PH - 6, { align: 'right' });
+      }
+
+      /* ── BUILD ── */
+      await drawHeader();
+      await drawSummary();
+      drawTableHeader();
+
+      const certsToInclude = ALL_CERTS.filter(c => selectedKeys.includes(c.key));
+      for (let i = 0; i < certsToInclude.length; i++) {
+        await drawCertRow(certsToInclude[i], i);
+      }
+
+      /* add footers — jsPDF internal page count */
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        drawFooter(p, totalPages);
+      }
+
+      doc.save(`${emp.full_name.replace(/\s+/g,'_')}_credentials_${new Date().toISOString().split('T')[0]}.pdf`);
     }
 
     /* ── ADD EMPLOYEE ── */
@@ -890,10 +1298,7 @@ window.BromarPages.employees = {
           <div class="emp-panel-name" style="font-size:1.2rem;margin-bottom:1.25rem">Add Employee</div>
           <div class="add-emp-grid">
             <div class="edit-section-title">Basic Details</div>
-            <div class="edit-field" style="grid-column:1/-1">
-              <label>Full Name <span style="color:#dc2626">*</span></label>
-              <input class="edit-input" id="add-fullname" type="text" placeholder="e.g. John Smith">
-            </div>
+            <div class="edit-field" style="grid-column:1/-1"><label>Full Name <span style="color:#dc2626">*</span></label><input class="edit-input" id="add-fullname" type="text" placeholder="e.g. John Smith"></div>
             <div class="edit-field"><label>First Name</label><input class="edit-input" id="add-firstname" type="text"></div>
             <div class="edit-field"><label>Last Name</label><input class="edit-input" id="add-lastname" type="text"></div>
             <div class="edit-field"><label>Employee Type</label>
@@ -912,37 +1317,24 @@ window.BromarPages.employees = {
             <button class="btn-primary" id="add-save-btn" style="padding:0.65rem 1.4rem;font-size:0.88rem">Add Employee</button>
           </div>
         </div>`;
-
       document.body.appendChild(overlay);
       overlay.querySelector('.emp-panel-close').addEventListener('click', () => overlay.remove());
       overlay.querySelector('#add-cancel-btn').addEventListener('click', () => overlay.remove());
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
       overlay.querySelector('#add-save-btn').addEventListener('click', async () => {
-        const btn = overlay.querySelector('#add-save-btn');
-        const errEl = overlay.querySelector('#add-error');
-        const fullName = overlay.querySelector('#add-fullname').value.trim();
-        if (!fullName) { errEl.textContent = 'Full name is required.'; errEl.style.display='block'; return; }
-        if (allEmployees.find(e => e.full_name.toLowerCase() === fullName.toLowerCase())) {
-          errEl.textContent = 'An employee with this name already exists.'; errEl.style.display='block'; return;
-        }
-        btn.textContent = 'Adding…'; btn.disabled = true;
+        const btn=overlay.querySelector('#add-save-btn');
+        const errEl=overlay.querySelector('#add-error');
+        const fullName=overlay.querySelector('#add-fullname').value.trim();
+        if (!fullName){errEl.textContent='Full name is required.';errEl.style.display='block';return;}
+        if (allEmployees.find(e=>e.full_name.toLowerCase()===fullName.toLowerCase())){errEl.textContent='An employee with this name already exists.';errEl.style.display='block';return;}
+        btn.textContent='Adding…';btn.disabled=true;
         try {
-          const newEmp = {
-            full_name:     fullName,
-            first_name:    overlay.querySelector('#add-firstname').value.trim()     || null,
-            last_name:     overlay.querySelector('#add-lastname').value.trim()      || null,
-            employee_type: overlay.querySelector('#add-employee-type').value        || null,
-            dob:           overlay.querySelector('#add-dob').value                  || null,
-            mobile:        overlay.querySelector('#add-mobile').value.trim()        || null,
-            email:         overlay.querySelector('#add-email').value.trim()         || null,
-            is_active:     true,
-          };
-          await sbPost('employees', newEmp);
+          const newEmp={full_name:fullName,first_name:overlay.querySelector('#add-firstname').value.trim()||null,last_name:overlay.querySelector('#add-lastname').value.trim()||null,employee_type:overlay.querySelector('#add-employee-type').value||null,dob:overlay.querySelector('#add-dob').value||null,mobile:overlay.querySelector('#add-mobile').value.trim()||null,email:overlay.querySelector('#add-email').value.trim()||null,is_active:true};
+          await sbPost('employees',newEmp);
           allEmployees.push(newEmp);
-          allEmployees.sort((a,b) => a.full_name.localeCompare(b.full_name));
-          renderStats(); renderGrid(); overlay.remove();
-        } catch (err) { errEl.textContent = 'Failed: ' + err.message; errEl.style.display='block'; btn.textContent='Add Employee'; btn.disabled=false; }
+          allEmployees.sort((a,b)=>a.full_name.localeCompare(b.full_name));
+          renderStats();renderGrid();overlay.remove();
+        } catch(err){errEl.textContent='Failed: '+err.message;errEl.style.display='block';btn.textContent='Add Employee';btn.disabled=false;}
       });
     }
 
