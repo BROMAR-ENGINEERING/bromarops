@@ -7,13 +7,13 @@
    BROMAR OPS — TIMESHEETS PAGE
    File     : js/pages/timesheets.js
    Registers: window.BromarPages.timesheets
-   Version  : V1.09
+   Version  : V1.10
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.09',
+  version: 'V1.10',
 
   render(container) {
     // Display this page's version in the footer
@@ -993,21 +993,9 @@ window.BromarPages.timesheets = {
       const title = 'Weekly Timesheet Summary';
       const weekRange = `${fmtDate(state.weekStarting)} to ${fmtDate(weekEnd)}`;
 
-      // Match submissions to employees
-      const submittedEmails = new Set(state.timesheets.map(t => (t.employee_email || '').toLowerCase()).filter(Boolean));
-      const submittedNames  = new Set(state.timesheets.map(t => (t.employee_name  || '').toLowerCase()).filter(Boolean));
-      const isSubmittedBy = (e) =>
-        (e.email && submittedEmails.has(e.email.toLowerCase())) ||
-        (e.full_name && submittedNames.has(e.full_name.toLowerCase()));
-
-      const expected  = state.employees;
-      const submitted = expected.filter(isSubmittedBy);
-      const missing   = expected.filter(e => !isSubmittedBy(e));
-
       const tueDeadline = parseISO(state.weekStarting);
       tueDeadline.setDate(tueDeadline.getDate() + 8);
       tueDeadline.setHours(9, 0, 0, 0);
-      const lateCount = state.timesheets.filter(t => new Date(t.submitted_at) > tueDeadline).length;
 
       // Totals
       const totals = state.timesheets.reduce((acc, t) => {
@@ -1020,7 +1008,7 @@ window.BromarPages.timesheets = {
 
       await RK.drawHeader(doc);
 
-      // Title
+      // Title block
       let y = RK.LAYOUT.headerH + 8;
       doc.setFontSize(RK.FONT.title); doc.setFont('helvetica', 'bold');
       const navy = RK.PALETTE.navy.rgb;
@@ -1034,93 +1022,80 @@ window.BromarPages.timesheets = {
       doc.text(`Pay week: ${weekRange}`, M, y);
       y += 6;
 
-      // Summary stats
-      y = RK.sectionHeading(doc, M, y, 'Summary');
-      const summaryBody = [
-        ['Expected Employees', String(expected.length)],
-        ['Submitted', String(submitted.length)],
-        ['Missing', String(missing.length)],
-        ['Late', String(lateCount)],
-        ['Total Normal Hours', totals.normal.toFixed(2)],
-        ['Total Overtime Hours', totals.ot.toFixed(2)],
-        ['Total Travel Hours', totals.travel.toFixed(2)],
-        ['TOTAL HOURS', totals.total.toFixed(2)]
-      ];
-      doc.autoTable({
-        startY: y,
-        head: [['Metric', 'Value']],
-        body: summaryBody,
-        margin: { left: M, right: M },
-        theme: 'grid',
-        styles: { font: 'helvetica', fontSize: RK.FONT.body, cellPadding: 2, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.2 },
-        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
-        columnStyles: { 1: { halign: 'right', cellWidth: 40 } },
-        didParseCell: (data) => {
-          if (data.section === 'body' && data.row.index === summaryBody.length - 1) {
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.textColor = RK.PALETTE.accent.rgb;
-          }
-        }
-      });
-      y = doc.lastAutoTable.finalY + 6;
+      // Single summary table: hours + weekly allowances per employee
+      y = RK.sectionHeading(doc, M, y, 'Hours & Allowances Summary');
 
-      // Submitted timesheets
-      y = RK.sectionHeading(doc, M, y, `Submitted Timesheets (${state.timesheets.length})`);
-      const submittedBody = state.timesheets.length === 0
-        ? [['—','—','—','—','—','—','No submissions this week']]
-        : state.timesheets
-            .slice()
-            .sort((a,b) => a.employee_name.localeCompare(b.employee_name))
-            .map(t => {
-              const late = new Date(t.submitted_at) > tueDeadline;
-              return [
-                t.employee_name,
-                t.employee_type || '—',
-                (+t.total_normal_hours).toFixed(2),
-                (+t.total_overtime_hours).toFixed(2),
-                (+t.total_travel_hours).toFixed(2),
-                (+t.total_hours).toFixed(2),
-                late ? 'Late' : 'On time'
-              ];
-            });
+      const rows = state.timesheets
+        .slice()
+        .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+
+      const body = rows.length === 0
+        ? [['—','—','—','—','—','—','—','—','—','No submissions this week']]
+        : rows.map(t => [
+            t.employee_name,
+            t.employee_type || '—',
+            (+t.total_normal_hours).toFixed(2),
+            (+t.total_overtime_hours).toFixed(2),
+            (+t.total_travel_hours).toFixed(2),
+            (+t.total_hours).toFixed(2),
+            t.on_call_standby ? 'Y' : '—',
+            t.allowance_first_aid ? 'Y' : '—',
+            t.allowance_construction_wiring ? 'Y' : '—',
+            new Date(t.submitted_at) > tueDeadline ? 'Late' : 'On time'
+          ]);
+
+      // Totals row (only if there are rows)
+      if (rows.length > 0) {
+        body.push([
+          'TOTALS', '',
+          totals.normal.toFixed(2),
+          totals.ot.toFixed(2),
+          totals.travel.toFixed(2),
+          totals.total.toFixed(2),
+          '', '', '', ''
+        ]);
+      }
+
       doc.autoTable({
         startY: y,
-        head: [['Name', 'Role', 'Normal', 'OT', 'Travel', 'Total', 'Status']],
-        body: submittedBody,
+        head: [['Name', 'Role', 'Normal', 'OT', 'Travel', 'Total', 'On Call', 'First Aid', 'Const. Wiring', 'Status']],
+        body: body,
         margin: { left: M, right: M },
         theme: 'grid',
-        styles: { font: 'helvetica', fontSize: RK.FONT.small, cellPadding: 1.8, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.15 },
-        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
+        styles: {
+          font: 'helvetica', fontSize: RK.FONT.small, cellPadding: 1.8,
+          textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.15,
+          overflow: 'linebreak'
+        },
+        headStyles: {
+          fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb,
+          fontStyle: 'bold', fontSize: RK.FONT.tiny, halign: 'center'
+        },
         columnStyles: {
-          0: { cellWidth: 45 }, 1: { cellWidth: 28 },
-          2: { cellWidth: 20, halign: 'right' }, 3: { cellWidth: 18, halign: 'right' },
-          4: { cellWidth: 20, halign: 'right' }, 5: { cellWidth: 20, halign: 'right', fontStyle: 'bold' },
-          6: { cellWidth: 'auto' }
+          0: { cellWidth: 40 },
+          1: { cellWidth: 24 },
+          2: { cellWidth: 14, halign: 'right' },
+          3: { cellWidth: 12, halign: 'right' },
+          4: { cellWidth: 14, halign: 'right' },
+          5: { cellWidth: 14, halign: 'right', fontStyle: 'bold' },
+          6: { cellWidth: 14, halign: 'center' },
+          7: { cellWidth: 15, halign: 'center' },
+          8: { cellWidth: 20, halign: 'center' },
+          9: { cellWidth: 'auto', halign: 'center' }
         },
         didParseCell: (data) => {
-          if (data.section === 'body' && data.column.index === 6) {
-            if (data.cell.raw === 'Late') data.cell.styles.textColor = RK.PALETTE.accent.rgb;
-            else if (data.cell.raw === 'On time') data.cell.styles.textColor = RK.PALETTE.success.rgb;
+          // Highlight totals row
+          if (data.section === 'body' && data.row.index === body.length - 1 && rows.length > 0) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.textColor = RK.PALETTE.accent.rgb;
+            data.cell.styles.fillColor = [248, 248, 250];
+          }
+          // Colour status column
+          if (data.section === 'body' && data.column.index === 9 && data.row.index < rows.length) {
+            if (data.cell.raw === 'Late')    data.cell.styles.textColor = RK.PALETTE.accent.rgb;
+            if (data.cell.raw === 'On time') data.cell.styles.textColor = RK.PALETTE.success.rgb;
           }
         }
-      });
-      y = doc.lastAutoTable.finalY + 6;
-
-      // Missing submissions
-      if (y > RK.LAYOUT.footerY - 40) { doc.addPage(); y = RK.LAYOUT.headerH + 8; }
-      y = RK.sectionHeading(doc, M, y, `Missing Submissions (${missing.length})`);
-      const missingBody = missing.length === 0
-        ? [['—','—','All employees submitted']]
-        : missing.map(e => [e.full_name, e.role || '—', e.email || '—']);
-      doc.autoTable({
-        startY: y,
-        head: [['Name', 'Role', 'Email']],
-        body: missingBody,
-        margin: { left: M, right: M },
-        theme: 'grid',
-        styles: { font: 'helvetica', fontSize: RK.FONT.small, cellPadding: 1.8, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.15 },
-        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
-        columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
       });
 
       // Footer on every page
