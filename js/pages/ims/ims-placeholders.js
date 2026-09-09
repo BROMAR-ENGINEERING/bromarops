@@ -1,12 +1,16 @@
 /* ============================================================
    BROMAR OPS — IMS PLACEHOLDER SUB-TABS
    Path: js/pages/ims/ims-placeholders.js
-   Version: V1.00
+   Version: V1.01
 
    Registers "Coming soon" placeholders for planned sub-tabs that
-   don't have a real module yet. When a real module is built for
-   one of these, DELETE its entry below (and remove this file's
-   script tag if the list becomes empty) so there's no duplicate tab.
+   don't have a real module yet. Forms/Policies/Procedures/ITC/SOP
+   removed in V1.01 — now covered by the shared "Documents" tab
+   (ims-document-builder.js).
+
+   When a real module is built for one of these, DELETE its entry
+   below (and remove this file's script tag if the list becomes
+   empty) so there's no duplicate tab.
    Must load AFTER ims.js, BEFORE any real sub-tab modules.
    ============================================================ */
 
@@ -32,32 +36,18 @@
       ['swms-register', 'SWMS Register'],
       ['incident-reports', 'Incident Reports'],
       ['hazard-reports', 'Hazard Reports'],
-      ['safety-forms', 'Forms'],
-      ['safety-policies', 'Policies'],
-      ['safety-procedures', 'Procedures'],
       ['safety-register', 'Register'],
       ['safety-revision-control', 'Revision Control']
     ],
     quality: [
-      ['itc', 'ITC'],
-      ['sop', 'SOPs'],
-      ['quality-forms', 'Forms'],
-      ['quality-policies', 'Policies'],
-      ['quality-procedures', 'Procedures'],
       ['quality-register', 'Register'],
       ['quality-revision-control', 'Revision Control']
     ],
     environment: [
-      ['environmental-forms', 'Forms'],
-      ['environmental-policies', 'Policies'],
-      ['environmental-procedures', 'Procedures'],
       ['environmental-register', 'Register'],
       ['environmental-revision-control', 'Revision Control']
     ],
     other: [
-      ['other-forms', 'Forms'],
-      ['other-policies', 'Policies'],
-      ['other-procedures', 'Procedures'],
       ['plans', 'Plans']
     ],
     'bromar-hub': [
