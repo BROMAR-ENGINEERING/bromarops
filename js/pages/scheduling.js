@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.31
+   V1.32
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.31';
+  const PAGE_VERSION = 'V1.32';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -1256,7 +1256,7 @@ window.BromarPages.scheduling = (() => {
     }
     if(dragData.type==='reassign'){
       const a=assignments.find(x=>x.id===dragData.assignId);if(!a||(a.employeeName===empName&&a.startDate===date))return;
-      const oldName=a.employeeName;const lbl=getAssignmentLabel(a);a.employeeName=empName;a.startDate=date;a.recentlyChanged=true;
+      const oldName=a.employeeName;const lbl=getAssignmentLabel(a);a.employeeName=empName;a.startDate=date;a.recentlyChanged=true;flagEdited(a);
       await DB.saveAssignment(a);queueNotification(empName,`${lbl} reassigned to you on ${date}`);if(oldName!==empName)queueNotification(oldName,`${lbl} removed from your schedule`);
     }
     dragData=null;rerender(container);
@@ -1328,16 +1328,16 @@ window.BromarPages.scheduling = (() => {
       e.stopPropagation();
       const a=assignments.find(x=>x.id===b.dataset.extendLeft);if(!a)return;
       const dk=b.dataset.extendDate;const d=parseDateKey(dk);d.setDate(d.getDate()-1);const prevDk=formatDateKey(d);
-      if(a.schedule==='oneoff'){a.schedule='duration';a.startDate=prevDk;a.endDate=dk;await DB.saveAssignment(a);}
-      else{if(prevDk<a.startDate){a.startDate=prevDk;await DB.saveAssignment(a);}}
+      if(a.schedule==='oneoff'){a.schedule='duration';a.startDate=prevDk;a.endDate=dk;flagEdited(a);await DB.saveAssignment(a);}
+      else{if(prevDk<a.startDate){a.startDate=prevDk;flagEdited(a);await DB.saveAssignment(a);}}
       rerender(container);
     }));
     root.querySelectorAll('[data-extend-right]').forEach(b=>b.addEventListener('click',async e=>{
       e.stopPropagation();
       const a=assignments.find(x=>x.id===b.dataset.extendRight);if(!a)return;
       const dk=b.dataset.extendDate;const d=parseDateKey(dk);d.setDate(d.getDate()+1);const nextDk=formatDateKey(d);
-      if(a.schedule==='oneoff'){a.schedule='duration';a.endDate=nextDk;await DB.saveAssignment(a);}
-      else if(a.endDate){a.endDate=nextDk;await DB.saveAssignment(a);}
+      if(a.schedule==='oneoff'){a.schedule='duration';a.endDate=nextDk;flagEdited(a);await DB.saveAssignment(a);}
+      else if(a.endDate){a.endDate=nextDk;flagEdited(a);await DB.saveAssignment(a);}
       rerender(container);
     }));
   }
