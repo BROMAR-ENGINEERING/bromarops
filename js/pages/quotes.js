@@ -85,12 +85,15 @@
    re-triggering the published-edit prompt). Preview gains an
    "Internal view" toggle that reveals hidden prices, part numbers,
    internal notes and internal-only sections.
+   V1.69 — Clicking a published/accepted quote opens the Preview
+   (drafts still open straight into the editor). The internal-view
+   toggle is now a segmented button pair at the top of the preview.
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.68',
+  version: 'V1.69',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -868,7 +871,11 @@ window.BromarPages.quotes = {
           else if (action === 'email') openEmailDialog(id);
         });
       });
-      document.querySelectorAll('.quote-row').forEach(el => el.addEventListener('click', () => openEditor(el.dataset.id)));
+      document.querySelectorAll('.quote-row').forEach(el => el.addEventListener('click', () => {
+        const q = quotes.find(x => x.id === el.dataset.id);
+        if (q && q.publishedAt) openPreview(el.dataset.id);
+        else openEditor(el.dataset.id);
+      }));
     }
     function statCard(s, label, count, color) {
       return `<div class="stat-card ${filterStatus === s ? 'active' : ''}" data-status="${s}"><div class="stat-dot stat-${color}"></div><div class="stat-meta"><div class="stat-count">${count}</div><div class="stat-label">${label}</div></div></div>`;
@@ -2277,7 +2284,10 @@ window.BromarPages.quotes = {
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar"><h1>Preview${internal ? ' · Internal' : ''}</h1><p class="subtitle">${escape(displayNumber(q))} — ${escape(q.nickname || q.siteName || q.client)}</p></div>
           <div class="editor-actions">
-            <label class="toggle-lbl internal-toggle"><input type="checkbox" id="internal-view" ${internal ? 'checked' : ''}><span>Internal view (show hidden items)</span></label>
+            <div class="view-toggle">
+              <button type="button" class="view-toggle-btn ${internal ? '' : 'active'}" id="view-client">Client view</button>
+              <button type="button" class="view-toggle-btn ${internal ? 'active' : ''}" id="view-internal">Internal view</button>
+            </div>
             <button class="btn-secondary" id="edit-from-preview">Edit</button>
             <button class="btn-primary" id="export-from-preview">Export PDF</button>
           </div>
@@ -2298,8 +2308,10 @@ window.BromarPages.quotes = {
         </div>
       `;
       document.getElementById('back-btn').addEventListener('click', backToDashboard);
-      const intView = document.getElementById('internal-view');
-      if (intView) intView.addEventListener('change', e => { previewInternal = e.target.checked; renderPreview(); });
+      const vClient = document.getElementById('view-client');
+      const vInternal = document.getElementById('view-internal');
+      if (vClient) vClient.addEventListener('click', () => { if (previewInternal) { previewInternal = false; renderPreview(); } });
+      if (vInternal) vInternal.addEventListener('click', () => { if (!previewInternal) { previewInternal = true; renderPreview(); } });
       document.getElementById('edit-from-preview').addEventListener('click', () => openEditor(q.id));
       document.getElementById('export-from-preview').addEventListener('click', () => exportPDF(q));
       document.querySelectorAll('.option-toggle').forEach(cb => {
@@ -3336,6 +3348,11 @@ ${q.preparedBy || COMPANY.name}`;
         .edit-choice:last-of-type { border-bottom: none; }
         .edit-choice .btn-primary, .edit-choice .btn-secondary { align-self: flex-start; }
         .internal-toggle { margin-right: 0.5rem; font-size: 0.82rem; }
+        .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-right: 0.5rem; }
+        .view-toggle-btn { font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 600; padding: 0.6rem 1.1rem; border: none; background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; transition: all 0.2s ease; }
+        .view-toggle-btn + .view-toggle-btn { border-left: 1px solid var(--border); }
+        .view-toggle-btn:hover { color: var(--text-primary); }
+        .view-toggle-btn.active { background: var(--accent); color: #fff; }
         .doc-internal .doc-section-hidden { position: relative; background: rgba(234,88,12,0.05); border: 1px dashed rgba(234,88,12,0.4); border-radius: 8px; padding: 12px; margin: 12px 0; }
         .doc-hidden-tag { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #ea580c; background: rgba(234,88,12,0.12); padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
         .doc-internal-note { font-size: 11px; font-style: italic; color: #ea580c; margin-top: 3px; }
