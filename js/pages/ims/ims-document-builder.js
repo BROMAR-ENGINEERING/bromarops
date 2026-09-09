@@ -75,7 +75,7 @@
    ims_form_submissions.
    ============================================================ */
 
-window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [] } };
+window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], other: [] } };
 window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (section, subtab) {
   if (!window.BromarIMS.subtabs[section]) window.BromarIMS.subtabs[section] = [];
   window.BromarIMS.subtabs[section].push(subtab);
@@ -88,10 +88,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
     procedure: { code: 'PRO', label: 'Procedure', plural: 'Procedures' },
     form:      { code: 'FRM', label: 'Form',      plural: 'Forms' },
-    checklist: { code: 'CHK', label: 'Checklist', plural: 'Checklists' }
+    checklist: { code: 'CHK', label: 'Checklist', plural: 'Checklists' },
+    plan:      { code: 'PLN', label: 'Plan',      plural: 'Plans' }
   };
-  const SECTION_CODES = { safety: 'SAF', quality: 'QUA', environment: 'ENV' };
-  const CONTENT_TYPES = ['policy', 'procedure'];   // block-based
+  const SECTION_CODES = { safety: 'SAF', quality: 'QUA', environment: 'ENV', other: 'OTH' };
+  const CONTENT_TYPES = ['policy', 'procedure', 'plan'];   // block-based
   const DIGITAL_TYPES = ['form', 'checklist'];     // field-based, pushed to Hub
 
   const BLOCK_TYPES = [
@@ -837,7 +838,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     };
   }
 
-  ['safety', 'quality', 'environment'].forEach(section => {
+  ['safety', 'quality', 'environment', 'other'].forEach(section => {
     window.BromarIMS.registerSubTab(section, createDocumentsSubTab(section));
   });
 })();
