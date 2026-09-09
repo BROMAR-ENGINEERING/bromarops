@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.06',
+  version: 'V1.07',
 
   render(container) {
     // Display this page's version in the footer
@@ -168,7 +168,7 @@ window.BromarPages.timesheets = {
         .ts-week-banner {
           display: flex; align-items: center; justify-content: space-between;
           flex-wrap: wrap; gap: 1rem;
-          padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+          padding: 0.85rem 1.15rem; margin-bottom: 1.25rem;
           background: var(--bg-secondary); border: 1px solid var(--border);
           border-radius: var(--radius);
         }
@@ -220,14 +220,15 @@ window.BromarPages.timesheets = {
         }
         .ts-table { width: 100%; border-collapse: collapse; }
         .ts-table th {
-          text-align: left; padding: 0.85rem 1rem;
-          font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em;
+          text-align: left; padding: 0.6rem 0.85rem;
+          font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
           text-transform: uppercase; color: var(--text-secondary);
           background: var(--bg-main); border-bottom: 1px solid var(--border);
         }
         .ts-table td {
-          padding: 0.85rem 1rem; font-size: 0.9rem;
+          padding: 0.55rem 0.85rem; font-size: 0.88rem;
           color: var(--text-primary); border-bottom: 1px solid var(--border);
+          line-height: 1.35;
         }
         .ts-table tr:last-child td { border-bottom: none; }
         .ts-table th.action-col, .ts-table td.action-col {
@@ -495,6 +496,10 @@ window.BromarPages.timesheets = {
             ${fmtDate(state.weekStarting)} – ${fmtDate(weekEnd)}
             <span class="meta">Due Tuesday ${fmtDateShort(addDays(state.weekStarting, 8))} 9:00 AM · Paid Wednesday ${fmtDateShort(addDays(state.weekStarting, 9))}</span>
           </div>
+          <button class="ts-export-btn" id="ts-week-export">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+            <span>Export Week PDF</span>
+          </button>
         </div>
 
         <div class="ts-stats">
@@ -503,29 +508,6 @@ window.BromarPages.timesheets = {
           <div class="ts-stat"><div class="num error">${missing.length}</div><div class="lbl">Missing</div></div>
           <div class="ts-stat"><div class="num accent">${lateCount}</div><div class="lbl">Late</div></div>
         </div>
-
-        <div class="ts-section-head">
-          <div class="section-label">Missing submissions</div>
-        </div>
-        ${missing.length === 0
-          ? `<div class="ts-table-wrap"><div class="ts-empty">All employees have submitted ✓</div></div>`
-          : `<div class="ts-table-wrap"><table class="ts-table">
-              <thead><tr><th>Name</th><th class="hide-mobile">Role</th><th class="hide-mobile">Email</th><th>Status</th></tr></thead>
-              <tbody>
-                ${missing.map(e => `
-                  <tr>
-                    <td>
-                      ${e.full_name}
-                      <span class="ts-mobile-meta">${e.role || 'unassigned'}</span>
-                    </td>
-                    <td class="hide-mobile">${e.role || '—'}</td>
-                    <td class="hide-mobile">${e.email || '—'}</td>
-                    <td><span class="ts-pill missing"><span class="dot"></span>Missing</span></td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table></div>`
-        }
 
         <div class="ts-section-head">
           <div class="section-label">Submitted (${submittedTimesheets.length})</div>
@@ -564,6 +546,29 @@ window.BromarPages.timesheets = {
                       <td class="action-col">${VIEW_BTN(t.id)}</td>
                     </tr>`;
                 }).join('')}
+              </tbody>
+            </table></div>`
+        }
+
+        <div class="ts-section-head">
+          <div class="section-label">Missing submissions (${missing.length})</div>
+        </div>
+        ${missing.length === 0
+          ? `<div class="ts-table-wrap"><div class="ts-empty">All employees have submitted ✓</div></div>`
+          : `<div class="ts-table-wrap"><table class="ts-table">
+              <thead><tr><th>Name</th><th class="hide-mobile">Role</th><th class="hide-mobile">Email</th><th>Status</th></tr></thead>
+              <tbody>
+                ${missing.map(e => `
+                  <tr>
+                    <td>
+                      ${e.full_name}
+                      <span class="ts-mobile-meta">${e.role || 'unassigned'}</span>
+                    </td>
+                    <td class="hide-mobile">${e.role || '—'}</td>
+                    <td class="hide-mobile">${e.email || '—'}</td>
+                    <td><span class="ts-pill missing"><span class="dot"></span>Missing</span></td>
+                  </tr>
+                `).join('')}
               </tbody>
             </table></div>`
         }
@@ -949,6 +954,166 @@ window.BromarPages.timesheets = {
       doc.save(`timesheet_${lastName}_${t.week_starting}.pdf`);
     }
 
+    async function exportWeekPDF() {
+      await ensurePdfLibs();
+      const RK = window.BromarReportKit;
+
+      RK.configure({
+        logoColour:  'assets/logo/bromar-logo-colour.png',
+        logoReverse: 'assets/logo/bromar-logo-white.png'
+      });
+
+      const doc = RK.createDoc();
+      const M = RK.LAYOUT.margin;
+
+      const weekEnd = addDays(state.weekStarting, 6);
+      const title = 'Weekly Timesheet Summary';
+      const weekRange = `${fmtDate(state.weekStarting)} to ${fmtDate(weekEnd)}`;
+
+      // Match submissions to employees
+      const submittedEmails = new Set(state.timesheets.map(t => (t.employee_email || '').toLowerCase()).filter(Boolean));
+      const submittedNames  = new Set(state.timesheets.map(t => (t.employee_name  || '').toLowerCase()).filter(Boolean));
+      const isSubmittedBy = (e) =>
+        (e.email && submittedEmails.has(e.email.toLowerCase())) ||
+        (e.full_name && submittedNames.has(e.full_name.toLowerCase()));
+
+      const expected  = state.employees;
+      const submitted = expected.filter(isSubmittedBy);
+      const missing   = expected.filter(e => !isSubmittedBy(e));
+
+      const tueDeadline = parseISO(state.weekStarting);
+      tueDeadline.setDate(tueDeadline.getDate() + 8);
+      tueDeadline.setHours(9, 0, 0, 0);
+      const lateCount = state.timesheets.filter(t => new Date(t.submitted_at) > tueDeadline).length;
+
+      // Totals
+      const totals = state.timesheets.reduce((acc, t) => {
+        acc.normal += +t.total_normal_hours || 0;
+        acc.ot     += +t.total_overtime_hours || 0;
+        acc.travel += +t.total_travel_hours || 0;
+        acc.total  += +t.total_hours || 0;
+        return acc;
+      }, { normal: 0, ot: 0, travel: 0, total: 0 });
+
+      await RK.drawHeader(doc);
+
+      // Title
+      let y = RK.LAYOUT.headerH + 8;
+      doc.setFontSize(RK.FONT.title); doc.setFont('helvetica', 'bold');
+      const navy = RK.PALETTE.navy.rgb;
+      doc.setTextColor(navy[0], navy[1], navy[2]);
+      doc.text(RK.normalize(title), M, y);
+      y += 5.5;
+
+      doc.setFontSize(RK.FONT.small); doc.setFont('helvetica', 'normal');
+      const muted = RK.PALETTE.muted.rgb;
+      doc.setTextColor(muted[0], muted[1], muted[2]);
+      doc.text(`Pay week: ${weekRange}`, M, y);
+      y += 6;
+
+      // Summary stats
+      y = RK.sectionHeading(doc, M, y, 'Summary');
+      const summaryBody = [
+        ['Expected Employees', String(expected.length)],
+        ['Submitted', String(submitted.length)],
+        ['Missing', String(missing.length)],
+        ['Late', String(lateCount)],
+        ['Total Normal Hours', totals.normal.toFixed(2)],
+        ['Total Overtime Hours', totals.ot.toFixed(2)],
+        ['Total Travel Hours', totals.travel.toFixed(2)],
+        ['TOTAL HOURS', totals.total.toFixed(2)]
+      ];
+      doc.autoTable({
+        startY: y,
+        head: [['Metric', 'Value']],
+        body: summaryBody,
+        margin: { left: M, right: M },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: RK.FONT.body, cellPadding: 2, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.2 },
+        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
+        columnStyles: { 1: { halign: 'right', cellWidth: 40 } },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.row.index === summaryBody.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.textColor = RK.PALETTE.accent.rgb;
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
+
+      // Submitted timesheets
+      y = RK.sectionHeading(doc, M, y, `Submitted Timesheets (${state.timesheets.length})`);
+      const submittedBody = state.timesheets.length === 0
+        ? [['—','—','—','—','—','—','No submissions this week']]
+        : state.timesheets
+            .slice()
+            .sort((a,b) => a.employee_name.localeCompare(b.employee_name))
+            .map(t => {
+              const late = new Date(t.submitted_at) > tueDeadline;
+              return [
+                t.employee_name,
+                t.employee_type || '—',
+                (+t.total_normal_hours).toFixed(2),
+                (+t.total_overtime_hours).toFixed(2),
+                (+t.total_travel_hours).toFixed(2),
+                (+t.total_hours).toFixed(2),
+                late ? 'Late' : 'On time'
+              ];
+            });
+      doc.autoTable({
+        startY: y,
+        head: [['Name', 'Role', 'Normal', 'OT', 'Travel', 'Total', 'Status']],
+        body: submittedBody,
+        margin: { left: M, right: M },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: RK.FONT.small, cellPadding: 1.8, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.15 },
+        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 45 }, 1: { cellWidth: 28 },
+          2: { cellWidth: 20, halign: 'right' }, 3: { cellWidth: 18, halign: 'right' },
+          4: { cellWidth: 20, halign: 'right' }, 5: { cellWidth: 20, halign: 'right', fontStyle: 'bold' },
+          6: { cellWidth: 'auto' }
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.column.index === 6) {
+            if (data.cell.raw === 'Late') data.cell.styles.textColor = RK.PALETTE.accent.rgb;
+            else if (data.cell.raw === 'On time') data.cell.styles.textColor = RK.PALETTE.success.rgb;
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
+
+      // Missing submissions
+      if (y > RK.LAYOUT.footerY - 40) { doc.addPage(); y = RK.LAYOUT.headerH + 8; }
+      y = RK.sectionHeading(doc, M, y, `Missing Submissions (${missing.length})`);
+      const missingBody = missing.length === 0
+        ? [['—','—','All employees submitted']]
+        : missing.map(e => [e.full_name, e.role || '—', e.email || '—']);
+      doc.autoTable({
+        startY: y,
+        head: [['Name', 'Role', 'Email']],
+        body: missingBody,
+        margin: { left: M, right: M },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: RK.FONT.small, cellPadding: 1.8, textColor: RK.PALETTE.black.rgb, lineColor: RK.PALETTE.line.rgb, lineWidth: 0.15 },
+        headStyles: { fillColor: RK.PALETTE.navy.rgb, textColor: RK.PALETTE.white.rgb, fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
+      });
+
+      // Footer on every page
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        RK.drawFooter(doc, {
+          title: title,
+          ref: weekRange,
+          pageNo: `${i} of ${pageCount}`
+        });
+      }
+
+      doc.save(`weekly-timesheets_${state.weekStarting}.pdf`);
+    }
+
     function openDetail(timesheetId) {
       const t = state.timesheets.find(x => x.id === timesheetId);
       if (!t) return;
@@ -1044,6 +1209,21 @@ window.BromarPages.timesheets = {
         });
         document.getElementById('ts-this-week')?.addEventListener('click', () => {
           state.weekStarting = getCurrentPayWeek(); loadWeekData();
+        });
+        document.getElementById('ts-week-export')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          const original = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = '<span>Generating…</span>';
+          try {
+            await exportWeekPDF();
+          } catch (err) {
+            console.error('Week PDF export failed:', err);
+            alert('Could not export weekly PDF.\n\nError: ' + (err && err.message ? err.message : String(err)));
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+          }
         });
       }
 
