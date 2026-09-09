@@ -1,99 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.49 — Costing model overhaul:
-   • Labour lines now Hours × Days × Workers (hours default 8), with
-     per-column client visibility.
-   • Every priced section has two dropdowns: client visibility
-     (Full table / Total only / Summary only) and allocation
-     (Quote total / Section-summary only).
-   • Costing Summary picks its member sections (each section in one
-     summary only) and can roll up into the grand total as a stage.
-   • Bottom block: optional grand total + per-stage breakdown.
-   • Publish warns (doesn't block) about unassigned/hidden costings.
-   • Preview back arrow returns to the quote editor.
-   • Section rail rebuilt as full-width tiles with hover controls.
-   V1.50 — Fix: Preview crashed on a missing helper (stageBlockRows →
-   stageLines). PDF total block now matches preview: per-stage rows
-   plus an optional grand total.
-   V1.51 — Fix: dialogs no longer close when you drag-select text and
-   release on the backdrop (close now needs mousedown+mouseup both on
-   the backdrop). New Quote gains a client search box.
-   V1.52 — PDF bullet lists now show orange disc markers. Removed the
-   Option — Materials and Option — Labour section types.
-   V1.53 — Quote Settings (default markup + per-role hourly rates) and
-   named Rate Schedules (Construction/Maintenance/per-client), stored
-   in quote_favourites (no schema change). Labour lines get a role
-   dropdown, running hours total, and Apply-default-rates. Materials
-   get Apply-default-markup and whole-dollar arrow stepping. New
-   "Schedule of Rates" section inserts a client-facing rate card.
-   V1.54 — Section default headings shortened to "Material"/"Labour"
-   (picker still shows Material/Labour Costing). New movable "Quote
-   Total" section that picks costings and shows them individually or
-   combined per costing. Orphan costings flag their rail tile red.
-   V1.55 — Per-section toggles to hide the heading and/or divider
-   line. Text sections get a Bold/Italic/Underline toolbar (HTML).
-   Movable "Quote Total" section: picks material & labour costings,
-   shows each individually or combined, optional top/bottom text.
-   V1.56 — Quote Total can't be deleted (hide it via checkboxes
-   instead). Material/Labour lines can carry an internal note. Legacy
-   numbers ending "Q<n>" revise by bumping the Q number (BE5685 Q1 →
-   BE5685 Q2); everything else keeps the -R style.
-   V1.57 — "ex GST" shown by default on Costing Summary and Quote
-   Total. Per-quote validity period (default 30 days) in the details
-   panel, which auto-fills the standard "held firm" note beneath the
-   Quote Total.
-   V1.58 — Up/down reorder controls on every list item: bullet points
-   (exclusions, inclusions, references, assumptions), scope items, and
-   material / labour / PC-sum lines.
-   V1.59 — Rich text: "clear" button relabelled "Clear formatting";
-   pasted content is stripped of inline colours/backgrounds so it
-   inherits the theme; added a text-colour picker (applies to the
-   selected text only).
-   V1.60 — Fix: saving failed for anyone who hadn't added the
-   valid_days column. Saves now retry automatically without that
-   field if the column is missing, so quotes save either way.
-   V1.61 — New "Page Break" section: forces everything after it onto a
-   new page in the exported PDF. Shows as a divider in the editor and
-   on-screen preview; no heading, no content.
-   V1.62 — "Client sees" gains a 4th option, "In quote total only":
-   hides the costing's detail and shows it as a line in the Quote
-   Total section. Orphan detection and warnings updated to match.
-   V1.63 — Add Section inserts after the selected section. Material
-   markup has a section-default % (defaults to Settings) with per-line
-   override; the Apply button is gone. Labour rate auto-fills from
-   Settings when a role is picked (still editable). Costing Summary
-   has an "Option" flag that excludes it from the quote total, plus a
-   new "Summary of Options" section listing all options.
-   V1.64 — Section rail widened; tile names clip with ellipsis (full
-   name on hover). Ticking a Costing Summary's Option box prefixes
-   "OPTION: " on its name. Summary of Options can show a combined
-   grand total. Scope cards reorder (up/down). Drag-and-drop
-   reordering for sections, bullets and scopes.
-   V1.65 — Fix: scope-of-works bullet inputs were squished/hidden — the
-   scope-bullet grid had a grip column the markup didn't use. Scope
-   bullets keep their up/down buttons (no drag grip).
-   V1.66 — Fix: the dashboard/rail quote total ignored the Quote Total
-   section and used only grand-allocated costings, so it read lower
-   than the document. It now mirrors the Quote Total section's grand.
-   V1.67 — Approve a published quote into a job: Accept dialog marks it
-   Accepted and captures a job number (keep BExxxx or override, e.g.
-   BAxxx). Job-number tile shows by the quote number. Published quotes
-   open read-only with a prompt: Start new revision, or Edit anyway
-   (which flags the quote as edited with an asterisk). Jobs-table write
-   is stubbed pending the schema.
-   V1.68 — Fix: preview Back now returns to the dashboard (was
-   re-triggering the published-edit prompt). Preview gains an
-   "Internal view" toggle that reveals hidden prices, part numbers,
-   internal notes and internal-only sections.
-   V1.69 — Clicking a published/accepted quote opens the Preview
-   (drafts still open straight into the editor). The internal-view
-   toggle is now a segmented button pair at the top of the preview.
+   V1.70
+   Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.69',
+  version: 'V1.70',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
