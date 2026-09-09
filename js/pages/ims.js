@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.05
+   Version: V1.06
    Tabs: Overview (default) / Safety / Quality / Environment / Bromar Hub / Other
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
@@ -23,7 +23,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.05';
+  const VERSION = 'V1.06';
 
   const SECTIONS = [
     { id: 'overview',    label: 'Overview',    desc: '' },
@@ -47,14 +47,6 @@ window.BromarPages.ims = (() => {
   const activeSubBySection = {};
   let currentSub = null;
   let rootEl = null;
-
-  function logoHTML() {
-    return `
-      <div class="page-logo">
-        <img class="light-logo" src="assets/logo/bromar-logo-colour.png" alt="Bromar">
-        <img class="dark-logo"  src="assets/logo/bromar-logo-white.png"  alt="Bromar">
-      </div>`;
-  }
 
   function sectionTabsHTML() {
     return SECTIONS.map(s => `
@@ -169,7 +161,6 @@ window.BromarPages.ims = (() => {
       if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn('[ims]', e); } }
       currentSub = null;
       container.innerHTML = `
-        ${logoHTML()}
         <div class="page-title-wrapper">
           <h1>IMS</h1>
           <div class="subtitle">Integrated Management System</div>
@@ -181,7 +172,6 @@ window.BromarPages.ims = (() => {
     }
 
     container.innerHTML = `
-      ${logoHTML()}
       <div class="page-title-wrapper">
         <h1>IMS</h1>
         <div class="subtitle">Integrated Management System</div>
