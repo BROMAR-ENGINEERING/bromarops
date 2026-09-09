@@ -89,23 +89,27 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     procedure: { code: 'PRO', label: 'Procedure', plural: 'Procedures' },
     form:      { code: 'FRM', label: 'Form',      plural: 'Forms' },
     checklist: { code: 'CHK', label: 'Checklist', plural: 'Checklists' },
+    itc:       { code: 'ITC', label: 'ITC',       plural: 'ITC' },
     plan:      { code: 'PLN', label: 'Plan',      plural: 'Plans' }
   };
   const SECTION_CODES = { safety: 'SAF', quality: 'QUA', environment: 'ENV', other: 'OTH' };
   const CONTENT_TYPES = ['policy', 'procedure', 'plan'];   // block-based
-  const DIGITAL_TYPES = ['form', 'checklist'];     // field-based, pushed to Hub
+  const DIGITAL_TYPES = ['form', 'checklist', 'itc'];      // field-based, pushed to Hub
 
   const BLOCK_TYPES = [
     { type: 'heading',   label: 'Heading' },
     { type: 'paragraph', label: 'Paragraph' },
     { type: 'bullets',   label: 'Bullet list' },
-    { type: 'signatory', label: 'Signatory' }
+    { type: 'signatory', label: 'Signatory' },
+    { type: 'table',     label: 'Table / grid' }
   ];
+  const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
   const FIELD_TYPES = [
     { type: 'text',        label: 'Text field' },
     { type: 'dropdown',    label: 'Dropdown' },
     { type: 'checkbox',    label: 'Checkbox' },
     { type: 'passfail',    label: 'Pass / Fail / N/A' },
+    { type: 'yesno',       label: 'Yes / No' },
     { type: 'signature',   label: 'Signature' },
     { type: 'photo',       label: 'Photo attachment' },
     { type: 'dynamiclist', label: 'Dynamic list' },
@@ -332,13 +336,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── NEW DOCUMENT MODAL ── */
-    function showNewDocModal() {
+    async function showNewDocModal() {
       const categories = getCategories();
+      const previewNumber = await nextDocNumber(activeType);
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
       overlay.innerHTML = `
         <div class="card" style="max-width:460px;width:100%;padding:1.5rem;animation:none;">
           <div class="section-label" style="margin-top:0;">New ${esc(DOC_TYPES[activeType].label)}</div>
+          <div style="background:var(--bg-main);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin-bottom:1rem;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:var(--accent);">
+            Document number: ${esc(previewNumber)}
+          </div>
           <div style="display:flex;flex-direction:column;gap:0.9rem;">
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Title *</label>
@@ -447,44 +455,65 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
     function docNumberDisplay(doc, revision) { return `${doc.doc_number}-V${revision}`; }
 
-    function typeTabsHTML() {
-      return `<div class="ims-subtabs">
-        ${Object.entries(DOC_TYPES).map(([key, t]) =>
-          `<button class="ims-subtab ${activeType === key ? 'active' : ''}" data-action="switch-type" data-type="${key}">${esc(t.plural)}</button>`
-        ).join('')}
-      </div>`;
+    function typeRailHTML() {
+      return `
+        <style>
+          @media (max-width: 700px) {
+            .ims-doc-rail { flex-direction: row !important; width: 100% !important; overflow-x: auto; gap: 0.4rem !important; }
+            .ims-doc-rail button { flex-shrink: 0; }
+            .ims-doc-layout { flex-direction: column !important; }
+          }
+        </style>
+        <div class="ims-doc-rail" style="width:170px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;">
+          ${Object.entries(DOC_TYPES).map(([key, t]) => `
+            <button data-action="switch-type" data-type="${key}" style="
+              text-align:left;padding:0.6rem 0.875rem;border-radius:var(--radius-sm);
+              border:1px solid ${activeType === key ? 'rgba(234,88,12,0.2)' : 'transparent'};
+              background:${activeType === key ? 'var(--card-hover)' : 'transparent'};
+              color:${activeType === key ? 'var(--accent)' : 'var(--text-secondary)'};
+              font-weight:${activeType === key ? 600 : 500};font-size:0.9rem;cursor:pointer;
+              font-family:'Outfit',sans-serif;transition:all 0.2s ease;">
+              ${esc(t.plural)}
+            </button>
+          `).join('')}
+        </div>
+      `;
     }
 
     function renderList() {
       const filtered = documents.filter(d => d.doc_type === activeType);
       root.innerHTML = `
-        ${typeTabsHTML()}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-          <div class="section-label" style="margin:0;">${esc(DOC_TYPES[activeType].plural)}</div>
-          <button class="btn-primary" data-action="new-doc">+ New ${esc(DOC_TYPES[activeType].label)}</button>
-        </div>
-        ${!filtered.length
-          ? `<div class="ims-empty-state">No ${esc(DOC_TYPES[activeType].plural.toLowerCase())} yet. Click "New ${esc(DOC_TYPES[activeType].label)}" to build one.</div>`
-          : `<div style="display:flex;flex-direction:column;gap:0.75rem;">
-              ${filtered.map(d => `
-                <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
-                  <div>
-                    <div style="font-weight:600;">${esc(d.title)} ${d.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.category)}</span>` : ''}</div>
-                    <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.description || '')}</div>
-                    <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
-                      ${esc(docNumberDisplay(d, d.latest_revision))}${d.published_revision && d.published_revision !== d.latest_revision ? ` · live: ${esc(docNumberDisplay(d, d.published_revision))}` : ''}${!d.published_revision ? ' · never published' : ''}
+        <div class="ims-doc-layout" style="display:flex;gap:1.5rem;align-items:flex-start;">
+          ${typeRailHTML()}
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+              <div class="section-label" style="margin:0;">${esc(DOC_TYPES[activeType].plural)}</div>
+              <button class="btn-primary" data-action="new-doc">+ New ${esc(DOC_TYPES[activeType].label)}</button>
+            </div>
+            ${!filtered.length
+              ? `<div class="ims-empty-state">No ${esc(DOC_TYPES[activeType].plural.toLowerCase())} yet. Click "New ${esc(DOC_TYPES[activeType].label)}" to build one.</div>`
+              : `<div style="display:flex;flex-direction:column;gap:0.75rem;">
+                  ${filtered.map(d => `
+                    <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                      <div>
+                        <div style="font-weight:600;">${esc(d.title)} ${d.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.category)}</span>` : ''}</div>
+                        <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.description || '')}</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
+                          ${esc(docNumberDisplay(d, d.latest_revision))}${d.published_revision && d.published_revision !== d.latest_revision ? ` · live: ${esc(docNumberDisplay(d, d.published_revision))}` : ''}${!d.published_revision ? ' · never published' : ''}
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+                        ${statusBadge(d)}
+                        <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
+                        <button class="btn-primary" data-action="edit" data-id="${d.id}">${d.status === 'archived' ? 'View' : 'Edit'}</button>
+                        <button class="btn-secondary" data-action="archive" data-id="${d.id}">${d.status === 'archived' ? 'Restore' : 'Archive'}</button>
+                      </div>
                     </div>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-                    ${statusBadge(d)}
-                    <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
-                    <button class="btn-primary" data-action="edit" data-id="${d.id}">${d.status === 'archived' ? 'View' : 'Edit'}</button>
-                    <button class="btn-secondary" data-action="archive" data-id="${d.id}">${d.status === 'archived' ? 'Restore' : 'Archive'}</button>
-                  </div>
-                </div>
-              `).join('')}
-            </div>`
-        }
+                  `).join('')}
+                </div>`
+            }
+          </div>
+        </div>
       `;
     }
 
@@ -558,8 +587,70 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── Blocks editor (Policy/Procedure) ── */
+    function tableBlockHTML(block, index) {
+      const cols = block.columns || [];
+      const rows = block.rows || [];
+      const colHead = cols.map((c, ci) => `
+        <th style="padding:0.3rem;border:1px solid var(--border);">
+          <div style="display:flex;flex-direction:column;gap:0.25rem;">
+            <input type="text" value="${esc(c.label)}" data-table-col-label data-index="${index}" data-col="${ci}"
+              style="width:100%;padding:0.3rem;border:1px solid var(--border);border-radius:5px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.75rem;font-weight:600;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.3rem;">
+              <select data-table-col-type data-index="${index}" data-col="${ci}" style="font-size:0.68rem;padding:0.15rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-main);color:var(--text-secondary);">
+                <option value="text" ${c.type === 'text' ? 'selected' : ''}>Text</option>
+                <option value="check" ${c.type === 'check' ? 'selected' : ''}>Tick</option>
+              </select>
+              <button data-action="remove-table-column" data-index="${index}" data-col="${ci}" style="border:none;background:none;color:var(--error);cursor:pointer;font-size:0.75rem;">✕</button>
+            </div>
+          </div>
+        </th>`).join('');
+      const bodyRows = rows.map((row, ri) => `
+        <tr>
+          ${(row.cells || []).map((cell, ci) => `
+            <td style="padding:0.3rem;border:1px solid var(--border);text-align:${cols[ci]?.type === 'check' ? 'center' : 'left'};">
+              ${cols[ci]?.type === 'check'
+                ? `<input type="checkbox" ${cell ? 'checked' : ''} data-table-cell data-index="${index}" data-row="${ri}" data-col="${ci}">`
+                : `<input type="text" value="${esc(cell || '')}" data-table-cell data-index="${index}" data-row="${ri}" data-col="${ci}"
+                    style="width:100%;padding:0.25rem;border:1px solid transparent;background:transparent;color:var(--text-primary);font-size:0.8rem;">`}
+            </td>`).join('')}
+          <td style="border:none;white-space:nowrap;">
+            <button class="btn-secondary" style="padding:0.2rem 0.4rem;font-size:0.7rem;" data-action="move-table-row-up" data-index="${index}" data-row="${ri}" ${ri === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn-secondary" style="padding:0.2rem 0.4rem;font-size:0.7rem;" data-action="move-table-row-down" data-index="${index}" data-row="${ri}" ${ri === rows.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="btn-secondary" style="padding:0.2rem 0.4rem;font-size:0.7rem;color:var(--error);" data-action="remove-table-row" data-index="${index}" data-row="${ri}">✕</button>
+          </td>
+        </tr>`).join('');
+      return `
+        <div style="overflow-x:auto;">
+          <table style="border-collapse:collapse;width:100%;margin-bottom:0.6rem;">
+            <thead><tr>${colHead}<th style="border:none;"></th></tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button class="btn-secondary" style="padding:0.3rem 0.6rem;font-size:0.75rem;" data-action="add-table-column" data-index="${index}">+ Column</button>
+          <button class="btn-secondary" style="padding:0.3rem 0.6rem;font-size:0.75rem;" data-action="add-table-row" data-index="${index}">+ Row</button>
+          <button class="btn-secondary" style="padding:0.3rem 0.6rem;font-size:0.75rem;" data-action="add-table-preset" data-index="${index}">+ Insert 12-month schedule columns</button>
+        </div>
+      `;
+    }
+
     function blockRowHTML(block, index, total) {
       const typeLabel = BLOCK_TYPES.find(t => t.type === block.type)?.label || block.type;
+      if (block.type === 'table') {
+        return `
+          <div style="padding:0.75rem 0.25rem;${index < total - 1 ? 'border-bottom:1px solid var(--border);' : ''}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+              <span style="font-size:0.7rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">${index + 1} — ${typeLabel}</span>
+              <div style="display:flex;gap:0.15rem;">
+                <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-block-up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-block-down" data-index="${index}" ${index === total - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;color:var(--error);" data-action="remove-block" data-index="${index}">✕</button>
+              </div>
+            </div>
+            ${tableBlockHTML(block, index)}
+          </div>
+        `;
+      }
       let fieldsHtml = '';
       if (block.type === 'heading' || block.type === 'paragraph') {
         fieldsHtml = block.type === 'paragraph'
@@ -716,7 +807,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         const action = btn.dataset.action;
 
         if (action === 'switch-type') { activeType = btn.dataset.type; renderView(); return; }
-        if (action === 'new-doc') { showNewDocModal(); return; }
+        if (action === 'new-doc') { await showNewDocModal(); return; }
         if (action === 'edit') {
           const doc = documents.find(d => d.id === btn.dataset.id);
           if (doc) await openForEdit(doc);
@@ -746,11 +837,53 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           if (type === 'bullets') block.items = [];
           if (type === 'signatory') { block.name = ''; block.title = ''; }
           if (type === 'heading' || type === 'paragraph') block.text = '';
+          if (type === 'table') { block.columns = [{ label: 'Item', type: 'text' }]; block.rows = []; }
           currentRevision.content.blocks = currentRevision.content.blocks || [];
           currentRevision.content.blocks.push(block);
           renderEditor(); return;
         }
         if (action === 'remove-block') { currentRevision.content.blocks.splice(Number(btn.dataset.index), 1); renderEditor(); return; }
+
+        if (action === 'add-table-column') {
+          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          block.columns.push({ label: 'Column', type: 'text' });
+          block.rows.forEach(r => r.cells.push(''));
+          renderEditor(); return;
+        }
+        if (action === 'remove-table-column') {
+          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const col = Number(btn.dataset.col);
+          block.columns.splice(col, 1);
+          block.rows.forEach(r => r.cells.splice(col, 1));
+          renderEditor(); return;
+        }
+        if (action === 'add-table-row') {
+          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          block.rows.push({ cells: block.columns.map(() => '') });
+          renderEditor(); return;
+        }
+        if (action === 'remove-table-row') {
+          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          block.rows.splice(Number(btn.dataset.row), 1);
+          renderEditor(); return;
+        }
+        if (action === 'move-table-row-up' || action === 'move-table-row-down') {
+          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const i = Number(btn.dataset.row);
+          const j = action === 'move-table-row-up' ? i - 1 : i + 1;
+          [block.rows[i], block.rows[j]] = [block.rows[j], block.rows[i]];
+          renderEditor(); return;
+        }
+        if (action === 'add-table-preset') {
+          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          block.columns = [
+            { label: 'Activity / Supplier / Sub-Contractor', type: 'text' },
+            { label: 'Auditor', type: 'text' },
+            ...MONTH_LETTERS.map(m => ({ label: m, type: 'check' }))
+          ];
+          block.rows = (block.rows || []).map(r => ({ cells: block.columns.map((c, i) => r.cells[i] ?? (c.type === 'check' ? false : '')) }));
+          renderEditor(); return;
+        }
         if (action === 'move-block-up' || action === 'move-block-down') {
           const i = Number(btn.dataset.index);
           const j = action === 'move-block-up' ? i - 1 : i + 1;
@@ -763,7 +896,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           const type = btn.dataset.type;
           const field = { id: newId(), type, label: ({
             heading: 'New section', dynamiclist: 'Non-Compliance / Issues Identified',
-            passfail: 'New checklist item', photo: 'Photo', signature: 'Signature',
+            passfail: 'New checklist item', yesno: 'New yes/no question', photo: 'Photo', signature: 'Signature',
             checkbox: 'New checkbox', dropdown: 'New dropdown'
           }[type] || 'New field'), required: false };
           if (type === 'dropdown') field.options = [];
@@ -788,6 +921,19 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         const revMetaTarget = e.target.closest('[data-rev-meta]');
         if (revMetaTarget && currentRevision) { currentRevision[revMetaTarget.dataset.revMeta] = revMetaTarget.value; return; }
 
+        const tableColLabel = e.target.closest('[data-table-col-label]');
+        if (tableColLabel && currentRevision) {
+          const block = currentRevision.content.blocks[Number(tableColLabel.dataset.index)];
+          block.columns[Number(tableColLabel.dataset.col)].label = tableColLabel.value;
+          return;
+        }
+        const tableCellText = e.target.closest('[data-table-cell][type="text"]');
+        if (tableCellText && currentRevision) {
+          const block = currentRevision.content.blocks[Number(tableCellText.dataset.index)];
+          block.rows[Number(tableCellText.dataset.row)].cells[Number(tableCellText.dataset.col)] = tableCellText.value;
+          return;
+        }
+
         const blockTarget = e.target.closest('[data-block-prop]');
         if (blockTarget && currentRevision) {
           const idx = Number(blockTarget.dataset.index);
@@ -810,6 +956,18 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       });
 
       container.addEventListener('change', (e) => {
+        const tableColType = e.target.closest('[data-table-col-type]');
+        if (tableColType && currentRevision) {
+          const block = currentRevision.content.blocks[Number(tableColType.dataset.index)];
+          block.columns[Number(tableColType.dataset.col)].type = tableColType.value;
+          renderEditor(); return;
+        }
+        const tableCellCheck = e.target.closest('[data-table-cell][type="checkbox"]');
+        if (tableCellCheck && currentRevision) {
+          const block = currentRevision.content.blocks[Number(tableCellCheck.dataset.index)];
+          block.rows[Number(tableCellCheck.dataset.row)].cells[Number(tableCellCheck.dataset.col)] = tableCellCheck.checked;
+          return;
+        }
         const fieldTarget = e.target.closest('[data-field-prop="required"]');
         if (fieldTarget && currentRevision) {
           const idx = Number(fieldTarget.dataset.index);
