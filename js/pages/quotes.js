@@ -1,17 +1,17 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.74
+   V1.75
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.74',
+  version: 'V1.75',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
-    if (versionEl) versionEl.textContent = this.version;
+    if (versionEl) { versionEl.textContent = this.version; versionEl.style.right = '24px'; versionEl.style.bottom = '14px'; versionEl.style.background = 'var(--bg-secondary)'; versionEl.style.padding = '2px 7px'; versionEl.style.borderRadius = '6px'; versionEl.style.opacity = '0.85'; }
 
     /* ── CONSTANTS ── */
     const QUOTE_PREFIX = 'BQ';
@@ -2213,7 +2213,6 @@ window.BromarPages.quotes = {
             const secId = cb.dataset.id;
             d.selectedIds = d.selectedIds || [];
             if (cb.checked) {
-              // enforce one-summary-only by removing it from any other summary
               (q.sections || []).forEach(other => {
                 if (other.type === 'costingSummary' && other.id !== sec.id && other.data && Array.isArray(other.data.selectedIds)) {
                   other.data.selectedIds = other.data.selectedIds.filter(id => id !== secId);
@@ -2223,7 +2222,10 @@ window.BromarPages.quotes = {
             } else {
               d.selectedIds = d.selectedIds.filter(id => id !== secId);
             }
-            await saveQuoteNow(q); renderEditor();
+            console.log('[SUMSEL] secId=', secId, '| checked=', cb.checked, '| summary.id=', sec.id, '| selectedIds now=', JSON.stringify(d.selectedIds), '| sameRef=', d === sec.data);
+            const ok = await saveQuoteNow(q);
+            console.log('[SUMSEL] saveQuoteNow returned:', ok, '| after-save selectedIds=', JSON.stringify(sec.data.selectedIds));
+            renderEditor();
           });
         });
       }
