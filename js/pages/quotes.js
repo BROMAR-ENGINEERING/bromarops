@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.73
+   V1.74
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.73',
+  version: 'V1.74',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -152,6 +152,7 @@ window.BromarPages.quotes = {
         convertedFromEstimateNumber: r.converted_from_estimate_number || undefined
       };
       ensureSectionIds(q.sections, q);
+      repairDanglingRefs(q);
       return q;
     }
     function quoteToRow(q) {
@@ -386,6 +387,38 @@ window.BromarPages.quotes = {
       });
       if (changed && q) q._idsRepaired = true;
       return sections;
+    }
+    /* Rewrite cross-section id references (summary selectedIds, quote-
+       total picks) through an old→new id map. */
+    function remapSectionRefs(sections, idMap) {
+      (sections || []).forEach(s => {
+        const d = s.data || {};
+        if (Array.isArray(d.selectedIds)) d.selectedIds = d.selectedIds.map(id => idMap[id] || id);
+        if (d.picks && typeof d.picks === 'object') {
+          const np = {};
+          Object.keys(d.picks).forEach(k => { np[idMap[k] || k] = d.picks[k]; });
+          d.picks = np;
+        }
+      });
+    }
+    /* Repair legacy revisions where summaries point at ids that no
+       longer exist. If a summary's selectedIds don't match any current
+       section, we can't recover the exact link, but we drop the dead
+       ids so the summary is clean and re-tickable. Flags q for save. */
+    function repairDanglingRefs(q) {
+      const ids = new Set((q.sections || []).map(s => s.id));
+      let changed = false;
+      (q.sections || []).forEach(s => {
+        const d = s.data || {};
+        if (Array.isArray(d.selectedIds)) {
+          const clean = d.selectedIds.filter(id => ids.has(id));
+          if (clean.length !== d.selectedIds.length) { d.selectedIds = clean; changed = true; }
+        }
+        if (d.picks && typeof d.picks === 'object') {
+          Object.keys(d.picks).forEach(k => { if (!ids.has(k)) { delete d.picks[k]; changed = true; } });
+        }
+      });
+      if (changed) q._idsRepaired = true;
     }
     /* Only strict BQ###### numbers feed the auto sequence — manually
        entered / migrated numbers are ignored so they can't skew it. */
@@ -2750,7 +2783,14 @@ ${q.preparedBy || COMPANY.name}`;
       copy.id = uid(); copy.version = maxV + 1; copy.status = 'draft'; copy.publishedAt = null; copy.createdAt = todayISO();
       copy.acceptedJobNumber = ''; copy.acceptedAt = null; copy.editedAfterPublish = false;
       delete copy.convertedToQuoteId; delete copy.convertedToQuoteNumber; delete copy.convertedAt;
-      (copy.sections || []).forEach(s => { s.id = sid(); if (s.data && s.data.scopes) s.data.scopes.forEach(sc => sc.id = gid()); });
+      // Regenerate section ids, keeping a map so cross-references
+      // (summary selectedIds, quote-total picks) point at the new ids.
+      const idMap = {};
+      (copy.sections || []).forEach(s => {
+        const old = s.id; s.id = sid(); if (old) idMap[old] = s.id;
+        if (s.data && s.data.scopes) s.data.scopes.forEach(sc => sc.id = gid());
+      });
+      remapSectionRefs(copy.sections, idMap);
       quotes.push(copy); await saveQuoteNow(copy); openEditor(copy.id);
     }
     /* Approve a published quote into a job: mark Accepted and capture
