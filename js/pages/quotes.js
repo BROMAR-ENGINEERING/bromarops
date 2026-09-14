@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.70
+   V1.71
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.70',
+  version: 'V1.71',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -144,7 +144,7 @@ window.BromarPages.quotes = {
         acceptedJobNumber: r.accepted_job_number || '',
         acceptedAt: r.accepted_at || null,
         editedAfterPublish: !!r.edited_after_publish,
-        sections: typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || []),
+        sections: ensureSectionIds(typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || [])),
         convertedToQuoteId: r.converted_to_quote_id || undefined,
         convertedToQuoteNumber: r.converted_to_quote_number || undefined,
         convertedAt: r.converted_at || undefined,
@@ -361,6 +361,22 @@ window.BromarPages.quotes = {
     function uid() { return 'q' + Date.now() + Math.random().toString(36).slice(2, 7); }
     function sid() { return 's' + Date.now() + Math.random().toString(36).slice(2, 7); }
     function gid() { return 'g' + Date.now() + Math.random().toString(36).slice(2, 7); }
+    /* Repair legacy quotes: guarantee every section and scope has a
+       unique id. Missing or duplicate ids break summary/quote-total
+       selection (which key off section id). */
+    function ensureSectionIds(sections) {
+      const seen = new Set();
+      (sections || []).forEach(s => {
+        if (!s.id || seen.has(s.id)) s.id = sid();
+        seen.add(s.id);
+        const scopes = s.data && s.data.scopes;
+        if (Array.isArray(scopes)) {
+          const seenG = new Set();
+          scopes.forEach(sc => { if (!sc.id || seenG.has(sc.id)) sc.id = gid(); seenG.add(sc.id); });
+        }
+      });
+      return sections;
+    }
     /* Only strict BQ###### numbers feed the auto sequence — manually
        entered / migrated numbers are ignored so they can't skew it. */
     function nextRootNumber() {
