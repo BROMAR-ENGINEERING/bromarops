@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.71
+   V1.72
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.71',
+  version: 'V1.72',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -122,7 +122,7 @@ window.BromarPages.quotes = {
 
     /* ── DB MAPPING ── */
     function rowToQuote(r) {
-      return {
+      const q = {
         id: r.id,
         docType: r.doc_type,
         rootNumber: r.root_number,
@@ -144,13 +144,15 @@ window.BromarPages.quotes = {
         acceptedJobNumber: r.accepted_job_number || '',
         acceptedAt: r.accepted_at || null,
         editedAfterPublish: !!r.edited_after_publish,
-        sections: ensureSectionIds(typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || [])),
+        sections: typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || []),
         convertedToQuoteId: r.converted_to_quote_id || undefined,
         convertedToQuoteNumber: r.converted_to_quote_number || undefined,
         convertedAt: r.converted_at || undefined,
         convertedFromEstimateId: r.converted_from_estimate_id || undefined,
         convertedFromEstimateNumber: r.converted_from_estimate_number || undefined
       };
+      ensureSectionIds(q.sections, q);
+      return q;
     }
     function quoteToRow(q) {
       return {
@@ -214,6 +216,9 @@ window.BromarPages.quotes = {
         if (qRes.error) throw qRes.error;
         if (fRes.error) throw fRes.error;
         quotes = (qRes.data || []).map(rowToQuote);
+        // Persist any legacy quotes whose section ids we just repaired,
+        // so ids stabilise and summary/total selections can stick.
+        quotes.filter(q => q._idsRepaired).forEach(q => { delete q._idsRepaired; saveQuoteNow(q); });
         prebuilts = {};
         (fRes.data || []).forEach(f => { prebuilts[f.id] = { name: f.name, type: f.type, data: f.data }; });
         // pull settings out of the shared prebuilts store
@@ -362,19 +367,22 @@ window.BromarPages.quotes = {
     function sid() { return 's' + Date.now() + Math.random().toString(36).slice(2, 7); }
     function gid() { return 'g' + Date.now() + Math.random().toString(36).slice(2, 7); }
     /* Repair legacy quotes: guarantee every section and scope has a
-       unique id. Missing or duplicate ids break summary/quote-total
-       selection (which key off section id). */
-    function ensureSectionIds(sections) {
+       unique id. Missing/duplicate ids break summary/quote-total
+       selection (which key off section id). Sets q._idsRepaired so the
+       loader can persist the fix once, stopping id churn on reload. */
+    function ensureSectionIds(sections, q) {
       const seen = new Set();
+      let changed = false;
       (sections || []).forEach(s => {
-        if (!s.id || seen.has(s.id)) s.id = sid();
+        if (!s.id || seen.has(s.id)) { s.id = sid(); changed = true; }
         seen.add(s.id);
         const scopes = s.data && s.data.scopes;
         if (Array.isArray(scopes)) {
           const seenG = new Set();
-          scopes.forEach(sc => { if (!sc.id || seenG.has(sc.id)) sc.id = gid(); seenG.add(sc.id); });
+          scopes.forEach(sc => { if (!sc.id || seenG.has(sc.id)) { sc.id = gid(); changed = true; } seenG.add(sc.id); });
         }
       });
+      if (changed && q) q._idsRepaired = true;
       return sections;
     }
     /* Only strict BQ###### numbers feed the auto sequence — manually
@@ -1608,9 +1616,9 @@ window.BromarPages.quotes = {
                 const takenElsewhere = owner && owner.id !== sec.id;
                 const view = costView(x);
                 const viewLbl = view === 'full' ? 'full table' : (view === 'total' ? 'total only' : 'summary only');
-                return `<label class="summary-pick-row ${takenElsewhere ? 'is-disabled' : ''}">
-                  <input type="checkbox" class="sum-sel" data-id="${x.id}" ${sel.includes(x.id) ? 'checked' : ''} ${takenElsewhere ? 'disabled' : ''}>
-                  <span class="sum-name">${escape(x.name)}<span class="sum-flag">${viewLbl}</span>${takenElsewhere ? `<span class="sum-flag cost-warn-flag">in ${escape(owner.name)}</span>` : ''}</span>
+                return `<label class="summary-pick-row">
+                  <input type="checkbox" class="sum-sel" data-id="${x.id}" ${sel.includes(x.id) ? 'checked' : ''}>
+                  <span class="sum-name">${escape(x.name)}<span class="sum-flag">${viewLbl}</span>${takenElsewhere ? `<span class="sum-flag cost-warn-flag">also in ${escape(owner.name)} — ticking moves it here</span>` : ''}</span>
                   <span class="sum-amt">${fmt(sectionSellTotal(x, q))}</span>
                 </label>`;
               }).join('')}
@@ -2167,9 +2175,19 @@ window.BromarPages.quotes = {
         if (gl) gl.addEventListener('input', e => { d.grandLabel = e.target.value; queueSave(q); });
         document.querySelectorAll('.sum-sel').forEach(cb => {
           cb.addEventListener('change', async () => {
+            const secId = cb.dataset.id;
             d.selectedIds = d.selectedIds || [];
-            if (cb.checked) { if (!d.selectedIds.includes(cb.dataset.id)) d.selectedIds.push(cb.dataset.id); }
-            else d.selectedIds = d.selectedIds.filter(id => id !== cb.dataset.id);
+            if (cb.checked) {
+              // enforce one-summary-only by removing it from any other summary
+              (q.sections || []).forEach(other => {
+                if (other.type === 'costingSummary' && other.id !== sec.id && other.data && Array.isArray(other.data.selectedIds)) {
+                  other.data.selectedIds = other.data.selectedIds.filter(id => id !== secId);
+                }
+              });
+              if (!d.selectedIds.includes(secId)) d.selectedIds.push(secId);
+            } else {
+              d.selectedIds = d.selectedIds.filter(id => id !== secId);
+            }
             await saveQuoteNow(q); renderEditor();
           });
         });
