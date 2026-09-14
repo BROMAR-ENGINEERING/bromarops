@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.75
+   V1.76
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.75',
+  version: 'V1.76',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -2194,20 +2194,10 @@ window.BromarPages.quotes = {
         const isOpt = get('f-isoption');
         if (isOpt) isOpt.addEventListener('change', async e => {
           d.isOption = e.target.checked;
-          // Keep an "OPTION: " prefix on the name in sync with the flag,
-          // preserving any custom name the user typed.
           const base = (sec.name || '').replace(/^OPTION:\s*/i, '');
           sec.name = e.target.checked ? 'OPTION: ' + base : base;
           await saveQuoteNow(q); renderEditor();
         });
-      }
-      if (meta.shape === 'optionslist') {
-        const n = get('f-opt-note');
-        if (n) n.addEventListener('input', e => { d.note = e.target.value; queueSave(q); });
-        const g = get('f-opt-grand');
-        if (g) g.addEventListener('change', async e => { d.showGrand = e.target.checked; await saveQuoteNow(q); renderEditor(); });
-        const gl = get('f-opt-label');
-        if (gl) gl.addEventListener('input', e => { d.grandLabel = e.target.value; queueSave(q); });
         document.querySelectorAll('.sum-sel').forEach(cb => {
           cb.addEventListener('change', async () => {
             const secId = cb.dataset.id;
@@ -2222,12 +2212,17 @@ window.BromarPages.quotes = {
             } else {
               d.selectedIds = d.selectedIds.filter(id => id !== secId);
             }
-            console.log('[SUMSEL] secId=', secId, '| checked=', cb.checked, '| summary.id=', sec.id, '| selectedIds now=', JSON.stringify(d.selectedIds), '| sameRef=', d === sec.data);
-            const ok = await saveQuoteNow(q);
-            console.log('[SUMSEL] saveQuoteNow returned:', ok, '| after-save selectedIds=', JSON.stringify(sec.data.selectedIds));
-            renderEditor();
+            await saveQuoteNow(q); renderEditor();
           });
         });
+      }
+      if (meta.shape === 'optionslist') {
+        const n = get('f-opt-note');
+        if (n) n.addEventListener('input', e => { d.note = e.target.value; queueSave(q); });
+        const g = get('f-opt-grand');
+        if (g) g.addEventListener('change', async e => { d.showGrand = e.target.checked; await saveQuoteNow(q); renderEditor(); });
+        const gl = get('f-opt-label');
+        if (gl) gl.addEventListener('input', e => { d.grandLabel = e.target.value; queueSave(q); });
       }
       if (meta.shape === 'schedule') {
         const t = get('f-sch-title');
