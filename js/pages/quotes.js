@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.72
+   V1.73
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.72',
+  version: 'V1.73',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -376,6 +376,8 @@ window.BromarPages.quotes = {
       (sections || []).forEach(s => {
         if (!s.id || seen.has(s.id)) { s.id = sid(); changed = true; }
         seen.add(s.id);
+        // Legacy display sections may have show unset — default to shown.
+        if (s.show === undefined) { s.show = !s.internal; changed = true; }
         const scopes = s.data && s.data.scopes;
         if (Array.isArray(scopes)) {
           const seenG = new Set();
@@ -669,14 +671,14 @@ window.BromarPages.quotes = {
        with its total. Used in the grand-total block breakdown. */
     function stageLines(q) {
       return (q.sections || [])
-        .filter(x => x.type === 'costingSummary' && x.show && !x.internal)
+        .filter(x => x.type === 'costingSummary' && x.show !== false && !x.internal)
         .map(x => ({ name: x.name, total: summaryTotal(x, q) }));
     }
 
     /* Is this costing shown, as a line, in a client-visible Quote
        Total section (pick mode not 'off')? */
     function inShownQuoteTotal(q, sec) {
-      const qt = (q.sections || []).find(x => x.type === 'quoteTotal' && x.show && !x.internal);
+      const qt = (q.sections || []).find(x => x.type === 'quoteTotal' && x.show !== false && !x.internal);
       if (!qt) return false;
       const mode = (qt.data && qt.data.picks && qt.data.picks[sec.id]) || 'separate';
       return mode !== 'off';
@@ -688,7 +690,7 @@ window.BromarPages.quotes = {
         if (!isPricedSection(sec)) return false;
         const view = costView(sec), alloc = costAlloc(sec);
         const inSummary = summaryOf(q, sec.id);
-        const summaryShown = inSummary && inSummary.show && !inSummary.internal;
+        const summaryShown = inSummary && inSummary.show !== false && !inSummary.internal;
         // "In quote total only" → must be a shown line in the Quote Total
         if (view === 'quotetotal') return inShownQuoteTotal(q, sec) ? false : true;
         // "In costing summary only" → must be in a client-shown summary
