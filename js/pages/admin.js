@@ -6,7 +6,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.admin = {
   title: 'Admin Tools',
-  version: 'V1.17',
+  version: 'V1.18',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -93,9 +93,9 @@ window.BromarPages.admin = {
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>
           <span>Call Out Roster</span>
         </button>
-        <button class="admin-nav-tile" data-section="compliance">
-          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-          <span>Compliance Tool</span>
+        <button class="admin-nav-tile" data-section="holidays">
+          <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
+          <span>Public Holidays</span>
         </button>
         <button class="admin-nav-tile" data-section="rdo">
           <svg viewBox="0 0 24 24" fill="var(--accent)" style="width:28px;height:28px;pointer-events:none"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
@@ -776,6 +776,37 @@ window.BromarPages.admin = {
         this._showFeedbackForm(container.querySelector('#admin-section-content'));
         return;
       }
+
+      /* Holiday actions */
+      if (e.target.closest('[data-hol-add]')) {
+        this._showHolidayForm(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-hol-edit]')) {
+        this._showHolidayForm(container.querySelector('#admin-section-content'), e.target.closest('[data-hol-edit]').dataset.holEdit);
+        return;
+      }
+      if (e.target.closest('[data-hol-delete]')) {
+        const btn = e.target.closest('[data-hol-delete]');
+        if (confirm('Delete "' + (btn.dataset.holName || 'this holiday') + '"?')) {
+          this._deleteHoliday(btn.dataset.holDelete, container.querySelector('#admin-section-content'));
+        }
+        return;
+      }
+      if (e.target.closest('[data-hol-save]')) {
+        this._saveHoliday(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-hol-cancel]')) {
+        this._renderHolidays(container.querySelector('#admin-section-content'));
+        return;
+      }
+      if (e.target.closest('[data-hol-bulk]')) {
+        this._holShowBulk = !this._holShowBulk;
+        const area = container.querySelector('#hol-bulk-area');
+        if (area) area.style.display = this._holShowBulk ? 'block' : 'none';
+        return;
+      }
       if (e.target.closest('[data-fb-save]')) {
         this._saveFeedback(container.querySelector('#admin-section-content'));
         return;
@@ -846,12 +877,20 @@ window.BromarPages.admin = {
         const file = e.target.files[0];
         if (file) this._handleSupplierXlsxUpload(file, container.querySelector('#admin-section-content'));
       }
+      if (e.target.matches('.hol-file-input')) {
+        const file = e.target.files[0];
+        if (file) this._handleHolidayXlsxUpload(file, container.querySelector('#admin-section-content'));
+      }
       if (e.target.matches('#sup-category-filter') || e.target.matches('#sup-search')) {
         this._renderSupplierList(container.querySelector('#sup-list-area'));
       }
       /* Feedback filters */
       if (e.target.matches('#fb-type-filter') || e.target.matches('#fb-status-filter')) {
         this._renderFeedbackList(container.querySelector('#fb-list-area'));
+      }
+      /* Holiday filters */
+      if (e.target.matches('#hol-year-filter') || e.target.matches('#hol-state-filter')) {
+        this._renderHolidayList(container.querySelector('#hol-list-area'));
       }
     });
 
@@ -866,7 +905,7 @@ window.BromarPages.admin = {
   _renderSection(id, target) {
     const sections = {
       callout: this._renderCallout,
-      compliance: this._renderCompliance,
+      holidays: this._renderHolidays,
       rdo: this._renderRDO,
       suppliers: this._renderSuppliers,
       testtag: this._renderTestTag,
@@ -1223,17 +1262,281 @@ window.BromarPages.admin = {
   },
 
   /* ════════════════════════════════════════
-     SECTION: Compliance Tool (placeholder)
+     SECTION: Public Holidays
      ════════════════════════════════════════ */
-  _renderCompliance(target) {
+  _holData: [],
+  _holShowBulk: false,
+  _holStates: ['VIC','NSW','QLD','SA','WA','TAS','ACT','NT','NATIONAL'],
+
+  async _renderHolidays(target) {
+    const currentYear = new Date().getFullYear();
+    const yearOpts = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2].map(y =>
+      '<option value="' + y + '"' + (y === currentYear ? ' selected' : '') + '>' + y + '</option>').join('');
+    const stateOpts = this._holStates.map(s =>
+      '<option value="' + s + '"' + (s === 'VIC' ? ' selected' : '') + '>' + s + '</option>').join('');
+
     target.innerHTML = `
       <div class="card admin-section-panel">
-        <div class="admin-section-header"><h2>Compliance Tool</h2></div>
-        <div class="admin-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-          <p>Compliance tools will appear here</p><span class="coming-soon">Ready to build</span>
+        <div class="admin-section-header">
+          <h2>Public Holidays</h2>
+          <div class="co-toolbar">
+            <button class="btn-primary" data-hol-add style="padding:0.6rem 1.2rem;font-size:0.85rem">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Add Holiday
+            </button>
+            <button class="btn-secondary" data-hol-bulk>
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Bulk Import
+            </button>
+          </div>
         </div>
-      </div>`;
+        <div id="hol-bulk-area" style="display:none;margin-bottom:1.25rem">
+          <div style="padding:1rem;background:var(--bg-main);border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.75rem">Upload an XLSX to bulk-import holidays. Existing holidays (same date + state + name) are updated.</p>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <label class="btn-secondary co-upload-btn">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Select File
+                <input type="file" accept=".xlsx,.xls" class="hol-file-input">
+              </label>
+              <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/public-holidays/bromar-public-holidays-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download Template
+              </a>
+            </div>
+            <div id="hol-upload-feedback"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap">
+          <select id="hol-year-filter" style="padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;cursor:pointer">
+            ${yearOpts}
+          </select>
+          <select id="hol-state-filter" style="padding:0.6rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;cursor:pointer">
+            <option value="">All States</option>
+            ${stateOpts}
+          </select>
+        </div>
+        <div id="hol-list-area">
+          <div class="co-loading"><div class="co-spinner"></div><p style="margin-top:0.5rem">Loading…</p></div>
+        </div>
+      </div>
+    `;
+
+    await this._fetchHolidays();
+    this._renderHolidayList(target.querySelector('#hol-list-area'));
+  },
+
+  async _fetchHolidays() {
+    try {
+      const res = await fetch(
+        this._SB_URL + '/rest/v1/public_holidays?select=*&order=date.asc',
+        { headers: this._sbHeaders() }
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      this._holData = await res.json();
+    } catch (err) {
+      console.error('Holiday fetch error:', err);
+      this._holData = [];
+    }
+  },
+
+  _renderHolidayList(container) {
+    if (!container) return;
+    const yearFilter = (document.getElementById('hol-year-filter') || {}).value || '';
+    const stateFilter = (document.getElementById('hol-state-filter') || {}).value || '';
+
+    let filtered = this._holData.filter(h => {
+      if (yearFilter && !h.date.startsWith(yearFilter)) return false;
+      if (stateFilter && h.state !== stateFilter) return false;
+      return true;
+    });
+
+    if (!filtered.length) {
+      container.innerHTML = '<div class="admin-placeholder"><p>' + (this._holData.length ? 'No holidays match filters.' : 'No holidays yet. Add one or bulk import.') + '</p></div>';
+      return;
+    }
+
+    const today = this._isoDate(new Date());
+    const stateColours = { VIC: '#2563eb', NSW: '#0891b2', QLD: '#9333ea', SA: '#dc2626', WA: '#ca8a04', TAS: '#15803d', ACT: '#e11d48', NT: '#d97706', NATIONAL: '#ea580c' };
+
+    const rows = filtered.map(h => {
+      const isPast = h.date < today;
+      const stateCol = stateColours[h.state] || 'var(--text-secondary)';
+      return '<tr' + (isPast ? ' style="opacity:0.5"' : '') + '>' +
+        '<td>' + this._formatDateFull(h.date) + '</td>' +
+        '<td><strong>' + h.name + '</strong></td>' +
+        '<td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:0.68rem;font-weight:600;color:#fff;background:' + stateCol + '">' + h.state + '</span></td>' +
+        '<td class="hide-mobile">' + (h.notes || '—') + '</td>' +
+        '<td style="white-space:nowrap">' +
+          '<div style="display:flex;gap:0.25rem">' +
+            '<button class="sup-action-btn" data-hol-edit="' + h.id + '" title="Edit"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+            '<button class="sup-action-btn sup-action-delete" data-hol-delete="' + h.id + '" data-hol-name="' + h.name + '" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    container.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">' + filtered.length + ' holiday' + (filtered.length !== 1 ? 's' : '') + '</div>' +
+      '<table class="co-list-table"><thead><tr>' +
+      '<th>Date</th><th>Name</th><th>State</th><th class="hide-mobile">Notes</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  },
+
+  _showHolidayForm(target, editId) {
+    const h = editId ? this._holData.find(r => r.id === editId) : null;
+    const title = h ? 'Edit Holiday' : 'Add Holiday';
+
+    const dateVal = h ? this._formatInputDate(h.date) : '';
+    const stateOpts = this._holStates.map(s =>
+      '<option value="' + s + '"' + (h && h.state === s ? ' selected' : (!h && s === 'VIC' ? ' selected' : '')) + '>' + s + '</option>').join('');
+
+    target.innerHTML = `
+      <div class="card admin-section-panel">
+        <div class="admin-section-header">
+          <h2>${title}</h2>
+          <button class="btn-secondary" data-hol-cancel>
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back
+          </button>
+        </div>
+        <div id="hol-form">
+          <input type="hidden" id="hol-id" value="${editId || ''}">
+          <div class="sup-form-grid">
+            <div class="sup-form-section">
+              <div class="sup-form-row"><label>Date <span class="sup-req">*</span></label><input type="date" id="hol-date" value="${dateVal}"></div>
+              <div class="sup-form-row"><label>Holiday Name <span class="sup-req">*</span></label><input type="text" id="hol-name" value="${h ? h.name : ''}" placeholder="e.g. Australia Day"></div>
+            </div>
+            <div class="sup-form-section">
+              <div class="sup-form-row"><label>State <span class="sup-req">*</span></label><select id="hol-state"><option value="">Select…</option>${stateOpts}</select></div>
+              <div class="sup-form-row"><label>Notes</label><input type="text" id="hol-notes" value="${h ? (h.notes || '') : ''}" placeholder="e.g. Metro Melbourne only"></div>
+            </div>
+          </div>
+          <div class="sup-form-actions">
+            <button class="btn-primary" data-hol-save style="padding:0.7rem 1.5rem">${h ? 'Update' : 'Save'} Holiday</button>
+            <button class="btn-secondary" data-hol-cancel>Cancel</button>
+          </div>
+          <div id="hol-form-feedback"></div>
+        </div>
+      </div>
+    `;
+  },
+
+  /* Format ISO date → YYYY-MM-DD for input[type=date] */
+  _formatInputDate(isoStr) {
+    if (!isoStr) return '';
+    return String(isoStr).split('T')[0];
+  },
+
+  async _saveHoliday(sectionTarget) {
+    const id = (document.getElementById('hol-id') || {}).value;
+    const dateVal = (document.getElementById('hol-date').value || '').trim();
+    const name = (document.getElementById('hol-name').value || '').trim();
+    const state = (document.getElementById('hol-state').value || '').trim();
+    const feedback = document.getElementById('hol-form-feedback');
+
+    if (!dateVal || !name || !state) {
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Date, name, and state are required.</div>';
+      return;
+    }
+
+    const payload = {
+      date: dateVal,
+      name: name,
+      state: state,
+      notes: (document.getElementById('hol-notes').value || '').trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      let res;
+      if (id) {
+        res = await fetch(this._SB_URL + '/rest/v1/public_holidays?id=eq.' + id, {
+          method: 'PATCH', headers: this._sbHeaders(), body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch(this._SB_URL + '/rest/v1/public_holidays', {
+          method: 'POST', headers: this._sbHeaders(), body: JSON.stringify(payload)
+        });
+      }
+      if (!res.ok) throw new Error(await res.text());
+      await this._fetchHolidays();
+      this._renderHolidays(sectionTarget);
+    } catch (err) {
+      console.error('Holiday save error:', err);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Save failed: ' + err.message + '</div>';
+    }
+  },
+
+  async _deleteHoliday(id, sectionTarget) {
+    try {
+      const res = await fetch(this._SB_URL + '/rest/v1/public_holidays?id=eq.' + id, {
+        method: 'DELETE', headers: this._sbHeaders()
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await this._fetchHolidays();
+      this._renderHolidays(sectionTarget);
+    } catch (err) {
+      console.error('Holiday delete error:', err);
+      alert('Delete failed: ' + err.message);
+    }
+  },
+
+  async _handleHolidayXlsxUpload(file, sectionTarget) {
+    const feedback = sectionTarget.querySelector('#hol-upload-feedback');
+    if (feedback) feedback.innerHTML = '<div class="co-upload-result" style="background:var(--card-hover);color:var(--text-primary)"><div class="co-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:-3px;margin-right:8px;display:inline-block"></div>Processing…</div>';
+
+    try {
+      const ab = await file.arrayBuffer();
+      const XLSX = await this._loadSheetJS();
+      const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        const row = (raw[i] || []).map(c => String(c || '').trim().toLowerCase());
+        if (row.includes('date') && row.includes('name')) { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) throw new Error('Could not find header row with "Date" and "Name"');
+
+      const headers = raw[headerIdx].map(c => String(c || '').trim().toLowerCase());
+      const col = n => headers.indexOf(n);
+
+      const rows = [];
+      for (let i = headerIdx + 1; i < raw.length; i++) {
+        const r = raw[i];
+        if (!r || !r[col('date')] || !r[col('name')]) continue;
+        const name = String(r[col('name')]).trim();
+        if (!name || name.toLowerCase().startsWith('instruction')) break;
+
+        const dateVal = this._parseUploadDate(r[col('date')]);
+        if (!dateVal) continue;
+
+        rows.push({
+          date: dateVal,
+          name: name,
+          state: col('state') >= 0 ? (String(r[col('state')] || 'VIC').trim().toUpperCase()) : 'VIC',
+          notes: col('notes') >= 0 ? (String(r[col('notes')] || '').trim() || null) : null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      if (!rows.length) throw new Error('No valid holiday entries found');
+
+      /* Upsert using merge-duplicates on (date, state, name) */
+      const upsertHeaders = { ...this._sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' };
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        const res = await fetch(this._SB_URL + '/rest/v1/public_holidays', {
+          method: 'POST', headers: upsertHeaders, body: JSON.stringify(batch)
+        });
+        if (!res.ok) throw new Error(await res.text());
+      }
+
+      await this._fetchHolidays();
+      this._renderHolidays(sectionTarget);
+      const fb = sectionTarget.querySelector('#hol-upload-feedback');
+      if (fb) fb.innerHTML = '<div class="co-upload-result success">Imported ' + rows.length + ' holidays.</div>';
+
+    } catch (err) {
+      console.error('Holiday upload error:', err);
+      if (feedback) feedback.innerHTML = '<div class="co-upload-result error">Upload failed: ' + err.message + '</div>';
+    }
   },
 
   /* ════════════════════════════════════════
