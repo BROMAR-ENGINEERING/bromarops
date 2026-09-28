@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.76
+   V1.77
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.76',
+  version: 'V1.77',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -2371,8 +2371,27 @@ window.BromarPages.quotes = {
           if (!(d.items || []).length) return '';
           const matTotal = sectionSellTotal(s, q);
           if (!internal && costView(s) === 'total') body = `<div class="doc-line"><span>${escape(s.name)}</span><strong>${fmt(matTotal)}</strong></div>`;
+          else if (internal) {
+            // Full internal breakdown: cost, markup %, sell unit, qty, total
+            const secM = sectionMarkup(s);
+            const head = '<th>Description</th><th>Part #</th><th class="num">Cost</th><th class="num">Markup</th><th class="num">Sell unit</th><th class="num">Qty</th><th class="num">Total</th>';
+            const rows = d.items.map(it => {
+              const usedM = (it.markup === null || it.markup === undefined || it.markup === '') ? secM : Number(it.markup);
+              const override = !(it.markup === null || it.markup === undefined || it.markup === '');
+              const sellUnit = materialItemTotal({ ...it, qty: 1 }, secM);
+              return `<tr>
+                <td>${escape(it.desc)}${it.note ? '<div class="doc-internal-note">' + escape(it.note) + '</div>' : ''}</td>
+                <td>${escape(it.part || '—')}</td>
+                <td class="num">${fmt(it.price || 0)}</td>
+                <td class="num">${usedM}%${override ? '' : ' <span class="doc-mk-def">(def)</span>'}</td>
+                <td class="num">${fmt(sellUnit)}</td>
+                <td class="num">${it.qty}</td>
+                <td class="num">${fmt(materialItemTotal(it, secM))}</td></tr>`;
+            }).join('');
+            body = `<div class="doc-table-wrap"><table class="doc-table"><thead><tr>${head}</tr></thead><tbody>${rows}<tr class="doc-table-total"><td colspan="6" class="num">Subtotal (incl. markup)</td><td class="num"><strong>${fmt(matTotal)}</strong></td></tr></tbody></table></div>`;
+          }
           else {
-            const mc = internal ? { part: true, unit: true, qty: true } : matColumns(d);
+            const mc = matColumns(d);
             const head = ['<th>Description</th>']
               .concat(mc.part ? ['<th>Part #</th>'] : [])
               .concat(mc.unit ? ['<th class="num">Unit</th>'] : [])
@@ -3343,6 +3362,7 @@ ${q.preparedBy || COMPANY.name}`;
         .doc-internal .doc-section-hidden { position: relative; background: rgba(234,88,12,0.05); border: 1px dashed rgba(234,88,12,0.4); border-radius: 8px; padding: 12px; margin: 12px 0; }
         .doc-hidden-tag { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #ea580c; background: rgba(234,88,12,0.12); padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
         .doc-internal-note { font-size: 11px; font-style: italic; color: #ea580c; margin-top: 3px; }
+        .doc-mk-def { font-size: 9px; color: var(--text-secondary); opacity: 0.7; }
         .row-number:hover { border-bottom-color: var(--accent); }
         .quote-modal-sm { max-width: 460px; }
         .row-nick { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
