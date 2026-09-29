@@ -31,9 +31,6 @@
 
   const PLANNED = {
     safety: [
-      ['approved-swms', 'Approved SWMS'],
-      ['unapproved-swms', 'Unapproved SWMS'],
-      ['swms-register', 'SWMS Register'],
       ['incident-reports', 'Incident Reports'],
       ['hazard-reports', 'Hazard Reports'],
       ['safety-register', 'Register'],
