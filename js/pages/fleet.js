@@ -210,8 +210,16 @@ window.BromarPages.fleet = (() => {
       if(error){if(error.code==='23505')skipped++;else console.error('Fuel insert:',error.message);}
       else inserted++;
     }
-    /* update odometers — highest reading per vehicle */
-    const odoMap={};fuelOnly.forEach(t=>{if(t.odometer_reading&&t.rego){if(!odoMap[t.rego]||t.odometer_reading>odoMap[t.rego])odoMap[t.rego]=t.odometer_reading;}});
+    /* update odometers — highest valid reading per vehicle */
+    const odoMap={};
+    fuelOnly.forEach(t=>{
+      if(!t.odometer_reading||!t.rego)return;
+      const odo=t.odometer_reading;
+      if(odo<1000)return; /* skip dummy values: 7, 777, 999 */
+      const veh=vehicles.find(v=>v.rego_no&&v.rego_no.toUpperCase()===t.rego);
+      if(veh&&veh.current_odometer&&odo>Number(veh.current_odometer)*2)return; /* skip typos: 879036 vs 79036 */
+      if(!odoMap[t.rego]||odo>odoMap[t.rego])odoMap[t.rego]=odo;
+    });
     for(const[rego,odo]of Object.entries(odoMap)){
       const veh=vehicles.find(v=>v.rego_no&&v.rego_no.toUpperCase()===rego);
       if(veh&&(!veh.current_odometer||odo>Number(veh.current_odometer))){
