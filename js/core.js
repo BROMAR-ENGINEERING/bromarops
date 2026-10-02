@@ -1,29 +1,26 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
-   V1.18
+   V1.19
    Renders sidebar + header + footer once.
    Pages register via window.BromarPages[id] = { title, render, destroy?, version }
    Waits for `bromar-auth-ready` before initialising.
    Wraps every page render() in try/catch → error card on failure.
    On page load, resets to #dashboard (previous hash discarded).
    Sidebar shows [user icon] [full name] [green online dot].
+   Revision indicator (bottom-right) shows the page's version only (e.g. V1.00).
    ============================================================ */
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.18';
+  const APP_VERSION = 'V1.19';
 
-  function renderVersion(pageVersion, pageId) {
+  function renderVersion(pageVersion) {
     const coreEl = document.getElementById('core-version');
     if (coreEl) coreEl.textContent = APP_VERSION;
 
     const pageEl = document.getElementById('app-version');
     if (!pageEl) return;
-    if (pageVersion && pageId) {
-      pageEl.textContent = `${pageId} ${pageVersion}`;
-    } else {
-      pageEl.textContent = '';
-    }
+    pageEl.textContent = pageVersion || '';
   }
 
   /* ── THEME ── */
@@ -173,7 +170,7 @@ const BromarOps = (() => {
       currentPage = null;
     }
 
-    renderVersion(page.version, pageId);
+    renderVersion(page.version);
 
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebar-overlay')?.classList.remove('show');
