@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.30  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.31  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.30',
+  version: 'V1.31',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -552,6 +552,13 @@ window.BromarAdmin.testtag = {
               <button class="btn-secondary" id="tt-refresh" disabled style="flex:1">Update Preview</button>
               <button class="btn-primary" id="tt-pdf" disabled style="flex:1;padding:0.7rem 1rem">Download PDF</button>
             </div>
+            <div class="tt-form-row" style="margin-top:0.5rem">
+              <label>Output Format</label>
+              <select id="tt-format" class="tt-select">
+                <option value="pdf">PDF document</option>
+                <option value="excel">Excel workbook (.xlsx)</option>
+              </select>
+            </div>
             <button class="btn-secondary" id="tt-save" disabled style="width:100%;margin-top:0.5rem">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save to Register
             </button>
@@ -963,6 +970,7 @@ window.BromarAdmin.testtag = {
       a.location = a['Location'] || '\u2014';
       a.sublocation = a['Sublocation'] || '';
       a.barcode = a['Barcode'] || '';
+      a.assetNo = a['Asset No'] || a['Asset Number'] || '';
       a.description = a['Description'] || '';
       a.tested = a['Tested On'] || a['Test Date'] || a['Tested'] || a['Tested Date'] || a['Date Tested'] || a['Test Date/Time'] || '';
       if (!a.tested) {
@@ -1132,6 +1140,90 @@ window.BromarAdmin.testtag = {
       document.head.appendChild(s1);
     });
     return this._ttJspdfPromise;
+  },
+
+  _ttLoadXLSX() {
+    if (window.XLSX) return Promise.resolve();
+    if (this._ttXlsxPromise) return this._ttXlsxPromise;
+    this._ttXlsxPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Failed to load SheetJS'));
+      document.head.appendChild(s);
+    });
+    return this._ttXlsxPromise;
+  },
+
+  _ttFileBase(f, effCert) {
+    const clean = s => String(s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    let base = clean(effCert || f.customer || 'report');
+    const siteTok = clean(f.site);
+    if (siteTok && !base.toLowerCase().includes(siteTok.toLowerCase())) base += '_' + siteTok;
+    return base;
+  },
+
+  async _ttBuildExcel() {
+    if (!this._ttModel) return;
+    const f = this._ttReadForm();
+    if (!this._ttValidate(f)) return;
+    await this._ttLoadXLSX();
+    const XLSX = window.XLSX;
+
+    const assets = this._ttScopedAssets();
+    const boards = this._ttGroupBoards(assets);
+    const effCert = this._ttEffectiveCert(f);
+    const generated = this._ttModel.head.generated || new Date().toLocaleDateString('en-GB');
+    const total = assets.length;
+    const pass = assets.filter(a => a.state === 'pass').length;
+    const fail = assets.filter(a => a.state === 'fail').length;
+    const oos = assets.filter(a => a.state === 'oos').length;
+    const overdue = (this._ttScope || {}).mode === 'all' ? (this._ttModel.stats['Overdue'] || '0') : String(this._ttOverdue(assets));
+    const sub = a => (a.sublocation && a.sublocation !== 'NA') ? a.sublocation : '';
+
+    /* ── Sheet 1: Register by Area (grouped like the PDF) ── */
+    const s1 = [];
+    s1.push(['Bromar Electrical Services (Aust)']);
+    s1.push(['Site Equipment Test Report']);
+    s1.push([]);
+    s1.push(['Cert No.', effCert, '', 'Customer', f.customer || '']);
+    s1.push(['Site Name', f.site || '', '', 'Site Address', f.address || '']);
+    s1.push(['Contact', f.contact || '', '', 'Contact Email', f.email || '']);
+    s1.push(['Job Number', f.job || '', '', 'Date Range', this._ttScopedRange(f)]);
+    s1.push(['Tested By', f.tester || '', '', 'Licence / REC', f.licence || '']);
+    s1.push(['Generated', generated]);
+    s1.push([]);
+    s1.push(['Results Summary', 'Equipment', 'Pass', 'Fail', 'Out of Svc (OOS)', 'Locations', 'Overdue']);
+    s1.push(['', total, pass, fail, oos, boards.length, overdue]);
+    s1.push([]);
+    const cols = ['Barcode', 'Asset No', 'Description', 'Test Performed', 'Trip / Result', 'Status', 'Tested', 'Due'];
+    for (const g of boards) {
+      let items = g.items;
+      if (f.oosOnly) items = items.filter(a => a.state === 'oos' || a.state === 'fail');
+      if (!items.length) continue;
+      s1.push([g.location + (g.subsText ? '  \u2014  Sub Location: ' + g.subsText : '') + '  (' + g.items.length + ')']);
+      s1.push(cols);
+      for (const a of items) s1.push([a.barcode, a.assetNo, a.description, a.testPerformed, a.measure, a.status, a.tested, a.due]);
+      s1.push([]);
+    }
+
+    /* ── Sheet 2: Assets in asset-number order (flat) ── */
+    const key = a => (String(a.assetNo).trim() || String(a.barcode).trim());
+    const sorted = [...assets].sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true, sensitivity: 'base' }));
+    const s2 = [['Asset No', 'Barcode', 'Description', 'Location', 'Sub Location', 'Test Performed', 'Trip / Result', 'Status', 'Tested', 'Due']];
+    for (const a of sorted) s2.push([a.assetNo, a.barcode, a.description, a.location, sub(a), a.testPerformed, a.measure, a.status, a.tested, a.due]);
+
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.aoa_to_sheet(s1);
+    ws1['!cols'] = [{ wch: 26 }, { wch: 16 }, { wch: 30 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    const ws2 = XLSX.utils.aoa_to_sheet(s2);
+    ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    ws2['!freeze'] = { xSplit: 0, ySplit: 1 };
+    XLSX.utils.book_append_sheet(wb, ws1, 'Register by Area');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Assets by Number');
+
+    XLSX.writeFile(wb, this._ttFileBase(f, effCert) + '_Site_Equipment_Test_Report.xlsx');
+    await this._ttSaveToRegister(true);
   },
 
   async _ttBuildPDF() {
@@ -1416,11 +1508,7 @@ window.BromarAdmin.testtag = {
       RK.drawFooter(doc, { title: footerTitle, ref: effCert, pageNo: p });
     }
 
-    const clean = s => String(s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
-    let fnameBase = clean(effCert || f.customer || 'report');
-    const siteTok = clean(f.site);
-    if (siteTok && !fnameBase.toLowerCase().includes(siteTok.toLowerCase())) fnameBase += '_' + siteTok;
-    doc.save(fnameBase + '_Site_Equipment_Test_Report.pdf');
+    doc.save(this._ttFileBase(f, effCert) + '_Site_Equipment_Test_Report.pdf');
     await this._ttSaveToRegister(true);
   },
 
@@ -1656,13 +1744,21 @@ window.BromarAdmin.testtag = {
       }
       if (e.target.closest('#tt-refresh')) { this._ttRenderReport(host); return; }
       if (e.target.closest('#tt-pdf')) {
-        try { this._ttBuildPDF(); } catch (err) { alert('PDF error: ' + err.message); }
+        const fmt = (document.getElementById('tt-format') || {}).value || 'pdf';
+        try {
+          if (fmt === 'excel') this._ttBuildExcel();
+          else this._ttBuildPDF();
+        } catch (err) { alert('Export error: ' + err.message); }
         return;
       }
     });
 
     container.addEventListener('change', (e) => {
       if (e.target.matches('#tt-insttype')) this._ttRenderReport(this._host);
+      if (e.target.matches('#tt-format')) {
+        const btn = document.getElementById('tt-pdf');
+        if (btn) btn.textContent = e.target.value === 'excel' ? 'Download Excel' : 'Download PDF';
+      }
       if (e.target.matches('#tt-scope-mode')) {
         const mode = e.target.value;
         this._ttScope = { mode, values: mode === 'all' ? [] : this._ttScopeOptions(mode).map(o => o.value), times: (this._ttScope || {}).times || {} };
