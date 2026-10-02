@@ -111,62 +111,68 @@ window.BromarPages.fleet = (() => {
 
     for(let p=1;p<=pdf.numPages;p++){
       const page=await pdf.getPage(p);const tc=await page.getTextContent();
-      const items=tc.items.map(i=>({text:i.str.trim(),x:Math.round(i.transform[4]),y:Math.round(i.transform[5])})).filter(i=>i.text);
+      /* build full text lines by grouping items within ±3 Y units */
+      const items=tc.items.map(i=>({str:i.str,x:i.transform[4],y:Math.round(i.transform[5])}));
+      const yMap={};items.forEach(i=>{const yk=Math.round(i.y/3)*3;if(!yMap[yk])yMap[yk]=[];yMap[yk].push(i);});
+      const textLines=Object.keys(yMap).sort((a,b)=>b-a).map(k=>yMap[k].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').trim()).filter(l=>l);
 
       /* report date */
-      if(!reportDate){const rd=items.find(i=>i.text.match(/^\d{2}\s\w{3}\s\d{2,4}$/));if(rd)reportDate=rd.text;}
+      if(!reportDate){const rd=textLines.find(l=>/Report Issue Date:/.test(l));if(rd){const m=rd.match(/(\d{2}\s\w{3}\s\d{2,4})/);if(m)reportDate=m[1];}}
 
-      /* find REGISTRATION header */
+      /* find REGISTRATION header line */
       let rego='',cardNo='',driver='';
-      for(const it of items){
-        if(it.text.startsWith('REGISTRATION:')){rego=it.text.replace('REGISTRATION:','').trim().toUpperCase();}
-        if(it.text.startsWith('CARD NO:')){cardNo=it.text.replace('CARD NO:','').trim();}
-        if(it.text.startsWith('DRIVER NAME:')){driver=it.text.replace('DRIVER NAME:','').trim();}
+      const regLine=textLines.find(l=>l.includes('REGISTRATION:'));
+      if(regLine){
+        const rm=regLine.match(/REGISTRATION:\s*(\S+)/);if(rm)rego=rm[1].toUpperCase();
+        const cm=regLine.match(/CARD NO:\s*(\S+)/);if(cm)cardNo=cm[1];
+        const dm=regLine.match(/DRIVER NAME:\s*(.*)/);if(dm)driver=dm[1].trim();
       }
       if(!rego)continue;
 
-      /* group by Y */
-      const lm={};items.forEach(i=>{const yk=Math.round(i.y/3)*3;if(!lm[yk])lm[yk]=[];lm[yk].push(i);});
-      const lines=Object.keys(lm).sort((a,b)=>b-a).map(k=>lm[k].sort((a,b)=>a.x-b.x).map(i=>i.text));
+      /* parse transaction lines: start with DD/MM/YY */
+      for(const line of textLines){
+        const dm=line.match(/^(\d{2}\/\d{2}\/\d{2})\s+(.+)/);
+        if(!dm)continue;
+        const dateStr=dm[1];const rest=dm[2];
+        if(/sub total/i.test(rest))continue;
 
-      for(const cells of lines){
-        if(cells.length<3)continue;
-        /* date pattern DD/MM/YY */
-        if(!/^\d{2}\/\d{2}\/\d{2}$/.test(cells[0]))continue;
-        const dateStr=cells[0];const supplier=cells[1];
-        /* skip Sub Totals line */
-        if(/sub total/i.test(supplier))continue;
+        /* tokenise remaining text */
+        const tokens=rest.split(/\s+/);
+        let supplier='',odo=null,refNo=null,quantity=null,product='',priceEx=null,gst=null,totalInc=null;
 
-        /* extract numeric fields from remaining cells */
-        const rest=cells.slice(2);
-        let odo=null,refNo='',quantity=null,product='',priceEx=null,gst=null,totalInc=null;
-        const numVals=[];const textVals=[];
+        /* supplier name = text tokens until we hit a number or dash */
+        const supParts=[];let ti=0;
+        while(ti<tokens.length){
+          const tk=tokens[ti];
+          if(tk==='-'||/^\d/.test(tk.replace(/,/g,''))||/^\d+\.?\d*L$/i.test(tk))break;
+          supParts.push(tk);ti++;
+        }
+        supplier=supParts.join(' ');
 
-        for(const c of rest){
-          const clean=c.replace(/,/g,'').replace(/^\$/,'');
-          /* quantity with L suffix */
-          if(/^\d+\.?\d*L$/i.test(c)){quantity=parseFloat(c);continue;}
-          if(c==='-'){numVals.push(null);continue;}
-          if(!isNaN(parseFloat(clean))&&isFinite(clean)){numVals.push(parseFloat(clean));}
-          else{textVals.push(c);}
+        /* remaining tokens: odo(-), refNo(-), quantity(L), product text, priceEx, gst, total */
+        const rem=tokens.slice(ti);
+        const nums=[];const texts=[];
+
+        for(const tk of rem){
+          if(tk==='-'){nums.push(null);continue;}
+          if(/^\d+\.?\d*L$/i.test(tk)){quantity=parseFloat(tk);continue;}
+          const clean=tk.replace(/,/g,'');
+          if(/^-?\d+\.?\d*$/.test(clean)){nums.push(parseFloat(clean));}
+          else{texts.push(tk);}
         }
 
-        /* textVals typically: [refNo, product] or just [product] */
-        if(textVals.length>=2){refNo=textVals[0];product=textVals.slice(1).join(' ');}
-        else if(textVals.length===1){product=textVals[0];}
+        /* texts = product words; refNo is numeric so already in nums */
+        product=texts.join(' ');
 
-        /* numVals: [odo?, priceEx, gst, totalInc] — count varies */
-        if(numVals.length>=3){
-          totalInc=numVals[numVals.length-1];
-          gst=numVals[numVals.length-2];
-          priceEx=numVals[numVals.length-3];
-          if(numVals.length>=4)odo=numVals[0];
-        }else if(numVals.length===2){
-          /* just priceEx + gst or gst + total */
-          priceEx=numVals[0];gst=numVals[1];
+        /* nums pattern: [odo|null, refNo|null, priceEx, gst, total] — last 3 are always price/gst/total */
+        if(nums.length>=3){
+          totalInc=nums[nums.length-1];gst=nums[nums.length-2];priceEx=nums[nums.length-3];
+          /* remaining nums before price are odo and refNo */
+          const pre=nums.slice(0,nums.length-3);
+          for(const n of pre){if(n===null)continue;if(!odo&&n>1000)odo=n;else if(!refNo)refNo=String(Math.round(n));}
         }
 
-        allTxns.push({rego,card_no:cardNo,driver_name:driver,transaction_date:parseFcDate(dateStr),supplier,odometer_reading:odo,reference_no:refNo||null,quantity_litres:quantity,product,price_ex_gst:priceEx,gst,total_inc_gst:totalInc,billing_period:reportDate});
+        allTxns.push({rego,card_no:cardNo,driver_name:driver,transaction_date:parseFcDate(dateStr),supplier,odometer_reading:odo,reference_no:refNo||null,quantity_litres:quantity,product,price_ex_gst:priceEx||0,gst:gst||0,total_inc_gst:totalInc||0,billing_period:reportDate});
       }
     }
     return{type:'report',reportDate,transactions:allTxns};
