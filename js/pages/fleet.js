@@ -1,10 +1,10 @@
 /* ============================================================
-   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.08)
+   BROMAR OPS — FLEET MANAGEMENT PAGE  (V1.09)
    Live Supabase: vehicles, vehicle_audits, vehicle_audit_checks
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.08';
+  const PAGE_VERSION = 'V1.09';
 
   /* ── SUPABASE ── */
   const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -61,6 +61,11 @@ window.BromarPages.fleet = (() => {
   const statusBadge = s => ({ active:'fleet-st-active', out_of_service:'fleet-st-shop', retired:'fleet-st-inactive', sold:'fleet-st-inactive' }[s] || '');
   const faultBadge = n => n > 0 ? `<span class="fleet-badge fleet-overdue">${n} Fault${n>1?'s':''}</span>` : `<span class="fleet-badge fleet-ok">Clear</span>`;
 
+  /* Natural sort: "Car 2" before "Car 10" */
+  function natSort(a, b) {
+    return a.plant_no.localeCompare(b.plant_no, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
   function lockViewport() {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
@@ -73,12 +78,14 @@ window.BromarPages.fleet = (() => {
     return html;
   }
 
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-AU') : '—'; }
+
   /* ── DATA ── */
   async function loadVehicles() {
     const c = await ensureClient();
     const { data, error } = await c.from('vehicles').select('*').order('plant_no');
     if (error) { console.error('Fleet: loadVehicles', error.message); return; }
-    if (data) vehicles = data;
+    if (data) vehicles = data.sort(natSort);
   }
 
   async function loadEmployees() {
@@ -137,7 +144,7 @@ window.BromarPages.fleet = (() => {
   const filtered = () => vehicles.filter(v =>
     (filterType === 'ALL' || (v.plant_type || '').toLowerCase() === filterType.toLowerCase()) &&
     (filterStatus === 'ALL' || v.status === filterStatus) &&
-    (!searchTerm || [v.plant_no, v.plant_name, v.rego_no, v.make, v.model, v.assigned_to].filter(Boolean).some(f => f.toLowerCase().includes(searchTerm)))
+    (!searchTerm || [v.plant_no, v.rego_no, v.make, v.model, v.assigned_to, v.fleet_card_no].filter(Boolean).some(f => f.toLowerCase().includes(searchTerm)))
   );
 
   /* ── STYLES ── */
@@ -249,31 +256,28 @@ window.BromarPages.fleet = (() => {
     const types = [...new Set(vehicles.map(v => v.plant_type).filter(Boolean))];
     const rows = list.length ? list.map(v => `<tr data-id="${v.id}">
       <td><strong>${v.plant_no}</strong></td>
-      <td>${v.plant_name}</td>
       <td>${v.rego_no || '—'}</td>
-      <td>${v.plant_type || '—'}</td>
+      <td>${v.make || '—'}</td>
+      <td>${v.model || '—'}</td>
+      <td>${v.year || '—'}</td>
       <td>${v.assigned_to || '<span style="color:var(--text-secondary)">Unassigned</span>'}</td>
       <td><span class="fleet-badge ${statusBadge(v.status)}">${statusLabel(v.status)}</span></td>
-    </tr>`).join('') : '<tr><td colspan="6" class="fleet-empty">No vehicles found</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="7" class="fleet-empty">No vehicles found</td></tr>';
     return `
     <div class="fleet-toolbar">
       <div class="fleet-search-wrap">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" class="fleet-search" id="fleet-search" placeholder="Search plant no, name, rego, driver…" value="${searchTerm}">
+        <input type="text" class="fleet-search" id="fleet-search" placeholder="Search plant no, rego, make, model, driver…" value="${searchTerm}">
       </div>
       <div class="fleet-filters">
-        <button class="fleet-fbtn ${filterType==='ALL'?'active':''}" data-ft="ALL">All Types</button>
-        ${types.map(t => `<button class="fleet-fbtn ${filterType===t?'active':''}" data-ft="${t}">${t}</button>`).join('')}
-      </div>
-      <div class="fleet-filters">
-        <button class="fleet-fbtn ${filterStatus==='ALL'?'active':''}" data-fs="ALL">All Status</button>
+        <button class="fleet-fbtn ${filterStatus==='ALL'?'active':''}" data-fs="ALL">All</button>
         ${STATUS_OPTS.map(s => `<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}
       </div>
       <div class="fleet-actions"><button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button></div>
     </div>
     <div class="card" style="padding:0;overflow:hidden"><div class="fleet-table-wrap">
       <table class="fleet-table">
-        <thead><tr><th>Plant #</th><th>Name</th><th>Rego</th><th>Type</th><th>Assigned To</th><th>Status</th></tr></thead>
+        <thead><tr><th>Plant #</th><th>Rego</th><th>Make</th><th>Model</th><th>Year</th><th>Assigned To</th><th>Status</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div></div>`;
@@ -285,15 +289,17 @@ window.BromarPages.fleet = (() => {
     if (activeTab === 'details') {
       tabContent = `<div class="fleet-info-grid">
         <div class="fleet-info-item"><label>Plant #</label><span>${v.plant_no}</span></div>
-        <div class="fleet-info-item"><label>Plant Name</label><span>${v.plant_name}</span></div>
-        <div class="fleet-info-item"><label>Type</label><span>${v.plant_type || '—'}</span></div>
         <div class="fleet-info-item"><label>Rego</label><span>${v.rego_no || '—'}</span></div>
         <div class="fleet-info-item"><label>Make</label><span>${v.make || '—'}</span></div>
         <div class="fleet-info-item"><label>Model</label><span>${v.model || '—'}</span></div>
         <div class="fleet-info-item"><label>Year</label><span>${v.year || '—'}</span></div>
+        <div class="fleet-info-item"><label>Type</label><span>${v.plant_type || '—'}</span></div>
         <div class="fleet-info-item"><label>VIN</label><span>${v.vin || '—'}</span></div>
         <div class="fleet-info-item"><label>Assigned To</label><span>${v.assigned_to || 'Unassigned'}</span></div>
         <div class="fleet-info-item"><label>Status</label><span class="fleet-badge ${statusBadge(v.status)}">${statusLabel(v.status)}</span></div>
+        <div class="fleet-info-item"><label>Date of Purchase</label><span>${fmtDate(v.date_of_purchase)}</span></div>
+        <div class="fleet-info-item"><label>Fleet Card #</label><span>${v.fleet_card_no || '—'}</span></div>
+        <div class="fleet-info-item"><label>Linkt Tag ID</label><span>${v.linkt_tag_id || '—'}</span></div>
         ${v.notes ? `<div class="fleet-info-item" style="grid-column:1/-1"><label>Notes</label><span>${v.notes}</span></div>` : ''}
       </div>
       <div style="margin-top:1.25rem;display:flex;gap:.5rem;flex-wrap:wrap">
@@ -324,7 +330,7 @@ window.BromarPages.fleet = (() => {
       }
     }
     return `<div class="fleet-detail-panel card">
-      <div class="fleet-detail-header"><div><div class="fleet-detail-title">${v.plant_no} — ${v.plant_name}</div><div class="fleet-detail-sub">${v.assigned_to||'Unassigned'} · ${v.plant_type||'No type'} · ${v.rego_no||'No rego'}</div></div>
+      <div class="fleet-detail-header"><div><div class="fleet-detail-title">${v.plant_no} — ${v.make || ''} ${v.model || ''}</div><div class="fleet-detail-sub">${v.rego_no || 'No rego'} · ${v.assigned_to||'Unassigned'} · ${v.year||''}</div></div>
         <button class="btn-secondary" id="fleet-close-detail" style="padding:.45rem .9rem;font-size:.82rem">✕ Close</button></div>
       <div class="fleet-tabs">
         <button class="fleet-tab ${activeTab==='details'?'active':''}" data-tab="details">Details</button>
@@ -340,16 +346,18 @@ window.BromarPages.fleet = (() => {
     const typeOpts = PLANT_TYPES.map(t => `<option value="${t}" ${(isEdit&&v.plant_type===t)?'selected':''}>${t}</option>`).join('');
     return `<div class="fleet-modal-overlay" id="fleet-modal-overlay"><div class="fleet-modal">
       <h2>${isEdit?'Edit Vehicle':'Add Vehicle'}</h2>
-      <label>Plant Number</label><input id="fm-plantno" value="${isEdit?v.plant_no:''}" placeholder="e.g. P-001" ${isEdit?'readonly style="opacity:.6;cursor:not-allowed"':''}>
-      <label>Plant Name</label><input id="fm-plantname" value="${isEdit?v.plant_name:''}" placeholder="e.g. Toyota HiLux #1">
-      <label>Plant Type</label><select id="fm-planttype"><option value="">— Select —</option>${typeOpts}</select>
+      <label>Plant Number</label><input id="fm-plantno" value="${isEdit?v.plant_no:''}" placeholder="e.g. Car 26" ${isEdit?'readonly style="opacity:.6;cursor:not-allowed"':''}>
       <label>Registration (max 6 characters)</label><input id="fm-rego" class="fleet-rego-input" value="${isEdit?(v.rego_no||''):''}" placeholder="e.g. ABC123" maxlength="6" autocapitalize="characters">
-      <label>Make</label><input id="fm-make" value="${isEdit?(v.make||''):''}" placeholder="e.g. Toyota">
-      <label>Model</label><input id="fm-model" value="${isEdit?(v.model||''):''}" placeholder="e.g. HiLux SR5">
+      <label>Make</label><input id="fm-make" value="${isEdit?(v.make||''):''}" placeholder="e.g. VW">
+      <label>Model</label><input id="fm-model" value="${isEdit?(v.model||''):''}" placeholder="e.g. Transporter">
       <label>Year</label><select id="fm-year">${yearOptions(isEdit?v.year:null)}</select>
+      <label>Plant Type</label><select id="fm-planttype"><option value="">— Select —</option>${typeOpts}</select>
       <label>VIN</label><input id="fm-vin" value="${isEdit?(v.vin||''):''}" placeholder="Vehicle Identification Number">
       <label>Assigned To</label><select id="fm-assigned"><option value="">— Unassigned —</option>${empOpts}</select>
       <label>Status</label><select id="fm-status">${STATUS_OPTS.map(s=>`<option value="${s}" ${(isEdit&&v.status===s)?'selected':''}>${statusLabel(s)}</option>`).join('')}</select>
+      <label>Date of Purchase</label><input id="fm-purchase" type="date" value="${isEdit?(v.date_of_purchase||''):''}">
+      <label>Fleet Card #</label><input id="fm-fleetcard" value="${isEdit?(v.fleet_card_no||''):''}" placeholder="e.g. 7034 3051 0517 9459">
+      <label>Linkt Tag ID</label><input id="fm-linkt" value="${isEdit?(v.linkt_tag_id||''):''}" placeholder="e.g. 1915 0575 1021">
       <label>Notes</label><textarea id="fm-notes" placeholder="Optional notes…">${isEdit?(v.notes||''):''}</textarea>
       <div class="fleet-modal-actions"><button class="btn-secondary" id="fm-cancel">Cancel</button><button class="btn-primary" id="fm-save" data-edit-id="${isEdit?v.id:''}" style="padding:.7rem 1.5rem">${isEdit?'Update':'Add Vehicle'}</button></div>
     </div></div>`;
@@ -393,7 +401,6 @@ window.BromarPages.fleet = (() => {
     });
     root.addEventListener('click', async e => {
       const t = e.target;
-      const ft = t.closest('[data-ft]'); if (ft) { filterType = ft.dataset.ft; refresh(); return; }
       const fs = t.closest('[data-fs]'); if (fs) { filterStatus = fs.dataset.fs; refresh(); return; }
       const row = t.closest('.fleet-table tr[data-id]');
       if (row) { const v = vehicles.find(x=>x.id===row.dataset.id); if (v) { selectedVehicle=v; activeTab='details'; expandedAuditId=null; audits=await loadAudits(v.id); refresh(); root.querySelector('#fleet-detail-area')?.scrollIntoView({behavior:'smooth',block:'start'}); } return; }
@@ -412,18 +419,24 @@ window.BromarPages.fleet = (() => {
     ov.addEventListener('click', e => { if (e.target===ov||e.target.closest('#fm-cancel')) closeModal(); });
     const sv = ov.querySelector('#fm-save'); if (!sv) return;
     sv.addEventListener('click', async () => {
-      const pn=ov.querySelector('#fm-plantno').value.trim(), nm=ov.querySelector('#fm-plantname').value.trim();
-      if (!pn||!nm) { alert('Plant Number and Plant Name are required.'); return; }
+      const pn=ov.querySelector('#fm-plantno').value.trim();
+      if (!pn) { alert('Plant Number is required.'); return; }
+      const makeVal = ov.querySelector('#fm-make').value.trim();
+      const modelVal = ov.querySelector('#fm-model').value.trim();
       const data = {
-        plant_no:pn, plant_name:nm,
-        plant_type: ov.querySelector('#fm-planttype').value||null,
+        plant_no: pn,
+        plant_name: [makeVal, modelVal].filter(Boolean).join(' ') || pn,
         rego_no: ov.querySelector('#fm-rego').value.replace(/[^A-Za-z0-9]/g,'').toUpperCase().slice(0,6)||null,
-        make: ov.querySelector('#fm-make').value.trim()||null,
-        model: ov.querySelector('#fm-model').value.trim()||null,
+        make: makeVal||null,
+        model: modelVal||null,
         year: ov.querySelector('#fm-year').value?parseInt(ov.querySelector('#fm-year').value,10):null,
+        plant_type: ov.querySelector('#fm-planttype').value||null,
         vin: ov.querySelector('#fm-vin').value.trim()||null,
         assigned_to: ov.querySelector('#fm-assigned').value||null,
         status: ov.querySelector('#fm-status').value,
+        date_of_purchase: ov.querySelector('#fm-purchase').value||null,
+        fleet_card_no: ov.querySelector('#fm-fleetcard').value.trim()||null,
+        linkt_tag_id: ov.querySelector('#fm-linkt').value.trim()||null,
         notes: ov.querySelector('#fm-notes').value.trim()||null
       };
       await saveVehicle(data, sv.dataset.editId||null);
