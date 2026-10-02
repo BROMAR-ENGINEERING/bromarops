@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED STYLESHEET
-   V1.04
+   V1.05
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -350,10 +350,11 @@ input, select, textarea, button {
 }
 
 /* ── REVISION NUMBER ── */
+/* Shifted left so the browser scrollbar doesn't cover it. */
 .revision-number {
   position: fixed;
   bottom: calc(10px + env(safe-area-inset-bottom));
-  right: 10px;
+  right: 24px;
   font-size: 0.75rem;
   color: var(--text-secondary);
   opacity: 0.5;
