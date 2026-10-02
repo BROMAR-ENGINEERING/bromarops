@@ -83,9 +83,9 @@ window.BromarPages.fleet = (() => {
   /* ── PDF PARSERS ── */
 
   /* Vehicle Analysis — summary per vehicle */
-  async function parseAnalysisPdf(file){
+  async function parseAnalysisPdf(buf){
     await ensurePdfJs();if(!window.pdfjsLib)throw new Error('PDF library failed');
-    const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
     const rows=[];let billingPeriod='';
     for(let p=1;p<=pdf.numPages;p++){
       const page=await pdf.getPage(p);const tc=await page.getTextContent();
@@ -104,9 +104,9 @@ window.BromarPages.fleet = (() => {
   }
 
   /* Vehicle Report — detailed transactions per vehicle */
-  async function parseReportPdf(file){
+  async function parseReportPdf(buf){
     await ensurePdfJs();if(!window.pdfjsLib)throw new Error('PDF library failed');
-    const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
     const allTxns=[];let reportDate='';
 
     for(let p=1;p<=pdf.numPages;p++){
@@ -175,14 +175,14 @@ window.BromarPages.fleet = (() => {
   /* auto-detect and parse */
   async function parsePdf(file){
     await ensurePdfJs();if(!window.pdfjsLib)throw new Error('PDF library failed');
-    const buf=await file.arrayBuffer();const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
+    const buf=await file.arrayBuffer();const bytes=new Uint8Array(buf);
+    const pdf=await window.pdfjsLib.getDocument({data:bytes}).promise;
     const page1=await pdf.getPage(1);const tc=await page1.getTextContent();
     const allText=tc.items.map(i=>i.str).join(' ');
-    /* re-create file from buffer for the specific parser */
-    const blob=new Blob([buf],{type:'application/pdf'});const f=new File([blob],file.name,{type:'application/pdf'});
-    /* Vehicle Report has "REGISTRATION:" sections; Analysis has "BILLING PERIOD" or "Fuel/Oil" columns */
-    if(allText.includes('REGISTRATION:'))return parseReportPdf(f);
-    if(allText.includes('BILLING PERIOD')||allText.includes('Fuel/Oil')||allText.includes('Cost Centre Billing'))return parseAnalysisPdf(f);
+    /* pass a copy of the buffer to sub-parsers */
+    const bufCopy=bytes.buffer.slice(0);
+    if(allText.includes('REGISTRATION:'))return parseReportPdf(bufCopy);
+    if(allText.includes('BILLING PERIOD')||allText.includes('Fuel/Oil')||allText.includes('Cost Centre Billing'))return parseAnalysisPdf(bufCopy);
     throw new Error('Unrecognised PDF format. Upload a FleetCard Vehicle Analysis or Vehicle Report.');
   }
 
