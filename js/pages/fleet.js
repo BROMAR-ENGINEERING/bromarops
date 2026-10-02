@@ -175,12 +175,11 @@ window.BromarPages.fleet = (() => {
   /* auto-detect and parse */
   async function parsePdf(file){
     await ensurePdfJs();if(!window.pdfjsLib)throw new Error('PDF library failed');
-    const buf=await file.arrayBuffer();const bytes=new Uint8Array(buf);
-    const pdf=await window.pdfjsLib.getDocument({data:bytes}).promise;
+    const buf=await file.arrayBuffer();
+    const bufCopy=buf.slice(0);
+    const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
     const page1=await pdf.getPage(1);const tc=await page1.getTextContent();
     const allText=tc.items.map(i=>i.str).join(' ');
-    /* pass a copy of the buffer to sub-parsers */
-    const bufCopy=bytes.buffer.slice(0);
     if(allText.includes('REGISTRATION:'))return parseReportPdf(bufCopy);
     if(allText.includes('BILLING PERIOD')||allText.includes('Fuel/Oil')||allText.includes('Cost Centre Billing'))return parseAnalysisPdf(bufCopy);
     throw new Error('Unrecognised PDF format. Upload a FleetCard Vehicle Analysis or Vehicle Report.');
