@@ -1,16 +1,18 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
-   V1.16
+   V1.17
    Renders sidebar + header + footer once.
    Pages register via window.BromarPages[id] = { title, render, destroy?, version }
    Waits for `bromar-auth-ready` before initialising.
    Wraps every page render() in try/catch → error card on failure.
    On page load, resets to #dashboard (previous hash discarded).
+   Sidebar shows employee full_name (looked up from employees table)
+   + a green "online" dot. Falls back to email if no employee record.
    ============================================================ */
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.16';
+  const APP_VERSION = 'V1.17';
 
   function renderVersion(pageVersion, pageId) {
     const coreEl = document.getElementById('core-version');
@@ -83,7 +85,10 @@ const BromarOps = (() => {
           <span class="brand-text">OPS</span>
         </div>
         <nav class="sidebar-nav">${items}</nav>
-        <div class="sidebar-user" id="sidebar-user" title="${userEmail}">${userEmail}</div>
+        <div class="sidebar-user" id="sidebar-user" title="${userEmail}">
+          <span class="user-status-dot" title="Online"></span>
+          <span class="user-name" id="sidebar-user-name">${userEmail}</span>
+        </div>
         <div class="sidebar-footer" id="core-version"></div>
       </aside>
       <div class="sidebar-overlay" id="sidebar-overlay"></div>
@@ -105,6 +110,24 @@ const BromarOps = (() => {
 
       <div class="revision-number" id="app-version"></div>
     `;
+  }
+
+  async function populateUserName() {
+    try {
+      const emp = await window.BromarAuth?.employee?.();
+      const nameEl = document.getElementById('sidebar-user-name');
+      const wrapEl = document.getElementById('sidebar-user');
+      if (!nameEl || !wrapEl) return;
+      if (emp?.full_name) {
+        nameEl.textContent = emp.full_name;
+        wrapEl.title = `${emp.full_name} — ${window.BromarAuth?.user()?.email || ''} (online)`;
+      } else {
+        // Fallback to email already in place; just append online hint
+        wrapEl.title = `${window.BromarAuth?.user()?.email || ''} (online)`;
+      }
+    } catch (err) {
+      console.warn('[core] user name lookup failed:', err);
+    }
   }
 
   function renderErrorCard(container, pageId, err) {
@@ -164,7 +187,6 @@ const BromarOps = (() => {
 
   function init() {
     // Force reset to dashboard on every page load — discards previous hash.
-    // Sidebar clicks / hashchange events still navigate normally within-session.
     if (location.hash && location.hash !== '#dashboard') {
       history.replaceState(null, '', location.pathname + location.search + '#dashboard');
     }
@@ -198,6 +220,9 @@ const BromarOps = (() => {
 
     window.addEventListener('hashchange', () => navigate(getPageFromHash()));
     navigate(getPageFromHash());
+
+    // Replace email with employee full name after boot
+    populateUserName();
   }
 
   return { init, navigate, toggleTheme, version: APP_VERSION };
