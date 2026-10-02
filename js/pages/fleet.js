@@ -199,14 +199,16 @@ window.BromarPages.fleet = (() => {
   }
 
   async function applyReport(parsed){
-    const c=await ensureClient();let inserted=0,odoUpdated=0;
-    /* batch insert transactions, skip dupes via ON CONFLICT */
-    const fuelOnly=parsed.transactions.filter(t=>t.transaction_date&&t.price_ex_gst!=null);
+    const c=await ensureClient();let inserted=0,skipped=0,odoUpdated=0;
+    /* filter: only actual fuel purchases, skip fees and surcharges */
+    const skipProducts=/card fee|transaction fee|surcharge/i;
+    const fuelOnly=parsed.transactions.filter(t=>t.transaction_date&&!skipProducts.test(t.product||'')&&t.quantity_litres&&t.quantity_litres>0);
     for(const t of fuelOnly){
       const veh=vehicles.find(v=>v.rego_no&&v.rego_no.toUpperCase()===t.rego);
       const row={rego_no:t.rego,vehicle_id:veh?.id||null,card_no:t.card_no,driver_name:t.driver_name,transaction_date:t.transaction_date,supplier:t.supplier,odometer_reading:t.odometer_reading,reference_no:t.reference_no,quantity_litres:t.quantity_litres,product:t.product,price_ex_gst:t.price_ex_gst||0,gst:t.gst||0,total_inc_gst:t.total_inc_gst||0,billing_period:t.billing_period};
-      const{error}=await c.from('fuel_transactions').upsert([row],{onConflict:'rego_no,transaction_date,reference_no,price_ex_gst',ignoreDuplicates:true});
-      if(!error)inserted++;
+      const{error}=await c.from('fuel_transactions').insert([row]);
+      if(error){if(error.code==='23505')skipped++;else console.error('Fuel insert:',error.message);}
+      else inserted++;
     }
     /* update odometers — highest reading per vehicle */
     const odoMap={};fuelOnly.forEach(t=>{if(t.odometer_reading&&t.rego){if(!odoMap[t.rego]||t.odometer_reading>odoMap[t.rego])odoMap[t.rego]=t.odometer_reading;}});
@@ -216,7 +218,7 @@ window.BromarPages.fleet = (() => {
         await c.from('vehicles').update({current_odometer:odo}).eq('id',veh.id);odoUpdated++;
       }
     }
-    return{inserted,updated:odoUpdated};
+    return{inserted,skipped,updated:odoUpdated};
   }
 
   /* ── STYLES ── */
@@ -302,6 +304,10 @@ window.BromarPages.fleet = (() => {
 .fleet-upload-drop:hover,.fleet-upload-drop.drag{border-color:var(--accent);background:var(--card-hover)}
 .fleet-upload-drop input{display:none}
 .fleet-page-version{text-align:left;margin-top:2.5rem;padding-left:.25rem;font-size:.72rem;color:var(--text-secondary);opacity:.45;font-family:'JetBrains Mono',monospace}
+.fleet-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;padding:2rem 2.5rem;box-shadow:0 20px 60px var(--shadow);z-index:300;text-align:center;max-width:400px;width:90%;animation:fleetSlideUp .25s ease}
+.fleet-toast h3{font-size:1.05rem;font-weight:700;margin-bottom:.6rem}
+.fleet-toast p{font-size:.9rem;color:var(--text-secondary);margin-bottom:1.25rem;line-height:1.5}
+.fleet-toast-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:299;animation:fleetFadeIn .2s ease}
 @keyframes fleetFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fleetSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:700px){
@@ -321,8 +327,8 @@ window.BromarPages.fleet = (() => {
   /* ── TABLE ── */
   function renderTable(){
     const list=filtered();
-    const rows=list.length?list.map(v=>`<tr data-id="${v.id}"><td>${dotHtml(v)}</td><td><strong>${v.plant_no}</strong></td><td>${v.rego_no||'—'}</td><td>${v.make||'—'}</td><td>${v.model||'—'}</td><td>${v.year||'—'}</td><td>${driverName(v)||'<span style="color:var(--text-secondary)">Unassigned</span>'}</td><td>${fmtNum(v.current_odometer)}</td><td>${fmtNum(v.next_service_km)}</td></tr>`).join(''):'<tr><td colspan="9" class="fleet-empty">No vehicles found</td></tr>';
-    return`<div class="fleet-toolbar"><div class="fleet-search-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" class="fleet-search" id="fleet-search" placeholder="Search rego, make, model, driver…" value="${searchTerm}"></div><div class="fleet-filters">${VISIBLE_STATUSES.map(s=>`<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}</div><div class="fleet-actions"><button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button><button class="btn-secondary" id="fleet-upload-btn">📄 Upload FleetCard Report</button></div></div><div class="card" style="padding:0;overflow:hidden"><div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th style="width:30px"></th><th>Plant #</th><th>Rego</th><th>Make</th><th>Model</th><th>Year</th><th>Assigned To</th><th>Odometer</th><th>Next Service</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    const rows=list.length?list.map(v=>`<tr data-id="${v.id}"><td>${dotHtml(v)}</td><td><strong>${v.plant_no}</strong></td><td>${driverName(v)||'<span style="color:var(--text-secondary)">Unassigned</span>'}</td><td>${v.rego_no||'—'}</td><td>${v.make||'—'}</td><td>${v.model||'—'}</td><td>${v.year||'—'}</td><td>${fmtNum(v.current_odometer)}</td><td>${fmtNum(v.next_service_km)}</td></tr>`).join(''):'<tr><td colspan="9" class="fleet-empty">No vehicles found</td></tr>';
+    return`<div class="fleet-toolbar"><div class="fleet-search-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" class="fleet-search" id="fleet-search" placeholder="Search rego, make, model, driver…" value="${searchTerm}"></div><div class="fleet-filters">${VISIBLE_STATUSES.map(s=>`<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}</div><div class="fleet-actions"><button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button><button class="btn-secondary" id="fleet-upload-btn">📄 Upload FleetCard Report</button></div></div><div class="card" style="padding:0;overflow:hidden"><div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th style="width:30px"></th><th>Plant #</th><th>Assigned To</th><th>Rego</th><th>Make</th><th>Model</th><th>Year</th><th>Odometer</th><th>Next Service</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }
 
   /* ── DETAIL MODAL ── */
@@ -376,8 +382,10 @@ window.BromarPages.fleet = (() => {
       return`<div class="fleet-form-overlay" id="fleet-upload-overlay"><div class="fleet-form" style="max-width:780px"><h2>Vehicle Analysis — Odometer Update</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.billingPeriod||''} · ${parsed.rows.length} vehicles · ${uc} updates</p><div style="overflow-x:auto"><table class="fleet-upload-tbl"><thead><tr><th>Rego</th><th>Match</th><th>PDF Odo</th><th>Current</th><th>Action</th></tr></thead><tbody>${matched.map(r=>`<tr><td>${r.rego}</td><td>${r.vehicle?`<span class="fleet-upload-match">✓ ${r.vehicle.plant_no}</span>`:'<span class="fleet-upload-new">—</span>'}</td><td>${r.odometer?fmtNum(r.odometer):'—'}</td><td>${r.vehicle?.current_odometer?fmtNum(r.vehicle.current_odometer):'—'}</td><td>${r.willUpdate?'<span class="fleet-upload-match">↑</span>':'—'}</td></tr>`).join('')}</tbody></table></div><div class="fleet-form-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm" ${uc===0?'disabled':''}>${uc} Odometer Update${uc!==1?'s':''}</button></div></div></div>`;
     }
     /* report type */
-    const txns=parsed.transactions;const vRegs=[...new Set(txns.map(t=>t.rego))];const fuelOnly=txns.filter(t=>t.quantity_litres&&t.quantity_litres>1);
-    return`<div class="fleet-form-overlay" id="fleet-upload-overlay"><div class="fleet-form" style="max-width:780px"><h2>Vehicle Report — Fuel Transactions</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.reportDate||''} · ${vRegs.length} vehicles · ${txns.length} transactions (${fuelOnly.length} fuel purchases)</p><div style="overflow-x:auto;max-height:300px;overflow-y:auto"><table class="fleet-upload-tbl"><thead><tr><th>Date</th><th>Rego</th><th>Supplier</th><th>Product</th><th>Litres</th><th>Odo</th><th>Total</th></tr></thead><tbody>${txns.slice(0,100).map(t=>`<tr><td>${fmtDate(t.transaction_date)}</td><td>${t.rego}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${t.supplier||'—'}</td><td>${t.product||'—'}</td><td>${t.quantity_litres?t.quantity_litres.toFixed(1)+'L':'—'}</td><td>${fmtNum(t.odometer_reading)}</td><td>${fmtCur(t.total_inc_gst)}</td></tr>`).join('')}</tbody></table></div><div class="fleet-form-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm">Import ${txns.length} Transactions</button></div></div></div>`;
+    const skipProd=/card fee|transaction fee|surcharge/i;
+    const fuelOnly=parsed.transactions.filter(t=>t.quantity_litres&&t.quantity_litres>0&&!skipProd.test(t.product||''));
+    const vRegs=[...new Set(fuelOnly.map(t=>t.rego))];
+    return`<div class="fleet-form-overlay" id="fleet-upload-overlay"><div class="fleet-form" style="max-width:780px"><h2>Vehicle Report — Fuel Transactions</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.reportDate||''} · ${vRegs.length} vehicles · ${fuelOnly.length} fuel purchases</p><div style="overflow-x:auto;max-height:300px;overflow-y:auto"><table class="fleet-upload-tbl"><thead><tr><th>Date</th><th>Rego</th><th>Supplier</th><th>Product</th><th>Litres</th><th>Odo</th><th>Total</th></tr></thead><tbody>${fuelOnly.slice(0,100).map(t=>`<tr><td>${fmtDate(t.transaction_date)}</td><td>${t.rego}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${t.supplier||'—'}</td><td>${t.product||'—'}</td><td>${t.quantity_litres?t.quantity_litres.toFixed(1)+'L':'—'}</td><td>${fmtNum(t.odometer_reading)}</td><td>${fmtCur(t.total_inc_gst)}</td></tr>`).join('')}</tbody></table></div><div class="fleet-form-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm">Import ${fuelOnly.length} Fuel Transactions</button></div></div></div>`;
   }
 
   /* ── FORM ── */
@@ -414,6 +422,14 @@ window.BromarPages.fleet = (() => {
   function closeModal(){const a=root?.querySelector('#fleet-modal-area');if(a)a.innerHTML='';selectedVehicle=null;audits=[];fuelTxns=[];expandedAuditId=null;}
   function closeFormModal(){root?.querySelector('#fleet-form-overlay')?.remove();}
   function closeUploadModal(){root?.querySelector('#fleet-upload-overlay')?.remove();}
+
+  function showToast(title,msg){
+    const id='fleet-toast-'+Date.now();
+    document.body.insertAdjacentHTML('beforeend',`<div class="fleet-toast-overlay" id="${id}-bg"></div><div class="fleet-toast" id="${id}"><h3>${title}</h3><p>${msg}</p><button class="btn-primary" style="padding:.6rem 1.5rem" id="${id}-ok">OK</button></div>`);
+    const close=()=>{document.getElementById(id)?.remove();document.getElementById(id+'-bg')?.remove();};
+    document.getElementById(id+'-ok').onclick=close;
+    document.getElementById(id+'-bg').onclick=close;
+  }
 
   /* ── PAGE EVENTS ── */
   function bindPage(){if(!root)return;const si=root.querySelector('#fleet-search');if(si)si.oninput=e=>{searchTerm=e.target.value.toLowerCase();refresh();};root.querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{filterStatus=b.dataset.fs;refresh();});
@@ -453,7 +469,11 @@ window.BromarPages.fleet = (() => {
       if(parsedUpload.type==='analysis')result=await applyAnalysis(parsedUpload);
       else result=await applyReport(parsedUpload);
       await loadVehicles();await loadFaultMap();closeUploadModal();refresh();
-      alert(`Done — ${result.inserted||0} transactions imported, ${result.updated||0} odometers updated.`);
+      const parts=[];
+      if(result.inserted)parts.push(`${result.inserted} fuel transaction${result.inserted!==1?'s':''} imported`);
+      if(result.skipped)parts.push(`${result.skipped} duplicate${result.skipped!==1?'s':''} skipped`);
+      if(result.updated)parts.push(`${result.updated} odometer${result.updated!==1?'s':''} updated`);
+      showToast('Import Complete',parts.join(', ')||'No changes made.');
     };}
 
   function destroy(){selectedVehicle=null;activeTab='details';filterStatus='active';searchTerm='';audits=[];fuelTxns=[];expandedAuditId=null;auditChecks={};faultMap={};lastAuditMap={};parsedUpload=null;document.getElementById('fleet-page-styles')?.remove();root=null;}
