@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED STYLESHEET
-   V1.03
+   V1.04
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -147,16 +147,36 @@ input, select, textarea, button {
 }
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
 
+/* ── SIDEBAR USER ── */
 .sidebar-user {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
+  padding: 0.75rem 1rem;
   border-top: 1px solid var(--border);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.user-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-hover);
+  color: var(--accent);
+  border-radius: 50%;
+  border: 1px solid rgba(234, 88, 12, 0.2);
+}
+.user-icon svg { width: 16px; height: 16px; }
+.user-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .user-status-dot {
   width: 8px;
@@ -167,13 +187,6 @@ input, select, textarea, button {
   flex-shrink: 0;
   animation: pulse-dot 2s ease-in-out infinite;
 }
-.user-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.55; }
@@ -358,7 +371,7 @@ input, select, textarea, button {
   z-index: 45;
 }
 
-/* ── SPINNER (Bromar symbol, breathing rotation) ── */
+/* ── SPINNER ── */
 .spinner {
   width: 72px;
   height: 72px;
@@ -369,7 +382,6 @@ input, select, textarea, button {
   animation: bromar-breathe 1.8s ease-in-out infinite;
   display: inline-block;
 }
-
 @keyframes bromar-breathe {
   0%   { transform: rotate(0deg)   scale(0.82); }
   50%  { transform: rotate(180deg) scale(1); }
