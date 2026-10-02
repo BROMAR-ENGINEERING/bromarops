@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED STYLESHEET
-   V1.02
+   V1.03
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -148,14 +148,35 @@ input, select, textarea, button {
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 .sidebar-user {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   padding: 0.75rem 1.25rem;
   border-top: 1px solid var(--border);
   font-size: 0.75rem;
   color: var(--text-secondary);
   text-align: center;
+}
+.user-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+  flex-shrink: 0;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+.user-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
 }
 
 .sidebar-footer {
@@ -355,7 +376,7 @@ input, select, textarea, button {
   100% { transform: rotate(360deg) scale(0.82); }
 }
 
-/* ── PAGE LOGO (used inside a page body when a large centred logo is wanted) ── */
+/* ── PAGE LOGO ── */
 .page-logo { display: flex; justify-content: center; margin-bottom: 1.5rem; }
 .page-logo img { height: 36px; width: auto; }
 .page-logo .light-logo { display: block; }
