@@ -1,18 +1,17 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
-   V1.17
+   V1.18
    Renders sidebar + header + footer once.
    Pages register via window.BromarPages[id] = { title, render, destroy?, version }
    Waits for `bromar-auth-ready` before initialising.
    Wraps every page render() in try/catch → error card on failure.
    On page load, resets to #dashboard (previous hash discarded).
-   Sidebar shows employee full_name (looked up from employees table)
-   + a green "online" dot. Falls back to email if no employee record.
+   Sidebar shows [user icon] [full name] [green online dot].
    ============================================================ */
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.17';
+  const APP_VERSION = 'V1.18';
 
   function renderVersion(pageVersion, pageId) {
     const coreEl = document.getElementById('core-version');
@@ -42,6 +41,7 @@ const BromarOps = (() => {
   const ICON_HOME  = '<svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>';
   const ICON_MENU  = '<svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
   const ICON_OUT   = '<svg viewBox="0 0 24 24"><path d="M17 16l4-4-4-4M21 12H9M13 21H5a2 2 0 01-2-2V5a2 2 0 012-2h8"/></svg>';
+  const ICON_USER  = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/></svg>';
   const ICON_THEME = `
     <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -59,7 +59,7 @@ const BromarOps = (() => {
     { id: 'fleet',      label: 'Fleet Management',        icon: 'M20 8h-3V4H3a2 2 0 00-2 2v11h2a3 3 0 006 0h6a3 3 0 006 0h2v-5l-3-4zM6 18.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm12 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z' },
     { id: 'equipment',  label: 'Equipment',               icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
     { id: 'clients',    label: 'Clients & Sites',         icon: 'M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z' },
-    { id: 'tasks',      label: 'Tasks',                   icon: 'M19 3h-4.18A2.99 2.99 0 0012 1a2.99 2.99 0 00-2.82 2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-9 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
+    { id: 'tasks',      label: 'Tasks & Announcements',   icon: 'M19 3h-4.18A2.99 2.99 0 0012 1a2.99 2.99 0 00-2.82 2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-9 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
     { id: 'materials',  label: 'Materials & Procurement', icon: 'M20 4H4v2h16V4zM4 14h6v6H4v-6zm0-9v7h16V5H4zm12 9h4v6h-4v-6zm-6 0h4v6h-4v-6z' },
     { id: 'admin',      label: 'Admin Tools',             icon: 'M19.14 12.94a7.07 7.07 0 000-1.88l2.03-1.58a.5.5 0 00.12-.64l-1.92-3.32a.5.5 0 00-.6-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.5.5 0 00-.5-.42h-3.84a.5.5 0 00-.5.42l-.36 2.54a7.03 7.03 0 00-1.62.94l-2.39-.96a.5.5 0 00-.6.22L2.71 8.84a.5.5 0 00.12.64l2.03 1.58a7.07 7.07 0 000 1.88l-2.03 1.58a.5.5 0 00-.12.64l1.92 3.32a.5.5 0 00.6.22l2.39-.96a7.03 7.03 0 001.62.94l.36 2.54a.5.5 0 00.5.42h3.84a.5.5 0 00.5-.42l.36-2.54a7.03 7.03 0 001.62-.94l2.39.96a.5.5 0 00.6-.22l1.92-3.32a.5.5 0 00-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z' }
   ];
@@ -86,8 +86,9 @@ const BromarOps = (() => {
         </div>
         <nav class="sidebar-nav">${items}</nav>
         <div class="sidebar-user" id="sidebar-user" title="${userEmail}">
-          <span class="user-status-dot" title="Online"></span>
+          <span class="user-icon">${ICON_USER}</span>
           <span class="user-name" id="sidebar-user-name">${userEmail}</span>
+          <span class="user-status-dot" title="Online"></span>
         </div>
         <div class="sidebar-footer" id="core-version"></div>
       </aside>
@@ -122,7 +123,6 @@ const BromarOps = (() => {
         nameEl.textContent = emp.full_name;
         wrapEl.title = `${emp.full_name} — ${window.BromarAuth?.user()?.email || ''} (online)`;
       } else {
-        // Fallback to email already in place; just append online hint
         wrapEl.title = `${window.BromarAuth?.user()?.email || ''} (online)`;
       }
     } catch (err) {
@@ -186,7 +186,6 @@ const BromarOps = (() => {
   }
 
   function init() {
-    // Force reset to dashboard on every page load — discards previous hash.
     if (location.hash && location.hash !== '#dashboard') {
       history.replaceState(null, '', location.pathname + location.search + '#dashboard');
     }
@@ -221,7 +220,6 @@ const BromarOps = (() => {
     window.addEventListener('hashchange', () => navigate(getPageFromHash()));
     navigate(getPageFromHash());
 
-    // Replace email with employee full name after boot
     populateUserName();
   }
 
