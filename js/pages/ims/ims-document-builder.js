@@ -182,10 +182,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (error) { console.error(error); return []; }
       return data || [];
     }
+    // Rows created outside this builder (e.g. inserted directly via SQL) have no
+    // schema.doc_type — that's a convention this builder invented, not something
+    // SQL inserts know about. Infer a bucket from is_form so they're still visible
+    // somewhere, rather than matching no tab and disappearing silently.
+    function effectiveDocType(d) {
+      return d.schema?.doc_type || (d.is_form ? 'form' : 'policy');
+    }
     function getCategories() {
       const set = new Set();
       (documents || []).forEach(d => {
-        if (d.schema?.doc_type === activeType && d.schema?.category) set.add(d.schema.category);
+        if (effectiveDocType(d) === activeType && d.schema?.category) set.add(d.schema.category);
       });
       return Array.from(set).sort();
     }
@@ -265,6 +272,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         currentDoc = data;
       }
       workingSchema = JSON.parse(JSON.stringify(currentDoc.schema || {}));
+      if (!workingSchema.doc_type) workingSchema.doc_type = effectiveDocType(currentDoc);
+      if (DIGITAL_TYPES.includes(workingSchema.doc_type) && !workingSchema.fields) workingSchema.fields = [];
+      if (CONTENT_TYPES.includes(workingSchema.doc_type) && !workingSchema.blocks) workingSchema.blocks = [];
       revMeta = { version_date: todayISO(), version_description: '', prepared_by: currentUser() };
       view = 'editor';
       renderView();
@@ -484,7 +494,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         root.innerHTML = `<div class="ims-empty-state">Couldn't load documents — check the console for details, then retry.</div>`;
         return;
       }
-      const filtered = documents.filter(d => d.schema?.doc_type === activeType);
+      const filtered = documents.filter(d => effectiveDocType(d) === activeType);
       root.innerHTML = `
         <div class="ims-doc-layout" style="display:flex;gap:1.5rem;align-items:flex-start;">
           ${typeRailHTML()}
@@ -499,7 +509,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                   ${filtered.map(d => `
                     <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
                       <div>
-                        <div style="font-weight:600;">${esc(d.title)} ${d.schema?.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.schema.category)}</span>` : ''}</div>
+                        <div style="font-weight:600;">${esc(d.title)} ${d.schema?.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.schema.category)}</span>` : ''} ${!d.schema?.doc_type ? `<span style="font-weight:400;font-size:0.75rem;color:var(--error);border:1px solid var(--error);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;" title="Created outside the builder — type guessed from is_form. Open and set Type to fix.">Uncategorized</span>` : ''}</div>
                         <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.schema?.description || '')}</div>
                         <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
                           ${esc(docNumberDisplay(d))}${!d.revision ? ' · never published' : ''}
@@ -535,6 +545,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
               <label style="font-size:0.8rem;color:var(--text-secondary);">Document number</label>
               <input type="text" value="${esc((d.slug || '').toUpperCase())}" disabled
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
+            </div>
+            <div>
+              <label style="font-size:0.8rem;color:var(--text-secondary);">Type${!d.schema?.doc_type ? ' <span style="color:var(--error);">(set this — was uncategorized)</span>' : ''}</label>
+              <select data-schema-meta="doc_type" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+                ${Object.entries(DOC_TYPES).map(([key, t]) => `<option value="${key}" ${s.doc_type === key ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}
+              </select>
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Category</label>
@@ -952,6 +968,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       });
 
       container.addEventListener('change', (e) => {
+        const docTypeSelect = e.target.closest('[data-schema-meta="doc_type"]');
+        if (docTypeSelect && workingSchema) {
+          workingSchema.doc_type = docTypeSelect.value;
+          if (DIGITAL_TYPES.includes(workingSchema.doc_type) && !workingSchema.fields) workingSchema.fields = [];
+          if (CONTENT_TYPES.includes(workingSchema.doc_type) && !workingSchema.blocks) workingSchema.blocks = [];
+          renderEditor(); return;
+        }
         const tableColType = e.target.closest('[data-table-col-type]');
         if (tableColType && workingSchema) {
           const block = workingSchema.blocks[Number(tableColType.dataset.index)];
