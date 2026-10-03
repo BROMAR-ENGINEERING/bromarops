@@ -1,7 +1,11 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.00 — full rebuild against the REAL ims_documents schema.
+   Version: V2.01
+   V2.01: Reviewed By on revisions; spacer + page-break blocks; per-field
+   PDF layout (gap / page break before / own row); live PDF preview pane;
+   options editable for radio/multiselect.
+   V2.00: full rebuild against the REAL ims_documents schema.
 
    Registers a "Documents" sub-tab into Safety, Quality, Environment
    and Other (window.BromarIMS.registerSubTab).
@@ -46,9 +50,13 @@
      version_date date,
      version_description text,
      prepared_by text,
+     reviewed_by text,
      created_at timestamptz not null default now(),
      unique (document_id, revision)
    );
+
+   If the table already exists, add the Reviewed By column with:
+   alter table ims_document_revisions add column if not exists reviewed_by text;
 
    ============================================================
    WORKFLOW NOTE — editing a published document:
@@ -74,7 +82,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.00';
+  const VERSION = 'V2.01';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -93,8 +101,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     { type: 'paragraph', label: 'Paragraph' },
     { type: 'bullets',   label: 'Bullet list' },
     { type: 'signatory', label: 'Signatory' },
-    { type: 'table',     label: 'Table / grid' }
+    { type: 'table',     label: 'Table / grid' },
+    { type: 'spacer',    label: 'Spacer' },
+    { type: 'pagebreak', label: 'Page break' }
   ];
+  const SHORT_FIELD_TYPES = ['text', 'email', 'tel', 'number', 'date', 'time', 'datetime'];
+  const OPTION_FIELD_TYPES = ['select', 'radio', 'multiselect'];
   const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
   // UI label -> schema `type` value actually read by form-kit.js
@@ -153,6 +165,10 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     let workingSchema = null;     // mutable copy of currentDoc.schema being edited
     let revMeta = null;           // { version_date, version_description, prepared_by } — transient, written to ims_document_revisions on publish
     let historyList = [];
+    let livePdf = false;          // live PDF preview pane on/off
+    let liveTimer = null;
+    let liveUrl = null;
+    let liveHistory = null;
 
     /* ── SLUG GENERATION (doubles as "document number") ── */
     async function nextSlug(docType) {
@@ -207,6 +223,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         : { doc_type: docType, category, description, fields: [] };
     }
 
+    async function insertRevisionRow(row) {
+      let { error } = await sb().from('ims_document_revisions').insert(row);
+      if (error && /reviewed_by/i.test(error.message || '')) {
+        console.warn('[ims-doc-builder] reviewed_by column missing — run the ALTER TABLE in this file header. Saving without it.');
+        const { reviewed_by, ...rest } = row;
+        ({ error } = await sb().from('ims_document_revisions').insert(rest));
+      }
+      return error;
+    }
+
     /* ── CRUD ── */
     async function createDocument({ title, docType, category, description }) {
       const slug = await nextSlug(docType);
@@ -245,15 +271,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       }).eq('id', currentDoc.id).select().maybeSingle();
       if (e1 || !docRow) { alert('Publish failed: ' + (e1?.message || 'unknown error')); return; }
 
-      const { error: e2 } = await sb().from('ims_document_revisions').insert({
+      const e2 = await insertRevisionRow({
         document_id: currentDoc.id, revision: newRevision, schema: workingSchema,
         version_date: revMeta.version_date || todayISO(),
         version_description: revMeta.version_description || '',
-        prepared_by: revMeta.prepared_by || currentUser()
+        prepared_by: revMeta.prepared_by || currentUser(),
+        reviewed_by: revMeta.reviewed_by || null
       });
       if (e2) { alert('Document published, but the revision-history record failed to save: ' + e2.message); }
 
       currentDoc = docRow;
+      liveHistory = null;
       renderEditor();
     }
 
@@ -275,7 +303,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (!workingSchema.doc_type) workingSchema.doc_type = effectiveDocType(currentDoc);
       if (DIGITAL_TYPES.includes(workingSchema.doc_type) && !workingSchema.fields) workingSchema.fields = [];
       if (CONTENT_TYPES.includes(workingSchema.doc_type) && !workingSchema.blocks) workingSchema.blocks = [];
-      revMeta = { version_date: todayISO(), version_description: '', prepared_by: currentUser() };
+      revMeta = { version_date: todayISO(), version_description: '', prepared_by: currentUser(), reviewed_by: '' };
+      liveHistory = null;
       view = 'editor';
       renderView();
     }
@@ -315,10 +344,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       await loadDocuments(); renderView();
     }
 
-    async function addLegacyRevision(doc, { revision, versionDate, versionDescription, preparedBy }) {
-      const { error } = await sb().from('ims_document_revisions').insert({
+    async function addLegacyRevision(doc, { revision, versionDate, versionDescription, preparedBy, reviewedBy }) {
+      const error = await insertRevisionRow({
         document_id: doc.id, revision, schema: null,
-        version_date: versionDate, version_description: versionDescription, prepared_by: preparedBy
+        version_date: versionDate, version_description: versionDescription,
+        prepared_by: preparedBy, reviewed_by: reviewedBy || null
       });
       if (error) { alert('Could not add legacy revision: ' + error.message); return; }
       if (revision >= (doc.revision || 0)) {
@@ -327,18 +357,57 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── PDF EXPORT ── */
+    // Builds the PDF as it will look once this draft is published (next revision
+    // number, pending row added to the cover's revision table).
+    async function buildPendingPDF(history) {
+      const kit = window.BromarIMSReportKit;
+      const nextRev = (currentDoc.revision || 0) + 1;
+      const revisionMeta = { revision: nextRev, version_date: revMeta.version_date || todayISO() };
+      const historyRows = (history || []).filter(r => r.revision !== nextRev).concat([{
+        revision: nextRev, version_date: revisionMeta.version_date,
+        version_description: revMeta.version_description || '',
+        prepared_by: revMeta.prepared_by || '', reviewed_by: revMeta.reviewed_by || ''
+      }]);
+      const args = { doc: currentDoc, revisionMeta, schema: workingSchema, historyRows };
+      const pdf = CONTENT_TYPES.includes(workingSchema.doc_type) ? await kit.generatePolicyPDF(args) : await kit.generateFormPDF(args);
+      return { pdf, nextRev };
+    }
+
+    function scheduleLivePdf() {
+      if (!livePdf || view !== 'editor') return;
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(refreshLivePdf, 700);
+    }
+
+    async function refreshLivePdf() {
+      if (!livePdf || !root || view !== 'editor' || !window.BromarIMSReportKit) return;
+      const status = root.querySelector('#ims-live-status');
+      if (status) status.textContent = 'Updating…';
+      try {
+        if (!liveHistory) liveHistory = await loadHistory(currentDoc.id);
+        const { pdf } = await buildPendingPDF(liveHistory);
+        const url = pdf.output('bloburl');
+        if (liveUrl) URL.revokeObjectURL(liveUrl);
+        liveUrl = url;
+        const frame = root && root.querySelector('#ims-live-frame');
+        if (frame) frame.src = url + '#view=FitH';
+        const st = root && root.querySelector('#ims-live-status');
+        if (st) st.textContent = 'Live PDF — updates as you edit (shows the next revision as it will publish)';
+      } catch (e) {
+        const st = root && root.querySelector('#ims-live-status');
+        if (st) st.textContent = 'Preview failed: ' + e.message;
+      }
+    }
+
     async function exportPDF() {
       if (!currentDoc || !workingSchema || !window.BromarIMSReportKit) {
         alert('PDF export unavailable — report kit not loaded.');
         return;
       }
       const history = await loadHistory(currentDoc.id);
-      const revisionMeta = { revision: currentDoc.revision || 0, version_date: revMeta.version_date || todayISO() };
       try {
-        const pdf = CONTENT_TYPES.includes(workingSchema.doc_type)
-          ? await window.BromarIMSReportKit.generatePolicyPDF({ doc: currentDoc, revisionMeta, schema: workingSchema, historyRows: history })
-          : await window.BromarIMSReportKit.generateFormPDF({ doc: currentDoc, revisionMeta, schema: workingSchema, historyRows: history });
-        window.BromarIMSReportKit.download(pdf, `${currentDoc.slug}-v${revisionMeta.revision}`);
+        const { pdf, nextRev } = await buildPendingPDF(history);
+        window.BromarIMSReportKit.download(pdf, `${currentDoc.slug}-v${nextRev}-draft`);
       } catch (e) {
         alert('PDF export failed: ' + e.message);
       }
@@ -428,6 +497,10 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
               <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by</label>
               <input type="text" id="legacy-by" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
+            <div>
+              <label style="font-size:0.8rem;color:var(--text-secondary);">Reviewed by</label>
+              <input type="text" id="legacy-reviewed" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            </div>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.25rem;">
             <button class="btn-secondary" id="legacy-cancel">Cancel</button>
@@ -444,9 +517,10 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         const versionDate = overlay.querySelector('#legacy-date').value || null;
         const versionDescription = overlay.querySelector('#legacy-desc').value.trim();
         const preparedBy = overlay.querySelector('#legacy-by').value.trim();
+        const reviewedBy = overlay.querySelector('#legacy-reviewed').value.trim();
         if (!revision) { alert('Revision number is required.'); return; }
         close();
-        await addLegacyRevision(currentDoc, { revision, versionDate, versionDescription, preparedBy });
+        await addLegacyRevision(currentDoc, { revision, versionDate, versionDescription, preparedBy, reviewedBy });
         historyList = await loadHistory(currentDoc.id);
         renderView();
       });
@@ -459,6 +533,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         if (b.type === 'heading') return `<div style="font-weight:700;font-size:1.05rem;margin:1.1rem 0 0.5rem;">${esc(b.text || '')}</div>`;
         if (b.type === 'paragraph') return `<p style="margin-bottom:0.75rem;color:var(--text-primary);line-height:1.6;">${esc(b.text || '')}</p>`;
         if (b.type === 'bullets') return `<ul style="margin:0 0 0.75rem 1.2rem;color:var(--text-primary);">${(b.items || []).map(i => `<li style="margin-bottom:0.25rem;">${esc(i)}</li>`).join('')}</ul>`;
+        if (b.type === 'spacer') return `<div style="height:${Math.max(4, Number(b.height) || 8) * 2}px;"></div>`;
+        if (b.type === 'pagebreak') return `<div style="border-top:2px dashed var(--border);margin:1rem 0;text-align:center;font-size:0.7rem;color:var(--text-secondary);">page break</div>`;
         if (b.type === 'signatory') return `<div style="margin-top:1rem;"><strong>${esc(b.name || '')}</strong><div style="font-size:0.85rem;color:var(--text-secondary);">${esc(b.title || '')}</div></div>`;
         if (b.type === 'table') {
           const cols = b.columns || [], rows = b.rows || [];
@@ -632,7 +708,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Version date</label>
               <input type="date" value="${esc(revMeta.version_date || '')}" data-rev-meta="version_date"
@@ -646,6 +722,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by</label>
               <input type="text" value="${esc(revMeta.prepared_by || '')}" data-rev-meta="prepared_by"
+                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            </div>
+            <div>
+              <label style="font-size:0.8rem;color:var(--text-secondary);">Reviewed by</label>
+              <input type="text" value="${esc(revMeta.reviewed_by || '')}" data-rev-meta="reviewed_by"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
           </div>
@@ -667,6 +748,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             </div>
           </div>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button class="${livePdf ? 'btn-primary' : 'btn-secondary'}" data-action="toggle-live">${livePdf ? 'Hide live PDF' : 'Live PDF'}</button>
             <button class="btn-secondary" data-action="preview-doc">Preview</button>
             <button class="btn-secondary" data-action="export-pdf">Export PDF</button>
             <button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">${d.revision ? 'Discard changes' : 'Delete'}</button>
@@ -752,6 +834,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       } else if (block.type === 'bullets') {
         fieldsHtml = `<textarea data-block-prop="items" data-index="${index}" rows="4" placeholder="One bullet per line"
           style="flex:1 1 100%;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;resize:vertical;">${esc((block.items || []).join('\n'))}</textarea>`;
+      } else if (block.type === 'spacer') {
+        const hv = String(block.height || 10);
+        fieldsHtml = `
+          <label style="font-size:0.8rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.5rem;">Blank space in PDF
+            <select data-block-prop="height" data-index="${index}" style="padding:0.35rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.8rem;">
+              ${[['5', 'Small (5mm)'], ['10', 'Medium (10mm)'], ['20', 'Large (20mm)'], ['40', 'Extra large (40mm)']].map(([v, l]) => `<option value="${v}" ${hv === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>`;
+      } else if (block.type === 'pagebreak') {
+        fieldsHtml = `<div style="flex:1;display:flex;align-items:center;gap:0.5rem;margin-top:0.45rem;"><div style="flex:1;border-top:2px dashed var(--accent);"></div><span style="font-size:0.7rem;color:var(--accent);font-weight:600;">NEW PAGE STARTS HERE</span><div style="flex:1;border-top:2px dashed var(--accent);"></div></div>`;
       } else if (block.type === 'signatory') {
         fieldsHtml = `
           <input type="text" value="${esc(block.name || '')}" data-block-prop="name" data-index="${index}" placeholder="Name"
@@ -792,15 +884,22 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     function fieldRowHTML(field, index, total) {
       const typeLabel = FIELD_TYPES.find(t => t.type === field.type)?.label || field.type;
       const needsRequired = !NO_REQUIRED_TOGGLE.includes(field.type);
-      return `
-        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.25rem;${index < total - 1 ? 'border-bottom:1px solid var(--border);' : ''}flex-wrap:wrap;">
+      const lay = field.pdf || {};
+      const layVal = lay.pageBreakBefore ? 'break' : lay.spaceBefore ? (lay.spaceBefore <= 8 ? 's6' : 's15') : '';
+      const objectOptions = (field.options || []).some(o => o && typeof o === 'object');
+      const breakMarker = lay.pageBreakBefore
+        ? `<div style="display:flex;align-items:center;gap:0.5rem;margin:0.4rem 0 0.1rem;"><div style="flex:1;border-top:2px dashed var(--accent);"></div><span style="font-size:0.65rem;color:var(--accent);font-weight:600;">NEW PDF PAGE</span><div style="flex:1;border-top:2px dashed var(--accent);"></div></div>`
+        : '';
+      return `${breakMarker}
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.25rem;${lay.spaceBefore ? 'padding-top:' + (lay.spaceBefore <= 8 ? '0.9rem' : '1.6rem') + ';' : ''}${index < total - 1 ? 'border-bottom:1px solid var(--border);' : ''}flex-wrap:wrap;">
           <span style="font-size:0.7rem;color:var(--text-secondary);width:1.1rem;text-align:right;flex-shrink:0;">${index + 1}</span>
           <input type="text" value="${esc(field.label)}" placeholder="Field label"
             data-field-prop="label" data-index="${index}"
             style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;">
-          ${field.type === 'select' ? `
-            <input type="text" value="${esc((field.options || []).join(', '))}" placeholder="Options, comma separated"
-              data-field-prop="options" data-index="${index}"
+          ${OPTION_FIELD_TYPES.includes(field.type) ? `
+            <input type="text" value="${esc((field.options || []).map(o => (o && typeof o === 'object') ? (o.label ?? o.value) : o).join(', '))}" placeholder="Options, comma separated"
+              data-field-prop="options" data-index="${index}" ${objectOptions ? 'disabled title="Options were set via SQL with separate values/labels — edit them in SQL"' : ''}
+
               style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.8rem;">
           ` : ''}
           <span style="font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;" title="submission data key">${typeLabel} · ${esc(field.name)}</span>
@@ -808,6 +907,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;">
               <input type="checkbox" ${field.required ? 'checked' : ''} data-field-prop="required" data-index="${index}"> Req
             </label>` : ''}
+          ${SHORT_FIELD_TYPES.includes(field.type || 'text') ? `
+            <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;" title="In the PDF, short fields sit two per row — tick to give this one its own row">
+              <input type="checkbox" ${lay.fullWidth ? 'checked' : ''} data-field-fullwidth data-index="${index}"> Own row
+            </label>` : ''}
+          <select data-field-layout data-index="${index}" title="PDF layout before this field"
+            style="font-size:0.72rem;padding:0.25rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-secondary);flex-shrink:0;">
+            <option value="" ${layVal === '' ? 'selected' : ''}>Normal spacing</option>
+            <option value="s6" ${layVal === 's6' ? 'selected' : ''}>Small gap before</option>
+            <option value="s15" ${layVal === 's15' ? 'selected' : ''}>Large gap before</option>
+            <option value="break" ${layVal === 'break' ? 'selected' : ''}>New page before</option>
+          </select>
           <div style="display:flex;gap:0.15rem;flex-shrink:0;">
             <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-field-up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
             <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-field-down" data-index="${index}" ${index === total - 1 ? 'disabled' : ''}>↓</button>
@@ -833,7 +943,23 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
     function renderEditor() {
       const isDigital = DIGITAL_TYPES.includes(workingSchema.doc_type);
-      root.innerHTML = editorHeaderHTML() + metaCardHTML() + (isDigital ? renderFieldsEditor() : renderContentEditor());
+      const editorHtml = editorHeaderHTML() + metaCardHTML() + (isDigital ? renderFieldsEditor() : renderContentEditor());
+      if (!livePdf) { root.innerHTML = editorHtml; return; }
+      root.innerHTML = `
+        <style>
+          @media (max-width: 1100px) {
+            .ims-live-split { grid-template-columns: 1fr !important; }
+            .ims-live-pane { position: static !important; height: 75vh !important; }
+          }
+        </style>
+        <div class="ims-live-split" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.25rem;align-items:start;">
+          <div style="min-width:0;">${editorHtml}</div>
+          <div class="ims-live-pane" style="position:sticky;top:calc(var(--header-height) + 1rem);height:calc(100vh - var(--header-height) - 2rem);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg-secondary);">
+            <div id="ims-live-status" style="font-size:0.75rem;color:var(--text-secondary);padding:0.45rem 0.75rem;border-bottom:1px solid var(--border);">Generating PDF…</div>
+            <iframe id="ims-live-frame" title="Live PDF preview" style="width:100%;height:calc(100% - 2.1rem);border:0;background:#fff;" ${liveUrl ? `src="${liveUrl}#view=FitH"` : ''}></iframe>
+          </div>
+        </div>`;
+      scheduleLivePdf();
     }
 
     /* ── RENDER: HISTORY ── */
@@ -851,7 +977,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 <div>
                   <strong>Rev ${r.revision}</strong>
                   <span style="font-size:0.8rem;color:var(--text-secondary);margin-left:0.5rem;">
-                    ${r.schema ? 'snapshot saved' : 'legacy — no snapshot'} · ${fmtDateShort(r.version_date)} ${r.version_description ? '· ' + esc(r.version_description) : ''} ${r.prepared_by ? '· ' + esc(r.prepared_by) : ''}
+                    ${r.schema ? 'snapshot saved' : 'legacy — no snapshot'} · ${fmtDateShort(r.version_date)} ${r.version_description ? '· ' + esc(r.version_description) : ''} ${r.prepared_by ? '· prepared ' + esc(r.prepared_by) : ''} ${r.reviewed_by ? '· reviewed ' + esc(r.reviewed_by) : ''}
                   </span>
                 </div>
               </div>
@@ -872,7 +998,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (!btn) return;
       const original = btn.textContent;
       btn.textContent = 'Saved ✓';
-      setTimeout(() => { if (root.querySelector('[data-action="save-draft"]')) btn.textContent = original; }, 1400);
+      setTimeout(() => { if (root && root.querySelector('[data-action="save-draft"]')) btn.textContent = original; }, 1400);
     }
 
     /* ── EVENTS (delegated) ── */
@@ -908,6 +1034,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           if (doc) await archiveDocument(doc);
           return;
         }
+        if (action === 'toggle-live') { livePdf = !livePdf; renderEditor(); return; }
         if (action === 'back') { view = 'list'; await loadDocuments(); renderView(); return; }
         if (action === 'back-from-history') { view = 'list'; renderView(); return; }
         if (action === 'save-draft') { await saveDraft(); return; }
@@ -923,6 +1050,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           if (type === 'signatory') { block.name = ''; block.title = ''; }
           if (type === 'heading' || type === 'paragraph') block.text = '';
           if (type === 'table') { block.columns = [{ label: 'Item', type: 'text' }]; block.rows = []; }
+          if (type === 'spacer') block.height = 10;
           workingSchema.blocks = workingSchema.blocks || [];
           workingSchema.blocks.push(block);
           renderEditor(); return;
@@ -1002,6 +1130,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       });
 
       container.addEventListener('input', (e) => {
+        scheduleLivePdf();
         const metaTarget = e.target.closest('[data-meta]');
         if (metaTarget && currentDoc) { currentDoc[metaTarget.dataset.meta] = metaTarget.value; return; }
         const schemaMetaTarget = e.target.closest('[data-schema-meta]');
@@ -1044,6 +1173,29 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       });
 
       container.addEventListener('change', (e) => {
+        scheduleLivePdf();
+        const layoutSel = e.target.closest('[data-field-layout]');
+        if (layoutSel && workingSchema) {
+          const f = workingSchema.fields[Number(layoutSel.dataset.index)];
+          if (!f) return;
+          const keepFull = !!f.pdf?.fullWidth;
+          const next = {};
+          if (keepFull) next.fullWidth = true;
+          if (layoutSel.value === 'break') next.pageBreakBefore = true;
+          else if (layoutSel.value === 's6') next.spaceBefore = 6;
+          else if (layoutSel.value === 's15') next.spaceBefore = 15;
+          if (Object.keys(next).length) f.pdf = next; else delete f.pdf;
+          renderEditor(); return;
+        }
+        const fullBox = e.target.closest('[data-field-fullwidth]');
+        if (fullBox && workingSchema) {
+          const f = workingSchema.fields[Number(fullBox.dataset.index)];
+          if (!f) return;
+          const next = { ...(f.pdf || {}) };
+          if (fullBox.checked) next.fullWidth = true; else delete next.fullWidth;
+          if (Object.keys(next).length) f.pdf = next; else delete f.pdf;
+          return;
+        }
         const docTypeSelect = e.target.closest('[data-schema-meta="doc_type"]');
         if (docTypeSelect && workingSchema) {
           workingSchema.doc_type = docTypeSelect.value;
@@ -1086,6 +1238,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         renderView();
       },
       destroy() {
+        clearTimeout(liveTimer);
+        if (liveUrl) { URL.revokeObjectURL(liveUrl); liveUrl = null; }
         root = null; currentDoc = null; workingSchema = null; revMeta = null;
       }
     };
