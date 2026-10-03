@@ -1,129 +1,47 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.11
-   Supabase: employees, employee_cert_history, inductions,
-             employee_skills, employee_cert_images
-   Storage:  employee-documents bucket
+   V1.12
+   Supabase tables: employees, employee_certs, cert_types,
+                    employee_cert_history, employee_cert_images,
+                    inductions, employee_skills
+   Storage bucket:  employee-documents
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.11',
+  version: 'V1.12',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
-    const BUCKET = 'employee-documents';
+    const BUCKET      = 'employee-documents';
     const STORAGE_URL = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}`;
 
     const EMPLOYEE_TYPES = ['Apprentice','Electrician','Senior Electrician','Junior Engineer','Engineer','Admin','Operations'];
-
-    /* ── ALL CERTS (flat list used for cert view, edit, and image uploads) ── */
-    const ALL_CERTS = [
-      { key: 'a_grade',                         label: 'A-Grade Electrician',        expiry: 'a_grade_expiry',                        notes: 'a_grade_notes',              group: 'Licences & Registrations' },
-      { key: 'registered_professional_engineer', label: 'Registered Prof. Engineer',  expiry: 'registered_professional_engineer_expiry',                                    group: 'Licences & Registrations' },
-      { key: 'cabler',                           label: 'Cabler',                     expiry: null,                                                                         group: 'Licences & Registrations' },
-      { key: 'car_licence_number',               label: 'Car Licence',                expiry: 'car_licence_expiry',                    isText: true,                        group: 'Licences & Registrations' },
-      { key: 'heavy_vehicle_licence',            label: 'Heavy Vehicle Licence',      expiry: 'heavy_vehicle_licence_expiry',                                               group: 'Licences & Registrations' },
-      { key: 'marine_licence_expiry',            label: 'Marine Licence',             expiry: 'marine_licence_expiry',                 expiryOnly: true,                    group: 'Licences & Registrations' },
-      { key: 'cat3_medical',                     label: 'Cat 3 Medical',              expiry: 'cat3_medical_expiry',                   notes: 'cat3_medical_notes',         group: 'Medical & Health' },
-      { key: 'drug_lung_hearing',                label: 'Drug / Lung / Hearing',      expiry: 'drug_lung_hearing_expiry',              notes: 'drug_lung_hearing_notes',    group: 'Medical & Health' },
-      { key: 'hearing',                          label: 'Hearing',                    expiry: 'hearing_expiry',                        notes: 'hearing_notes',              group: 'Medical & Health' },
-      { key: 'cpr_refresher',                    label: 'CPR Refresher',              expiry: 'cpr_refresher_expiry',                                                       group: 'First Aid & Safety' },
-      { key: 'first_aid',                        label: 'First Aid',                  expiry: 'first_aid_expiry',                                                           group: 'First Aid & Safety' },
-      { key: 'mental_health_first_aid',          label: 'Mental Health First Aid',    expiry: 'mental_health_first_aid_expiry',                                             group: 'First Aid & Safety' },
-      { key: 'low_voltage_rescue',               label: 'Low Voltage Rescue',         expiry: 'lvr_cpr_first_aid_expiry',                                                   group: 'First Aid & Safety' },
-      { key: 'working_at_heights',               label: 'Working at Heights',         expiry: 'working_at_heights_expiry',                                                  group: 'First Aid & Safety' },
-      { key: 'hv_safety',                        label: 'HV Safety',                  expiry: 'hv_safety_expiry',                                                           group: 'First Aid & Safety' },
-      { key: 'ttsa',                             label: 'TTSA',                       expiry: 'ttsa_expiry',                                                                group: 'First Aid & Safety' },
-      { key: 'cmse_melbourne',                   label: 'CMSE Melbourne',             expiry: 'cmse_melbourne_expiry',                                                      group: 'Confined Space & Heights' },
-      { key: 'confined_space_code',              label: 'Confined Space Code',        expiry: null,                                    isText: true,                        group: 'Confined Space & Heights' },
-      { key: 'high_risk_work_over_11m',          label: 'High Risk Work (>11m)',       expiry: 'high_risk_work_over_11m_expiry',         notes: 'high_risk_work_over_11m_notes', group: 'Confined Space & Heights' },
-      { key: 'high_risk_work_voc',               label: 'High Risk Work VOC',         expiry: null,                                                                         group: 'Confined Space & Heights' },
-      { key: 'ewp_under_11m',                    label: 'EWP Under 11m',              expiry: 'ewp_under_11m_expiry',                                                       group: 'Confined Space & Heights' },
-      { key: 'boom_lift_under_11m',              label: 'Boom Lift Under 11m',        expiry: 'boom_lift_under_11m_expiry',                                                 group: 'Confined Space & Heights' },
-      { key: 'hazardous_area_training',          label: 'Hazardous Area Training',    expiry: 'hazardous_area_training_expiry_5yr',                                         group: 'Hazardous & Electrical' },
-      { key: 'construction_wiring_course',       label: 'Construction Wiring Course', expiry: 'construction_wiring_course_expiry',                                          group: 'Hazardous & Electrical' },
-      { key: 'red_card',                         label: 'Red Card',                   expiry: null,                                                                         group: 'Hazardous & Electrical' },
-      { key: 'white_card',                       label: 'White Card',                 expiry: null,                                                                         group: 'Hazardous & Electrical' },
-      { key: 'mw_hse',                           label: 'MW HSE',                     expiry: 'mw_hse_expiry',                                                              group: 'MW Specific' },
-      { key: 'mw_integrated_management',         label: 'MW Integrated Management',   expiry: 'mw_integrated_management_expiry',                                            group: 'MW Specific' },
-      { key: 'mw_chlorine_awareness',            label: 'MW Chlorine Awareness',      expiry: 'mw_chlorine_awareness_expiry',                                               group: 'MW Specific' },
-      { key: 'mw_hazardous_area',                label: 'MW Hazardous Area',          expiry: 'mw_hazardous_area_expiry',                                                   group: 'MW Specific' },
-      { key: 'mw_mhf_awareness',                 label: 'MW MHF Awareness',           expiry: null,                                                                         group: 'MW Specific' },
-      { key: 'mw_tertiary_gas',                  label: 'MW Tertiary Gas',            expiry: 'mw_tertiary_gas_expiry',                                                     group: 'MW Specific' },
-    ];
-
-    /* Derive CERT_GROUPS from ALL_CERTS */
-    const CERT_GROUPS = [];
-    ALL_CERTS.forEach(c => {
-      let g = CERT_GROUPS.find(x => x.label === c.group);
-      if (!g) { g = { label: c.group, certs: [] }; CERT_GROUPS.push(g); }
-      g.certs.push(c);
-    });
-
-    const ALL_CERT_FIELDS = [
-      { key: 'a_grade',                            label: 'A-Grade Electrician',           type: 'bool', expiry: 'a_grade_expiry',                        notes: 'a_grade_notes' },
-      { key: 'registered_professional_engineer',   label: 'Registered Prof. Engineer',     type: 'bool', expiry: 'registered_professional_engineer_expiry' },
-      { key: 'cabler',                             label: 'Cabler',                        type: 'bool' },
-      { key: 'car_licence_number',                 label: 'Car Licence Number',            type: 'text' },
-      { key: 'car_licence_expiry',                 label: 'Car Licence Expiry',            type: 'date' },
-      { key: 'heavy_vehicle_licence',              label: 'Heavy Vehicle Licence',         type: 'bool', expiry: 'heavy_vehicle_licence_expiry' },
-      { key: 'heavy_vehicle_licence_class',        label: 'Heavy Vehicle Class',           type: 'text' },
-      { key: 'marine_licence_expiry',              label: 'Marine Licence Expiry',         type: 'date' },
-      { key: 'cat3_medical',                       label: 'Cat 3 Medical',                 type: 'bool', expiry: 'cat3_medical_expiry',                    notes: 'cat3_medical_notes' },
-      { key: 'drug_lung_hearing',                  label: 'Drug / Lung / Hearing',         type: 'bool', expiry: 'drug_lung_hearing_expiry',               notes: 'drug_lung_hearing_notes' },
-      { key: 'hearing',                            label: 'Hearing',                       type: 'bool', expiry: 'hearing_expiry',                         notes: 'hearing_notes' },
-      { key: 'cpr_refresher',                      label: 'CPR Refresher',                 type: 'bool', expiry: 'cpr_refresher_expiry' },
-      { key: 'first_aid',                          label: 'First Aid',                     type: 'bool', expiry: 'first_aid_expiry' },
-      { key: 'mental_health_first_aid',            label: 'Mental Health First Aid',       type: 'bool', expiry: 'mental_health_first_aid_expiry' },
-      { key: 'low_voltage_rescue',                 label: 'Low Voltage Rescue',            type: 'bool', expiry: 'lvr_cpr_first_aid_expiry' },
-      { key: 'working_at_heights',                 label: 'Working at Heights',            type: 'bool', expiry: 'working_at_heights_expiry' },
-      { key: 'hv_safety',                          label: 'HV Safety',                     type: 'bool', expiry: 'hv_safety_expiry' },
-      { key: 'ttsa',                               label: 'TTSA',                          type: 'bool', expiry: 'ttsa_expiry' },
-      { key: 'cmse_melbourne',                     label: 'CMSE Melbourne',                type: 'bool', expiry: 'cmse_melbourne_expiry' },
-      { key: 'confined_space_code',                label: 'Confined Space Code',           type: 'text' },
-      { key: 'confined_space_last_completed',      label: 'Confined Space Last Completed', type: 'date' },
-      { key: 'high_risk_work_over_11m',            label: 'High Risk Work (>11m)',          type: 'bool', expiry: 'high_risk_work_over_11m_expiry',          notes: 'high_risk_work_over_11m_notes' },
-      { key: 'high_risk_work_voc',                 label: 'High Risk Work VOC',            type: 'bool' },
-      { key: 'high_risk_work_classes',             label: 'High Risk Work Classes',        type: 'text' },
-      { key: 'ewp_under_11m',                      label: 'EWP Under 11m',                 type: 'bool', expiry: 'ewp_under_11m_expiry' },
-      { key: 'ewp_under_11m_classes',              label: 'EWP Classes',                   type: 'text' },
-      { key: 'boom_lift_under_11m',                label: 'Boom Lift Under 11m',           type: 'bool', expiry: 'boom_lift_under_11m_expiry' },
-      { key: 'hazardous_area_training',            label: 'Hazardous Area Training',       type: 'bool', expiry: 'hazardous_area_training_expiry_5yr' },
-      { key: 'hazardous_area_training_expiry_3yr', label: 'Hazardous Area Training (3yr)', type: 'date' },
-      { key: 'construction_wiring_course',         label: 'Construction Wiring Course',    type: 'bool', expiry: 'construction_wiring_course_expiry' },
-      { key: 'red_card',                           label: 'Red Card',                      type: 'bool' },
-      { key: 'white_card',                         label: 'White Card',                    type: 'bool' },
-      { key: 'mw_hse',                             label: 'MW HSE',                        type: 'bool', expiry: 'mw_hse_expiry' },
-      { key: 'mw_integrated_management',           label: 'MW Integrated Management',      type: 'bool', expiry: 'mw_integrated_management_expiry' },
-      { key: 'mw_chlorine_awareness',              label: 'MW Chlorine Awareness',         type: 'bool', expiry: 'mw_chlorine_awareness_expiry' },
-      { key: 'mw_hazardous_area',                  label: 'MW Hazardous Area',             type: 'bool', expiry: 'mw_hazardous_area_expiry' },
-      { key: 'mw_mhf_awareness',                   label: 'MW MHF Awareness',              type: 'bool' },
-      { key: 'mw_tertiary_gas',                    label: 'MW Tertiary Gas',               type: 'bool', expiry: 'mw_tertiary_gas_expiry' },
-    ];
-
-    const CERT_SECTIONS = {
-      'Licences & Registrations': ['a_grade','registered_professional_engineer','cabler','car_licence_number','car_licence_expiry','heavy_vehicle_licence','heavy_vehicle_licence_class','marine_licence_expiry'],
-      'Medical & Health':         ['cat3_medical','drug_lung_hearing','hearing'],
-      'First Aid & Safety':       ['cpr_refresher','first_aid','mental_health_first_aid','low_voltage_rescue','working_at_heights','hv_safety','ttsa'],
-      'Confined Space & Heights': ['cmse_melbourne','confined_space_code','confined_space_last_completed','high_risk_work_over_11m','high_risk_work_voc','high_risk_work_classes','ewp_under_11m','ewp_under_11m_classes','boom_lift_under_11m'],
-      'Hazardous & Electrical':   ['hazardous_area_training','hazardous_area_training_expiry_3yr','construction_wiring_course','red_card','white_card'],
-      'MW Specific':              ['mw_hse','mw_integrated_management','mw_chlorine_awareness','mw_hazardous_area','mw_mhf_awareness','mw_tertiary_gas'],
-    };
+    const GROUP_ORDER    = ['Medical & Health','First Aid','Electrical','Safety','Plant','Rail','Education','Accreditations','Other'];
 
     /* ── STATE ── */
-    let allEmployees = [];
-    let searchVal    = '';
-    let filterMode   = 'all';
-    let showInactive = false;
+    let allEmployees  = [];
+    let certTypes     = [];   // [{id, label, group_name, has_expiry, has_notes, has_licence_number, sort_order, is_active}]
+    let searchVal     = '';
+    let filterMode    = 'all';
+    let showInactive  = false;
     let inductionTypeSuggestions = [];
     let skillSuggestions         = [];
 
     /* ── HELPERS ── */
-    const sbH = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
-    const sbHnoPrefer = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+    const sbH = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
+    const sbHnoPrefer = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json'
+    };
 
     function expiryStatus(d) {
       if (!d) return null;
@@ -148,22 +66,43 @@ window.BromarPages.employees = {
       if (now.getMonth() + 1 < m) age--;
       return age;
     }
-    function empSummary(emp) {
-      let expired = 0, expiring = 0;
-      for (const g of CERT_GROUPS) {
-        for (const c of g.certs) {
-          const ef = c.expiryOnly ? c.expiry : (c.expiry && (c.isText || emp[c.key]) ? c.expiry : null);
-          if (!ef) continue;
-          if (!c.expiryOnly && !c.isText && !emp[c.key]) continue;
-          const s = expiryStatus(emp[ef]);
-          if (s === 'expired') expired++; if (s === 'expiring') expiring++;
-        }
-      }
-      return { expired, expiring };
-    }
     function safePath(name) { return encodeURIComponent(name.replace(/[^a-zA-Z0-9 _-]/g, '_')); }
     function profilePhotoUrl(name) { return `${STORAGE_URL}/${safePath(name)}/profile/photo`; }
-    function certImageUrl(name, key, side) { return `${STORAGE_URL}/${safePath(name)}/certs/${key}/${side}`; }
+    function certImageUrl(name, certTypeId, side) { return `${STORAGE_URL}/${safePath(name)}/certs/${certTypeId}/${side}`; }
+    function imgExists(url) {
+      return new Promise(res => {
+        const img = new Image();
+        img.onload  = () => res(true);
+        img.onerror = () => res(false);
+        img.src = url + '?t=' + Date.now();
+      });
+    }
+    async function loadImageAsDataUrl(url) {
+      const r = await fetch(url + '?t=' + Date.now(), { headers: { 'apikey': SUPABASE_KEY } });
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+    }
+    function empCertSummary(empCerts) {
+      let expired = 0, expiring = 0;
+      empCerts.forEach(ec => {
+        if (!ec.expiry_date) return;
+        const s = expiryStatus(ec.expiry_date);
+        if (s === 'expired') expired++;
+        if (s === 'expiring') expiring++;
+      });
+      return { expired, expiring };
+    }
+    function groupedCertTypes() {
+      const groups = {};
+      GROUP_ORDER.forEach(g => { groups[g] = []; });
+      certTypes.filter(ct => ct.is_active).forEach(ct => {
+        if (!groups[ct.group_name]) groups[ct.group_name] = [];
+        groups[ct.group_name].push(ct);
+      });
+      Object.keys(groups).forEach(g => groups[g].sort((a,b) => a.sort_order - b.sort_order));
+      return groups;
+    }
 
     /* ── SUPABASE ── */
     async function sbFetch(path) {
@@ -188,10 +127,15 @@ window.BromarPages.employees = {
       if (!r.ok) throw new Error(`DB error ${r.status}`);
     }
     async function logHistory(employeeName, field, oldVal, newVal) {
-      await sbPost('employee_cert_history', { employee_name: employeeName, changed_field: field, old_value: oldVal != null ? String(oldVal) : null, new_value: newVal != null ? String(newVal) : null });
+      await sbPost('employee_cert_history', {
+        employee_name: employeeName,
+        changed_field: field,
+        old_value: oldVal != null ? String(oldVal) : null,
+        new_value: newVal != null ? String(newVal) : null
+      });
     }
 
-    /* ── STORAGE UPLOAD ── */
+    /* ── STORAGE ── */
     async function uploadToStorage(path, file) {
       const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
         method: 'POST',
@@ -206,189 +150,183 @@ window.BromarPages.employees = {
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
       });
     }
-    function imgExists(url) {
-      return new Promise(res => {
-        const img = new Image();
-        img.onload  = () => res(true);
-        img.onerror = () => res(false);
-        img.src = url + '?t=' + Date.now();
-      });
-    }
-    async function loadImageAsDataUrl(url) {
-      const r = await fetch(url + '?t=' + Date.now(), { headers: { 'apikey': SUPABASE_KEY } });
-      if (!r.ok) return null;
-      const blob = await r.blob();
-      return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
-    }
 
     /* ── STYLES ── */
     const styleEl = document.createElement('style');
     styleEl.id = 'emp-styles';
     styleEl.textContent = `
-      .emp-toolbar { display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
-      .emp-search { flex:1; min-width:200px; padding:0.6rem 1rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary); color:var(--text-primary); font-family:'Outfit',sans-serif; font-size:0.9rem; outline:none; transition:border-color 0.2s; }
-      .emp-search:focus { border-color:var(--accent); }
-      .emp-filter-btns { display:flex; gap:0.4rem; flex-wrap:wrap; }
-      .emp-filter-btn { padding:0.5rem 0.9rem; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); font-family:'Outfit',sans-serif; font-size:0.82rem; font-weight:600; cursor:pointer; transition:all 0.2s; }
-      .emp-filter-btn:hover { border-color:var(--accent); color:var(--text-primary); }
-      .emp-filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
-      .emp-filter-btn.inactive-toggle { border-style:dashed; }
-      .emp-filter-btn.inactive-toggle.active { background:var(--text-secondary); border-color:var(--text-secondary); color:#fff; }
-      .emp-stats { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1.25rem; }
-      .emp-stat-chip { padding:0.35rem 0.85rem; border-radius:999px; font-size:0.78rem; font-weight:600; border:1px solid; }
-      .badge-ok       { background:rgba(21,128,61,0.1);   color:#15803d; border-color:rgba(21,128,61,0.3); }
-      .badge-expired  { background:rgba(220,38,38,0.1);   color:#dc2626; border-color:rgba(220,38,38,0.3); }
-      .badge-expiring { background:rgba(202,138,4,0.1);   color:#ca8a04; border-color:rgba(202,138,4,0.3); }
-      .badge-inactive { background:rgba(100,100,120,0.1); color:var(--text-secondary); border-color:var(--border); }
-      .emp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:1rem; margin-bottom:2rem; }
-      .emp-card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:14px; padding:1.1rem 1.4rem; cursor:pointer; transition:all 0.2s; display:flex; gap:0.85rem; align-items:flex-start; }
-      .emp-card:hover { transform:translateY(-3px); box-shadow:0 8px 24px var(--shadow); border-color:var(--accent); }
-      .emp-card.inactive-card { opacity:0.6; }
-      .emp-card-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0; background:var(--bg-main); }
-      .emp-card-avatar-placeholder { width:44px; height:44px; border-radius:50%; background:var(--bg-main); border:2px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.1rem; color:var(--text-secondary); font-weight:700; }
-      .emp-card-body { flex:1; min-width:0; }
-      .emp-card-name { font-size:1rem; font-weight:700; color:var(--text-primary); margin-bottom:0.1rem; }
-      .emp-card-role { font-size:0.78rem; color:var(--accent); font-weight:600; margin-bottom:0.3rem; }
-      .emp-card-contact { font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.6rem; display:flex; flex-direction:column; gap:0.1rem; }
-      .emp-badges { display:flex; gap:0.35rem; flex-wrap:wrap; }
-      .emp-badge { font-size:0.7rem; font-weight:600; padding:0.18rem 0.5rem; border-radius:999px; border:1px solid; }
+      .emp-toolbar{display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;}
+      .emp-search{flex:1;min-width:200px;padding:0.6rem 1rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.9rem;outline:none;transition:border-color 0.2s;}
+      .emp-search:focus{border-color:var(--accent);}
+      .emp-filter-btns{display:flex;gap:0.4rem;flex-wrap:wrap;}
+      .emp-filter-btn{padding:0.5rem 0.9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;}
+      .emp-filter-btn:hover{border-color:var(--accent);color:var(--text-primary);}
+      .emp-filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+      .emp-filter-btn.inactive-toggle{border-style:dashed;}
+      .emp-filter-btn.inactive-toggle.active{background:var(--text-secondary);border-color:var(--text-secondary);color:#fff;}
+      .emp-stats{display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1.25rem;}
+      .emp-stat-chip{padding:0.35rem 0.85rem;border-radius:999px;font-size:0.78rem;font-weight:600;border:1px solid;}
+      .badge-ok{background:rgba(21,128,61,0.1);color:#15803d;border-color:rgba(21,128,61,0.3);}
+      .badge-expired{background:rgba(220,38,38,0.1);color:#dc2626;border-color:rgba(220,38,38,0.3);}
+      .badge-expiring{background:rgba(202,138,4,0.1);color:#ca8a04;border-color:rgba(202,138,4,0.3);}
+      .badge-inactive{background:rgba(100,100,120,0.1);color:var(--text-secondary);border-color:var(--border);}
+      .emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:1rem;margin-bottom:2rem;}
+      .emp-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.4rem;cursor:pointer;transition:all 0.2s;display:flex;gap:0.85rem;align-items:flex-start;}
+      .emp-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px var(--shadow);border-color:var(--accent);}
+      .emp-card.inactive-card{opacity:0.6;}
+      .emp-card-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex-shrink:0;background:var(--bg-main);}
+      .emp-card-avatar-placeholder{width:44px;height:44px;border-radius:50%;background:var(--bg-main);border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:var(--text-secondary);font-weight:700;}
+      .emp-card-body{flex:1;min-width:0;}
+      .emp-card-name{font-size:1rem;font-weight:700;color:var(--text-primary);margin-bottom:0.1rem;}
+      .emp-card-role{font-size:0.78rem;color:var(--accent);font-weight:600;margin-bottom:0.3rem;}
+      .emp-card-contact{font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.6rem;display:flex;flex-direction:column;gap:0.1rem;}
+      .emp-badges{display:flex;gap:0.35rem;flex-wrap:wrap;}
+      .emp-badge{font-size:0.7rem;font-weight:600;padding:0.18rem 0.5rem;border-radius:999px;border:1px solid;}
 
       /* MODAL */
-      .emp-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:200; display:flex; align-items:center; justify-content:center; padding:1rem; animation:empFadeIn 0.2s ease; }
-      @keyframes empFadeIn { from{opacity:0} to{opacity:1} }
-      .emp-panel { background:var(--bg-secondary); border:1px solid var(--border); border-radius:20px; width:100%; max-width:860px; max-height:90vh; overflow-y:auto; padding:2rem; position:relative; animation:empSlideUp 0.25s ease; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
-      .emp-panel::-webkit-scrollbar { width:6px; }
-      .emp-panel::-webkit-scrollbar-track { background:transparent; }
-      .emp-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
-      .emp-panel::-webkit-scrollbar-thumb:hover { background:var(--accent); }
-      @keyframes empSlideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
-      .emp-panel-close { position:absolute; top:1.25rem; right:1.25rem; width:34px; height:34px; border:1px solid var(--border); background:var(--bg-main); border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:1rem; transition:all 0.2s; }
-      .emp-panel-close:hover { border-color:var(--accent); color:var(--accent); }
-      .emp-panel-header { display:flex; gap:1.25rem; align-items:flex-start; margin-bottom:1.25rem; }
-      .emp-panel-avatar { width:72px; height:72px; border-radius:50%; object-fit:cover; border:3px solid var(--border); flex-shrink:0; cursor:pointer; transition:border-color 0.2s; }
-      .emp-panel-avatar:hover { border-color:var(--accent); }
-      .emp-panel-avatar-placeholder { width:72px; height:72px; border-radius:50%; background:var(--bg-main); border:3px dashed var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
-      .emp-panel-avatar-placeholder:hover { border-color:var(--accent); color:var(--accent); }
-      .emp-panel-info { flex:1; }
-      .emp-panel-name { font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; color:var(--text-primary); margin-bottom:0.15rem; }
-      .emp-panel-role { font-size:0.88rem; color:var(--accent); font-weight:600; margin-bottom:0.5rem; }
-      .emp-panel-meta { display:flex; gap:1.25rem; flex-wrap:wrap; font-size:0.86rem; color:var(--text-secondary); }
-      .emp-panel-meta a { color:var(--accent); text-decoration:none; }
-      .emp-panel-meta a:hover { text-decoration:underline; }
-      .emp-panel-tabs { display:flex; gap:0.4rem; margin-bottom:1.5rem; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-      .emp-tab { padding:0.5rem 1rem; border-radius:var(--radius-sm) var(--radius-sm) 0 0; border:1px solid transparent; border-bottom:none; font-family:'Outfit',sans-serif; font-size:0.84rem; font-weight:600; cursor:pointer; color:var(--text-secondary); background:transparent; transition:all 0.2s; position:relative; bottom:-1px; }
-      .emp-tab.active { background:var(--bg-secondary); border-color:var(--border); color:var(--accent); }
-      .emp-tab-content { display:none; }
-      .emp-tab-content.active { display:block; }
+      .emp-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;animation:empFadeIn 0.2s ease;}
+      @keyframes empFadeIn{from{opacity:0}to{opacity:1}}
+      .emp-panel{background:var(--bg-secondary);border:1px solid var(--border);border-radius:20px;width:100%;max-width:860px;max-height:90vh;overflow-y:auto;padding:2rem;position:relative;animation:empSlideUp 0.25s ease;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+      .emp-panel::-webkit-scrollbar{width:6px;}
+      .emp-panel::-webkit-scrollbar-track{background:transparent;}
+      .emp-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px;}
+      .emp-panel::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+      @keyframes empSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+      .emp-panel-close{position:absolute;top:1.25rem;right:1.25rem;width:34px;height:34px;border:1px solid var(--border);background:var(--bg-main);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:1rem;transition:all 0.2s;}
+      .emp-panel-close:hover{border-color:var(--accent);color:var(--accent);}
+      .emp-panel-header{display:flex;gap:1.25rem;align-items:flex-start;margin-bottom:1.25rem;}
+      .emp-panel-avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--border);flex-shrink:0;cursor:pointer;transition:border-color 0.2s;}
+      .emp-panel-avatar:hover{border-color:var(--accent);}
+      .emp-panel-avatar-placeholder{width:72px;height:72px;border-radius:50%;background:var(--bg-main);border:3px dashed var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--text-secondary);cursor:pointer;transition:all 0.2s;}
+      .emp-panel-avatar-placeholder:hover{border-color:var(--accent);color:var(--accent);}
+      .emp-panel-info{flex:1;}
+      .emp-panel-name{font-size:1.5rem;font-weight:700;letter-spacing:-0.02em;color:var(--text-primary);margin-bottom:0.15rem;}
+      .emp-panel-role{font-size:0.88rem;color:var(--accent);font-weight:600;margin-bottom:0.5rem;}
+      .emp-panel-meta{display:flex;gap:1.25rem;flex-wrap:wrap;font-size:0.86rem;color:var(--text-secondary);}
+      .emp-panel-meta a{color:var(--accent);text-decoration:none;}
+      .emp-panel-meta a:hover{text-decoration:underline;}
+      .emp-panel-tabs{display:flex;gap:0.4rem;margin-bottom:1.5rem;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+      .emp-tab{padding:0.5rem 1rem;border-radius:var(--radius-sm) var(--radius-sm) 0 0;border:1px solid transparent;border-bottom:none;font-family:'Outfit',sans-serif;font-size:0.84rem;font-weight:600;cursor:pointer;color:var(--text-secondary);background:transparent;transition:all 0.2s;position:relative;bottom:-1px;}
+      .emp-tab.active{background:var(--bg-secondary);border-color:var(--border);color:var(--accent);}
+      .emp-tab-content{display:none;}
+      .emp-tab-content.active{display:block;}
 
       /* CERT VIEW */
-      .cert-group { margin-bottom:1.4rem; }
-      .cert-group-title { font-size:0.72rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-secondary); margin-bottom:0.5rem; padding-bottom:0.35rem; border-bottom:1px solid var(--border); }
-      .cert-rows { display:flex; flex-direction:column; gap:0.25rem; }
-      .cert-row { display:flex; align-items:center; padding:0.4rem 0.65rem; border-radius:8px; font-size:0.84rem; gap:0.6rem; }
-      .cert-row:hover { background:var(--card-hover); }
-      .cert-label { color:var(--text-primary); font-weight:500; flex:1; }
-      .cert-right { display:flex; align-items:center; gap:0.5rem; flex-shrink:0; }
-      .cert-expiry { font-size:0.76rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; }
-      .cert-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-      .dot-expired{background:#dc2626;} .dot-expiring{background:#ca8a04;} .dot-valid{background:#15803d;} .dot-none{background:var(--border);}
-      .cert-notes { font-size:0.73rem; color:var(--text-secondary); font-style:italic; }
-      .cert-img-btn { width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); cursor:pointer; font-size:0.75rem; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
-      .cert-img-btn:hover { border-color:var(--accent); color:var(--accent); }
-      .cert-img-btn.has-img { border-color:rgba(21,128,61,0.4); color:#15803d; background:rgba(21,128,61,0.08); }
+      .cert-group{margin-bottom:1.4rem;}
+      .cert-group-title{font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:0.5rem;padding-bottom:0.35rem;border-bottom:1px solid var(--border);}
+      .cert-rows{display:flex;flex-direction:column;gap:0.25rem;}
+      .cert-row{display:flex;align-items:center;padding:0.4rem 0.65rem;border-radius:8px;font-size:0.84rem;gap:0.6rem;}
+      .cert-row:hover{background:var(--card-hover);}
+      .cert-label-wrap{flex:1;}
+      .cert-label{color:var(--text-primary);font-weight:500;}
+      .cert-licence-num{font-size:0.72rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;margin-top:0.1rem;}
+      .cert-right{display:flex;align-items:center;gap:0.5rem;flex-shrink:0;}
+      .cert-expiry{font-size:0.76rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;}
+      .cert-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+      .dot-expired{background:#dc2626;}.dot-expiring{background:#ca8a04;}.dot-valid{background:#15803d;}.dot-none{background:var(--border);}
+      .cert-notes-text{font-size:0.73rem;color:var(--text-secondary);font-style:italic;}
+      .cert-img-btn{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-secondary);cursor:pointer;font-size:0.75rem;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0;}
+      .cert-img-btn:hover{border-color:var(--accent);color:var(--accent);}
+      .cert-img-btn.has-img{border-color:rgba(21,128,61,0.4);color:#15803d;background:rgba(21,128,61,0.08);}
+
+      /* CERT ADD FORM in certs tab */
+      .cert-add-form{background:var(--bg-main);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;margin-bottom:1rem;display:none;}
+      .cert-add-form.open{display:block;}
+      .cert-add-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;}
+      @media(max-width:600px){.cert-add-grid{grid-template-columns:1fr;}}
+      .cert-add-grid .full{grid-column:1/-1;}
+      .edit-field{display:flex;flex-direction:column;gap:0.3rem;}
+      .edit-field label{font-size:0.76rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;}
+      .edit-input{padding:0.52rem 0.85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.88rem;outline:none;transition:border-color 0.2s;width:100%;}
+      .edit-input:focus{border-color:var(--accent);}
 
       /* EDIT FORM */
-      .edit-section-title { font-size:0.72rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-secondary); padding:0.75rem 0 0.35rem; border-bottom:1px solid var(--border); margin-bottom:0.5rem; }
-      .edit-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; }
-      @media(max-width:600px){ .edit-grid{grid-template-columns:1fr;} }
-      .edit-grid .edit-section-title { grid-column:1/-1; }
-      .edit-field { display:flex; flex-direction:column; gap:0.3rem; }
-      .edit-field label { font-size:0.76rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; }
-      .edit-input { padding:0.52rem 0.85rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-main); color:var(--text-primary); font-family:'Outfit',sans-serif; font-size:0.88rem; outline:none; transition:border-color 0.2s; width:100%; }
-      .edit-input:focus { border-color:var(--accent); }
-      .cert-edit-item { border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:0.5rem; }
-      .cert-edit-header { display:flex; align-items:center; justify-content:space-between; padding:0.55rem 0.85rem; cursor:pointer; background:var(--bg-main); font-size:0.86rem; font-weight:600; color:var(--text-primary); transition:background 0.15s; }
-      .cert-edit-header:hover { background:var(--card-hover); }
-      .cert-held-badge { font-size:0.7rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:999px; background:rgba(21,128,61,0.12); color:#15803d; border:1px solid rgba(21,128,61,0.3); }
-      .cert-add-btn { font-size:0.72rem; font-weight:700; padding:0.15rem 0.6rem; border-radius:999px; background:rgba(234,88,12,0.08); color:var(--accent); border:1px solid rgba(234,88,12,0.25); cursor:pointer; }
-      .cert-add-btn:hover { background:rgba(234,88,12,0.15); }
-      .cert-edit-body { padding:0.75rem 0.85rem; display:flex; flex-direction:column; gap:0.5rem; background:var(--bg-secondary); }
-      .cert-edit-body.hidden { display:none; }
-      .cert-edit-row { display:flex; flex-direction:column; gap:0.2rem; }
-      .cert-edit-row label { font-size:0.72rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; }
-      .cert-remove-btn { align-self:flex-start; margin-top:0.25rem; font-size:0.72rem; font-weight:600; padding:0.2rem 0.65rem; border-radius:999px; background:rgba(220,38,38,0.07); color:#dc2626; border:1px solid rgba(220,38,38,0.25); cursor:pointer; }
-      .cert-remove-btn:hover { background:rgba(220,38,38,0.14); }
-      .edit-actions { display:flex; gap:0.75rem; justify-content:flex-end; margin-top:1.5rem; flex-wrap:wrap; }
-      .btn-danger { font-family:'Outfit',sans-serif; font-size:0.88rem; font-weight:600; padding:0.65rem 1.4rem; border-radius:var(--radius-sm); border:1px solid rgba(220,38,38,0.4); background:rgba(220,38,38,0.08); color:#dc2626; cursor:pointer; transition:all 0.2s; }
-      .btn-danger:hover { background:rgba(220,38,38,0.15); }
-      .btn-sm { font-family:'Outfit',sans-serif; font-size:0.85rem; font-weight:600; padding:0.6rem 1.2rem; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
-      .btn-sm:hover { border-color:var(--accent); color:var(--text-primary); }
+      .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.85rem;}
+      @media(max-width:600px){.edit-grid{grid-template-columns:1fr;}}
+      .edit-grid .edit-section-title{grid-column:1/-1;}
+      .edit-section-title{font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);padding:0.75rem 0 0.35rem;border-bottom:1px solid var(--border);margin-bottom:0.5rem;}
+      .edit-actions{display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;flex-wrap:wrap;}
+      .btn-danger{font-family:'Outfit',sans-serif;font-size:0.88rem;font-weight:600;padding:0.65rem 1.4rem;border-radius:var(--radius-sm);border:1px solid rgba(220,38,38,0.4);background:rgba(220,38,38,0.08);color:#dc2626;cursor:pointer;transition:all 0.2s;}
+      .btn-danger:hover{background:rgba(220,38,38,0.15);}
+      .btn-sm{font-family:'Outfit',sans-serif;font-size:0.85rem;font-weight:600;padding:0.6rem 1.2rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-main);color:var(--text-secondary);cursor:pointer;transition:all 0.2s;}
+      .btn-sm:hover{border-color:var(--accent);color:var(--text-primary);}
 
-      /* IMAGE UPLOAD PANEL */
-      .img-upload-panel { background:var(--bg-main); border:1px solid var(--border); border-radius:12px; padding:1rem; margin-top:0.5rem; }
-      .img-upload-panel h4 { font-size:0.82rem; font-weight:700; color:var(--text-primary); margin-bottom:0.75rem; }
-      .img-slots { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
-      .img-slot { display:flex; flex-direction:column; gap:0.4rem; }
-      .img-slot label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); }
-      .img-preview { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:var(--bg-secondary); display:block; }
-      .img-placeholder { width:100%; aspect-ratio:16/10; border-radius:8px; border:2px dashed var(--border); background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:0.78rem; cursor:pointer; transition:all 0.15s; }
-      .img-placeholder:hover { border-color:var(--accent); color:var(--accent); }
-      .img-slot-actions { display:flex; gap:0.4rem; }
-      .img-upload-btn { flex:1; font-family:'Outfit',sans-serif; font-size:0.75rem; font-weight:600; padding:0.35rem 0.6rem; border-radius:6px; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer; transition:all 0.15s; text-align:center; }
-      .img-upload-btn:hover { border-color:var(--accent); color:var(--accent); }
-      .img-del-btn { font-size:0.75rem; font-weight:600; padding:0.35rem 0.6rem; border-radius:6px; border:1px solid rgba(220,38,38,0.3); background:rgba(220,38,38,0.07); color:#dc2626; cursor:pointer; }
-      .img-del-btn:hover { background:rgba(220,38,38,0.14); }
+      /* IMAGE UPLOAD */
+      .img-upload-panel{background:var(--bg-main);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-top:0.5rem;}
+      .img-upload-panel h4{font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:0.75rem;}
+      .img-slots{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;}
+      .img-slot{display:flex;flex-direction:column;gap:0.4rem;}
+      .img-slot label{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);}
+      .img-preview{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:var(--bg-secondary);display:block;}
+      .img-placeholder{width:100%;aspect-ratio:16/10;border-radius:8px;border:2px dashed var(--border);background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:0.78rem;cursor:pointer;transition:all 0.15s;}
+      .img-placeholder:hover{border-color:var(--accent);color:var(--accent);}
+      .img-slot-actions{display:flex;gap:0.4rem;}
+      .img-upload-btn{flex:1;font-family:'Outfit',sans-serif;font-size:0.75rem;font-weight:600;padding:0.35rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-secondary);cursor:pointer;transition:all 0.15s;text-align:center;}
+      .img-upload-btn:hover{border-color:var(--accent);color:var(--accent);}
+      .img-del-btn{font-size:0.75rem;font-weight:600;padding:0.35rem 0.6rem;border-radius:6px;border:1px solid rgba(220,38,38,0.3);background:rgba(220,38,38,0.07);color:#dc2626;cursor:pointer;}
+      .img-del-btn:hover{background:rgba(220,38,38,0.14);}
 
       /* HISTORY */
-      .hist-header,.hist-row { display:grid; grid-template-columns:150px 1fr 1fr 1fr; gap:0.75rem; padding:0.5rem 0.65rem; border-radius:8px; font-size:0.82rem; }
-      .hist-row { border-bottom:1px solid var(--border); }
-      .hist-row:last-child { border-bottom:none; }
-      .hist-row:hover { background:var(--card-hover); }
-      .hist-date { font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--text-secondary); }
-      .hist-field { font-weight:600; color:var(--text-primary); }
-      .hist-old { color:#dc2626; } .hist-new { color:#15803d; }
-      .hist-label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); }
+      .hist-header,.hist-row{display:grid;grid-template-columns:150px 1fr 1fr 1fr;gap:0.75rem;padding:0.5rem 0.65rem;border-radius:8px;font-size:0.82rem;}
+      .hist-row{border-bottom:1px solid var(--border);}
+      .hist-row:last-child{border-bottom:none;}
+      .hist-row:hover{background:var(--card-hover);}
+      .hist-date{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-secondary);}
+      .hist-field{font-weight:600;color:var(--text-primary);}
+      .hist-old{color:#dc2626;}.hist-new{color:#15803d;}
+      .hist-label{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-secondary);}
 
       /* INDUCTIONS & SKILLS */
-      .ind-list,.skill-list { display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1.25rem; }
-      .ind-row,.skill-row { display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.85rem; border-radius:10px; border:1px solid var(--border); background:var(--bg-main); font-size:0.84rem; }
-      .ind-row:hover,.skill-row:hover { border-color:var(--accent); }
-      .ind-main,.skill-main { flex:1; }
-      .ind-type,.skill-name { font-weight:600; color:var(--text-primary); }
-      .ind-meta,.skill-notes { font-size:0.76rem; color:var(--text-secondary); margin-top:0.1rem; }
-      .ind-expiry { font-size:0.76rem; font-family:'JetBrains Mono',monospace; color:var(--text-secondary); flex-shrink:0; }
-      .ind-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-      .ind-del,.skill-del { background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1rem; padding:0.2rem 0.4rem; border-radius:6px; transition:all 0.15s; flex-shrink:0; }
-      .ind-del:hover,.skill-del:hover { color:#dc2626; background:rgba(220,38,38,0.08); }
-      .ac-wrap { position:relative; }
-      .ac-list { position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-sm); z-index:50; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px var(--shadow); display:none; }
-      .ac-list.open { display:block; }
-      .ac-item { padding:0.5rem 0.85rem; font-size:0.86rem; cursor:pointer; color:var(--text-primary); }
-      .ac-item:hover { background:var(--card-hover); color:var(--accent); }
-      .add-form { background:var(--bg-main); border:1px solid var(--border); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1rem; display:none; }
-      .add-form.open { display:block; }
-      .add-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
-      @media(max-width:600px){ .add-form-grid{grid-template-columns:1fr;} }
-      .add-form-grid .full { grid-column:1/-1; }
+      .ind-list,.skill-list{display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1.25rem;}
+      .ind-row,.skill-row{display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--bg-main);font-size:0.84rem;}
+      .ind-row:hover,.skill-row:hover{border-color:var(--accent);}
+      .ind-main,.skill-main{flex:1;}
+      .ind-type,.skill-name{font-weight:600;color:var(--text-primary);}
+      .ind-meta,.skill-notes{font-size:0.76rem;color:var(--text-secondary);margin-top:0.1rem;}
+      .ind-expiry{font-size:0.76rem;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);flex-shrink:0;}
+      .ind-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+      .ind-del,.skill-del{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:1rem;padding:0.2rem 0.4rem;border-radius:6px;transition:all 0.15s;flex-shrink:0;}
+      .ind-del:hover,.skill-del:hover{color:#dc2626;background:rgba(220,38,38,0.08);}
+      .ac-wrap{position:relative;}
+      .ac-list{position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);z-index:50;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px var(--shadow);display:none;}
+      .ac-list.open{display:block;}
+      .ac-item{padding:0.5rem 0.85rem;font-size:0.86rem;cursor:pointer;color:var(--text-primary);}
+      .ac-item:hover{background:var(--card-hover);color:var(--accent);}
+      .add-form{background:var(--bg-main);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;margin-bottom:1rem;display:none;}
+      .add-form.open{display:block;}
+      .add-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;}
+      @media(max-width:600px){.add-form-grid{grid-template-columns:1fr;}}
+      .add-form-grid .full{grid-column:1/-1;}
 
-      /* PDF MODAL */
-      .pdf-cert-list { display:flex; flex-direction:column; gap:0.4rem; max-height:260px; overflow-y:auto; margin-bottom:1rem; padding-right:0.25rem; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
-      .pdf-cert-list::-webkit-scrollbar { width:4px; }
-      .pdf-cert-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
-      .pdf-cert-check { display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.6rem; border-radius:8px; font-size:0.86rem; cursor:pointer; }
-      .pdf-cert-check:hover { background:var(--card-hover); }
-      .pdf-cert-check input[type=checkbox] { accent-color:var(--accent); width:15px; height:15px; cursor:pointer; }
-      .pdf-side-toggle { display:flex; gap:0.5rem; margin-bottom:1rem; }
-      .pdf-side-btn { flex:1; padding:0.5rem; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-main); color:var(--text-secondary); font-family:'Outfit',sans-serif; font-size:0.84rem; font-weight:600; cursor:pointer; transition:all 0.2s; text-align:center; }
-      .pdf-side-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+      /* CERT TYPES MANAGER */
+      .ct-row{display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0.75rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);font-size:0.84rem;margin-bottom:0.35rem;}
+      .ct-row:hover{border-color:var(--accent);}
+      .ct-label{flex:1;font-weight:600;color:var(--text-primary);}
+      .ct-group-tag{font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:999px;background:var(--card-hover);color:var(--accent);border:1px solid rgba(234,88,12,0.2);}
+      .ct-flags{font-size:0.68rem;color:var(--text-secondary);display:flex;gap:0.3rem;flex-wrap:wrap;}
+      .ct-flag{padding:0.1rem 0.4rem;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border);}
+      .ct-del{background:none;border:none;color:var(--text-secondary);cursor:pointer;padding:0.2rem 0.4rem;border-radius:6px;font-size:0.9rem;}
+      .ct-del:hover{color:#dc2626;background:rgba(220,38,38,0.08);}
+      .ct-inactive{opacity:0.45;}
 
-      .emp-loading { display:flex; align-items:center; justify-content:center; padding:3rem; color:var(--text-secondary); gap:0.75rem; }
-      .emp-spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
-      @keyframes spin { to{transform:rotate(360deg)} }
-      .emp-empty { text-align:center; padding:2.5rem 1rem; color:var(--text-secondary); font-size:0.92rem; }
-      .add-emp-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-      .add-emp-grid .edit-section-title { grid-column:1/-1; }
-      @media(max-width:600px){ .add-emp-grid{grid-template-columns:1fr;} .emp-panel{padding:1.25rem;} .emp-panel-name{font-size:1.2rem;} .hist-header,.hist-row{grid-template-columns:1fr 1fr;} .img-slots{grid-template-columns:1fr;} }
+      /* PDF */
+      .pdf-cert-list{display:flex;flex-direction:column;gap:0.4rem;max-height:260px;overflow-y:auto;margin-bottom:1rem;padding-right:0.25rem;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+      .pdf-cert-list::-webkit-scrollbar{width:4px;}
+      .pdf-cert-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px;}
+      .pdf-cert-check{display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0.6rem;border-radius:8px;font-size:0.86rem;cursor:pointer;}
+      .pdf-cert-check:hover{background:var(--card-hover);}
+      .pdf-cert-check input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;}
+      .pdf-side-toggle{display:flex;gap:0.5rem;margin-bottom:1rem;}
+      .pdf-side-btn{flex:1;padding:0.5rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-main);color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:0.84rem;font-weight:600;cursor:pointer;transition:all 0.2s;text-align:center;}
+      .pdf-side-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+      .emp-loading{display:flex;align-items:center;justify-content:center;padding:3rem;color:var(--text-secondary);gap:0.75rem;}
+      .emp-spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      .emp-empty{text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);font-size:0.92rem;}
+      .add-emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+      .add-emp-grid .edit-section-title{grid-column:1/-1;}
+      @media(max-width:600px){.add-emp-grid{grid-template-columns:1fr;}.emp-panel{padding:1.25rem;}.emp-panel-name{font-size:1.2rem;}.hist-header,.hist-row{grid-template-columns:1fr 1fr;}.img-slots{grid-template-columns:1fr;}}
     `;
     document.head.appendChild(styleEl);
 
@@ -407,6 +345,7 @@ window.BromarPages.employees = {
           <button class="emp-filter-btn" data-filter="valid">All Clear</button>
           <button class="emp-filter-btn inactive-toggle" id="toggle-inactive">Show Former</button>
         </div>
+        <button class="btn-sm" id="manage-cert-types-btn" style="white-space:nowrap">⚙ Cert Types</button>
         <button class="btn-primary" id="add-emp-btn" style="padding:0.6rem 1.2rem;font-size:0.88rem;white-space:nowrap">+ Add Employee</button>
       </div>
       <div class="emp-stats" id="emp-stats"></div>
@@ -414,26 +353,37 @@ window.BromarPages.employees = {
         <div class="emp-loading"><div class="emp-spinner"></div> Loading…</div>
       </div>`;
 
-    /* ── FETCH ── */
+    /* ── LOAD ── */
     async function load() {
-      const [emps, indTypes, skillNames] = await Promise.all([
+      const [emps, cts, indTypes, skillNames] = await Promise.all([
         sbFetch('employees?select=*&order=full_name.asc'),
+        sbFetch('cert_types?select=*&order=group_name.asc,sort_order.asc'),
         sbFetch('inductions?select=induction_type'),
         sbFetch('employee_skills?select=skill_name'),
       ]);
       allEmployees = emps;
+      certTypes    = cts;
       inductionTypeSuggestions = [...new Set(indTypes.map(r => r.induction_type).filter(Boolean))].sort();
       skillSuggestions         = [...new Set(skillNames.map(r => r.skill_name).filter(Boolean))].sort();
       renderStats(); renderGrid();
     }
 
     /* ── STATS ── */
-    function renderStats() {
+    async function renderStats() {
       const pool = allEmployees.filter(e => e.is_active !== false);
+      /* fetch summary counts from employee_certs */
       let exp = 0, expiring = 0, ok = 0;
-      pool.forEach(e => { const s = empSummary(e); if (s.expired>0) exp++; else if (s.expiring>0) expiring++; else ok++; });
+      await Promise.all(pool.map(async emp => {
+        const ecs = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=expiry_date`);
+        const s = empCertSummary(ecs);
+        if (s.expired > 0) exp++;
+        else if (s.expiring > 0) expiring++;
+        else ok++;
+      }));
       const former = allEmployees.filter(e => e.is_active === false).length;
-      document.getElementById('emp-stats').innerHTML = `
+      const el = document.getElementById('emp-stats');
+      if (!el) return;
+      el.innerHTML = `
         <span class="emp-stat-chip badge-ok">${pool.length} Active</span>
         ${exp      ? `<span class="emp-stat-chip badge-expired">${exp} with expired certs</span>` : ''}
         ${expiring ? `<span class="emp-stat-chip badge-expiring">${expiring} expiring soon</span>` : ''}
@@ -451,31 +401,16 @@ window.BromarPages.employees = {
         if (showInactive ? active : !active) return false;
         return !q || (e.full_name||'').toLowerCase().includes(q) || (e.email||'').toLowerCase().includes(q) || (e.mobile||'').toLowerCase().includes(q);
       });
-      if (filterMode !== 'all') {
-        list = list.filter(e => {
-          const s = empSummary(e);
-          if (filterMode === 'expired')  return s.expired > 0;
-          if (filterMode === 'expiring') return s.expired === 0 && s.expiring > 0;
-          if (filterMode === 'valid')    return s.expired === 0 && s.expiring === 0;
-          return true;
-        });
-      }
-      if (!list.length) { grid.innerHTML = `<div class="emp-empty">No employees match your filter.</div>`; return; }
+      if (!list.length) { grid.innerHTML = `<div class="emp-empty">No employees match.</div>`; return; }
+      const initials = n => (n||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
       grid.innerHTML = list.map(emp => {
-        const { expired, expiring } = empSummary(emp);
         const inactive = emp.is_active === false;
         const a = calcAge(emp.dob);
-        const initials = (emp.full_name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-        const badges = [
-          inactive                           ? `<span class="emp-badge badge-inactive">Former</span>` : '',
-          expired  > 0                       ? `<span class="emp-badge badge-expired">${expired} Expired</span>` : '',
-          expiring > 0                       ? `<span class="emp-badge badge-expiring">${expiring} Expiring</span>` : '',
-          !inactive && !expired && !expiring ? `<span class="emp-badge badge-ok">All Clear</span>` : '',
-        ].join('');
+        const init = initials(emp.full_name);
         const avatarUrl = profilePhotoUrl(emp.full_name);
         return `
           <div class="emp-card${inactive?' inactive-card':''}" data-name="${emp.full_name}">
-            <div class="emp-card-avatar-placeholder" data-avatar-init="${initials}" data-avatar-url="${avatarUrl}">${initials}</div>
+            <div class="emp-card-avatar-placeholder" data-avatar-url="${avatarUrl}">${init}</div>
             <div class="emp-card-body">
               <div class="emp-card-name">${emp.full_name}</div>
               ${emp.employee_type ? `<div class="emp-card-role">${emp.employee_type}</div>` : ''}
@@ -484,21 +419,41 @@ window.BromarPages.employees = {
                 ${emp.email  ? `<span>✉️ ${emp.email}</span>`  : ''}
                 ${a != null  ? `<span>Age ${a}</span>`         : ''}
               </div>
-              <div class="emp-badges">${badges}</div>
+              <div class="emp-badges" id="badges-${emp.full_name.replace(/\s/g,'_')}">
+                ${inactive ? `<span class="emp-badge badge-inactive">Former</span>` : '<span class="emp-badge badge-inactive" style="opacity:0.4">Loading…</span>'}
+              </div>
             </div>
           </div>`;
       }).join('');
 
-      /* try to load profile photos */
+      /* load profile photos and cert badges async */
       grid.querySelectorAll('[data-avatar-url]').forEach(el => {
         imgExists(el.dataset.avatarUrl).then(exists => {
           if (!exists) return;
           const img = document.createElement('img');
           img.className = 'emp-card-avatar';
           img.src = el.dataset.avatarUrl + '?t=' + Date.now();
-          img.alt = '';
           el.replaceWith(img);
         });
+      });
+      list.filter(e => e.is_active !== false).forEach(emp => {
+        sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=expiry_date`).then(ecs => {
+          const { expired, expiring } = empCertSummary(ecs);
+          const el = document.getElementById(`badges-${emp.full_name.replace(/\s/g,'_')}`);
+          if (!el) return;
+          el.innerHTML = [
+            expired  > 0                       ? `<span class="emp-badge badge-expired">${expired} Expired</span>`   : '',
+            expiring > 0                       ? `<span class="emp-badge badge-expiring">${expiring} Expiring</span>` : '',
+            !expired && !expiring              ? `<span class="emp-badge badge-ok">All Clear</span>`                : '',
+          ].join('');
+          /* apply filter */
+          if (filterMode !== 'all') {
+            const card = el.closest('.emp-card');
+            if (!card) return;
+            const show = (filterMode==='expired' && expired>0) || (filterMode==='expiring' && expiring>0 && !expired) || (filterMode==='valid' && !expired && !expiring);
+            card.style.display = show ? '' : 'none';
+          }
+        }).catch(() => {});
       });
 
       grid.querySelectorAll('.emp-card').forEach(card => {
@@ -511,8 +466,7 @@ window.BromarPages.employees = {
 
     /* ── AUTOCOMPLETE ── */
     function attachAutocomplete(input, getSuggestions) {
-      const wrap = input.closest('.ac-wrap');
-      if (!wrap) return;
+      const wrap = input.closest('.ac-wrap'); if (!wrap) return;
       let list = wrap.querySelector('.ac-list');
       if (!list) { list = document.createElement('div'); list.className = 'ac-list'; wrap.appendChild(list); }
       function update() {
@@ -530,7 +484,7 @@ window.BromarPages.employees = {
     }
 
     /* ── DETAIL PANEL ── */
-    function openDetail(emp) {
+    async function openDetail(emp) {
       const overlay = document.createElement('div');
       overlay.className = 'emp-overlay';
       overlay.id = 'emp-detail-overlay';
@@ -561,7 +515,7 @@ window.BromarPages.employees = {
             <button class="emp-tab" data-tab="edit">Edit</button>
             <button class="emp-tab" data-tab="history">History</button>
           </div>
-          <div class="emp-tab-content active" id="tab-certs">${buildCertView(emp)}</div>
+          <div class="emp-tab-content active" id="tab-certs"><div class="emp-loading"><div class="emp-spinner"></div> Loading…</div></div>
           <div class="emp-tab-content" id="tab-inductions"><div class="emp-loading"><div class="emp-spinner"></div> Loading…</div></div>
           <div class="emp-tab-content" id="tab-skills"><div class="emp-loading"><div class="emp-spinner"></div> Loading…</div></div>
           <div class="emp-tab-content" id="tab-edit">${buildEditForm(emp)}</div>
@@ -582,10 +536,8 @@ window.BromarPages.employees = {
           img.src = photoUrl + '?t=' + Date.now();
           img.title = 'Click to change photo';
           avatarWrap.replaceWith(img);
-          overlay.querySelector('.emp-panel-avatar, #panel-avatar-wrap').addEventListener('click', () => triggerProfileUpload(emp, overlay));
-        } else {
-          avatarWrap.addEventListener('click', () => triggerProfileUpload(emp, overlay));
         }
+        overlay.querySelector('.emp-panel-avatar, #panel-avatar-wrap')?.addEventListener('click', () => triggerProfileUpload(emp, overlay));
       });
 
       /* tabs */
@@ -595,47 +547,240 @@ window.BromarPages.employees = {
           overlay.querySelectorAll('.emp-tab-content').forEach(t => t.classList.remove('active'));
           tab.classList.add('active');
           overlay.querySelector(`#tab-${tab.dataset.tab}`)?.classList.add('active');
+          if (tab.dataset.tab === 'certs')      loadCerts(emp, overlay);
           if (tab.dataset.tab === 'history')    loadHistory(emp.full_name, overlay);
           if (tab.dataset.tab === 'inductions') loadInductions(emp.full_name, overlay);
           if (tab.dataset.tab === 'skills')     loadSkills(emp.full_name, overlay);
         });
       });
 
-      /* cert expand/collapse in edit */
-      overlay.querySelectorAll('.cert-edit-header').forEach(header => {
-        header.addEventListener('click', e => {
-          if (e.target.classList.contains('cert-add-btn') || e.target.classList.contains('cert-remove-btn')) return;
-          header.nextElementSibling.classList.toggle('hidden');
-        });
-        header.querySelector('.cert-add-btn')?.addEventListener('click', e => {
-          e.stopPropagation();
-          const body = header.nextElementSibling;
-          const cb = body.querySelector('input[type=checkbox]');
-          if (cb) cb.checked = true;
-          body.classList.remove('hidden');
-        });
-        header.querySelector('.cert-remove-btn')?.addEventListener('click', e => {
-          e.stopPropagation();
-          const body = header.nextElementSibling;
-          const cb = body.querySelector('input[type=checkbox]');
-          if (cb) cb.checked = false;
-          body.querySelectorAll('input[type=date],input[type=text]').forEach(i => i.value = '');
-          body.classList.add('hidden');
-        });
-      });
-
-      /* cert image upload buttons */
-      overlay.querySelectorAll('.cert-img-btn').forEach(btn => {
-        btn.addEventListener('click', e => { e.stopPropagation(); openCertImagePanel(emp, btn.dataset.certKey, btn.dataset.certLabel, overlay, btn); });
-      });
-
       overlay.querySelector('#edit-cancel-btn').addEventListener('click', () => overlay.remove());
       overlay.querySelector('#edit-save-btn').addEventListener('click', () => saveEdit(emp, overlay, true));
       overlay.querySelector('#former-btn')?.addEventListener('click', () => { if (inactive) reactivate(emp, overlay); else markFormer(emp, overlay); });
-      overlay.querySelector('#generate-pdf-btn')?.addEventListener('click', () => openPdfModal(emp, overlay));
+
+      /* load certs tab immediately */
+      loadCerts(emp, overlay);
     }
 
-    /* ── PROFILE PHOTO UPLOAD ── */
+    /* ── CERTS TAB ── */
+    async function loadCerts(emp, overlay) {
+      const tab = overlay.querySelector('#tab-certs');
+      try {
+        const empCerts = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=*`);
+        renderCertsTab(emp, empCerts, tab, overlay);
+      } catch { tab.innerHTML = `<div class="emp-empty">Failed to load certifications.</div>`; }
+    }
+
+    function renderCertsTab(emp, empCerts, tab, overlay) {
+      const groups = groupedCertTypes();
+      const pdfBtn = `<div style="margin-bottom:1rem;display:flex;justify-content:flex-end">
+        <button class="btn-primary" id="generate-pdf-btn" style="padding:0.6rem 1.2rem;font-size:0.86rem">📄 Licences &amp; Accreditations PDF</button>
+      </div>`;
+
+      let groupsHTML = '';
+      Object.entries(groups).forEach(([groupName, cts]) => {
+        const groupCerts = empCerts.filter(ec => cts.find(ct => ct.id === ec.cert_type_id));
+        if (!groupCerts.length) return;
+        const rows = groupCerts.map(ec => {
+          const ct = certTypes.find(c => c.id === ec.cert_type_id);
+          if (!ct) return '';
+          const s = expiryStatus(ec.expiry_date);
+          const dot = s ? `dot-${s}` : 'dot-valid';
+          return `
+            <div class="cert-row">
+              <div class="cert-label-wrap">
+                <div class="cert-label">${ct.label}</div>
+                ${ec.licence_number ? `<div class="cert-licence-num">${ec.licence_number}</div>` : ''}
+                ${ec.notes ? `<div class="cert-notes-text">${ec.notes}</div>` : ''}
+              </div>
+              <div class="cert-right">
+                ${ec.expiry_date ? `<span class="cert-expiry">${fmtDate(ec.expiry_date)}</span>` : `<span class="cert-expiry">No expiry</span>`}
+                <div class="cert-dot ${dot}"></div>
+                <button class="cert-img-btn" data-cert-id="${ec.id}" data-cert-label="${ct.label}" title="Upload images">📎</button>
+                <button class="cert-del-btn btn-sm" data-cert-id="${ec.id}" style="padding:0.15rem 0.5rem;font-size:0.72rem;color:#dc2626;border-color:rgba(220,38,38,0.3)">✕</button>
+              </div>
+            </div>`;
+        }).join('');
+        groupsHTML += `<div class="cert-group"><div class="cert-group-title">${groupName}</div><div class="cert-rows">${rows}</div></div>`;
+      });
+
+      if (!groupsHTML) groupsHTML = `<p style="color:var(--text-secondary);padding:1rem 0">No certifications recorded. Use + Add Certification below.</p>`;
+
+      /* add cert form — select from cert types not yet held */
+      const heldTypeIds = empCerts.map(ec => ec.cert_type_id);
+      const available = certTypes.filter(ct => ct.is_active && !heldTypeIds.includes(ct.id));
+      const certOptions = available.map(ct => `<option value="${ct.id}" data-has-expiry="${ct.has_expiry}" data-has-notes="${ct.has_notes}" data-has-licence="${ct.has_licence_number}">${ct.group_name} — ${ct.label}</option>`).join('');
+
+      tab.innerHTML = `
+        ${pdfBtn}
+        ${groupsHTML}
+        <button class="btn-sm" id="cert-add-toggle" style="margin-bottom:0.75rem">+ Add Certification</button>
+        <div class="cert-add-form" id="cert-add-form">
+          <div class="cert-add-grid">
+            <div class="edit-field full">
+              <label>Certification Type <span style="color:#dc2626">*</span></label>
+              <select class="edit-input" id="cert-type-select">
+                <option value="">— Select —</option>
+                ${certOptions}
+              </select>
+            </div>
+            <div class="edit-field" id="cert-licence-wrap" style="display:none">
+              <label>Licence / Registration Number</label>
+              <input class="edit-input" id="cert-licence" type="text">
+            </div>
+            <div class="edit-field" id="cert-expiry-wrap" style="display:none">
+              <label>Expiry Date</label>
+              <input class="edit-input" id="cert-expiry" type="date">
+            </div>
+            <div class="edit-field full" id="cert-notes-wrap" style="display:none">
+              <label>Notes</label>
+              <input class="edit-input" id="cert-notes" type="text" placeholder="e.g. class, conditions…">
+            </div>
+          </div>
+          <div id="cert-err" style="color:#dc2626;font-size:0.8rem;margin-top:0.5rem;display:none"></div>
+          <div class="edit-actions" style="margin-top:0.85rem">
+            <button class="btn-sm" id="cert-cancel">Cancel</button>
+            <button class="btn-primary" id="cert-save" style="padding:0.6rem 1.2rem;font-size:0.86rem">Save Certification</button>
+          </div>
+        </div>`;
+
+      /* show/hide fields based on cert type selection */
+      tab.querySelector('#cert-type-select').addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        tab.querySelector('#cert-expiry-wrap').style.display  = opt.dataset.hasExpiry  === 'true' ? '' : 'none';
+        tab.querySelector('#cert-notes-wrap').style.display   = opt.dataset.hasNotes   === 'true' ? '' : 'none';
+        tab.querySelector('#cert-licence-wrap').style.display = opt.dataset.hasLicence === 'true' ? '' : 'none';
+      });
+
+      tab.querySelector('#cert-add-toggle').addEventListener('click', () => tab.querySelector('#cert-add-form').classList.toggle('open'));
+      tab.querySelector('#cert-cancel').addEventListener('click', () => tab.querySelector('#cert-add-form').classList.remove('open'));
+
+      tab.querySelector('#cert-save').addEventListener('click', async () => {
+        const btn = tab.querySelector('#cert-save');
+        const errEl = tab.querySelector('#cert-err');
+        const typeId = tab.querySelector('#cert-type-select').value;
+        if (!typeId) { errEl.textContent = 'Select a certification type.'; errEl.style.display = 'block'; return; }
+        btn.textContent = 'Saving…'; btn.disabled = true;
+        try {
+          await sbPost('employee_certs', {
+            employee_name:  emp.full_name,
+            cert_type_id:   typeId,
+            licence_number: tab.querySelector('#cert-licence').value.trim() || null,
+            expiry_date:    tab.querySelector('#cert-expiry').value || null,
+            notes:          tab.querySelector('#cert-notes').value.trim() || null,
+          });
+          const empCerts = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=*`);
+          renderCertsTab(emp, empCerts, tab, overlay);
+          bindCertTabEvents(emp, tab, overlay);
+        } catch (err) { errEl.textContent = 'Failed: ' + err.message; errEl.style.display = 'block'; btn.textContent = 'Save Certification'; btn.disabled = false; }
+      });
+
+      bindCertTabEvents(emp, tab, overlay);
+    }
+
+    function bindCertTabEvents(emp, tab, overlay) {
+      /* image upload buttons */
+      tab.querySelectorAll('.cert-img-btn').forEach(btn => {
+        btn.addEventListener('click', e => { e.stopPropagation(); openCertImagePanel(emp, btn.dataset.certId, btn.dataset.certLabel, tab, btn); });
+      });
+      /* delete cert buttons */
+      tab.querySelectorAll('.cert-del-btn').forEach(btn => {
+        btn.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (!confirm('Remove this certification?')) return;
+          try {
+            await sbDelete('employee_certs', { id: btn.dataset.certId });
+            const empCerts = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=*`);
+            renderCertsTab(emp, empCerts, tab, overlay);
+            bindCertTabEvents(emp, tab, overlay);
+          } catch (err) { alert('Failed: ' + err.message); }
+        });
+      });
+      /* pdf button */
+      tab.querySelector('#generate-pdf-btn')?.addEventListener('click', async () => {
+        const empCerts = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=*`);
+        openPdfModal(emp, empCerts, overlay);
+      });
+    }
+
+    /* ── CERT IMAGE PANEL ── */
+    function openCertImagePanel(emp, certId, certLabel, tab, triggerBtn) {
+      tab.querySelectorAll('.img-upload-panel').forEach(p => p.remove());
+      const panel = document.createElement('div');
+      panel.className = 'img-upload-panel';
+      panel.innerHTML = `
+        <h4>📎 ${certLabel} — Images</h4>
+        <div class="img-slots">
+          <div class="img-slot" id="slot-front-${certId}">
+            <label>Front</label>
+            <div class="img-placeholder">Click to upload</div>
+            <div class="img-slot-actions">
+              <label class="img-upload-btn">Upload<input type="file" accept="image/*" style="display:none" data-side="front"></label>
+              <button class="img-del-btn" data-side="front" style="display:none">Delete</button>
+            </div>
+          </div>
+          <div class="img-slot" id="slot-back-${certId}">
+            <label>Back</label>
+            <div class="img-placeholder">Click to upload</div>
+            <div class="img-slot-actions">
+              <label class="img-upload-btn">Upload<input type="file" accept="image/*" style="display:none" data-side="back"></label>
+              <button class="img-del-btn" data-side="back" style="display:none">Delete</button>
+            </div>
+          </div>
+        </div>`;
+      triggerBtn.closest('.cert-row').insertAdjacentElement('afterend', panel);
+
+      async function loadSlot(side) {
+        const url = certImageUrl(emp.full_name, certId, side);
+        const exists = await imgExists(url);
+        const slotEl = panel.querySelector(`#slot-${side}-${certId}`);
+        const delBtn = slotEl.querySelector('.img-del-btn');
+        if (exists) {
+          const img = document.createElement('img');
+          img.className = 'img-preview';
+          img.src = url + '?t=' + Date.now();
+          slotEl.querySelector('.img-placeholder').replaceWith(img);
+          delBtn.style.display = 'block';
+          triggerBtn.classList.add('has-img');
+        }
+      }
+      loadSlot('front'); loadSlot('back');
+
+      panel.querySelectorAll('input[type=file]').forEach(input => {
+        input.addEventListener('change', async () => {
+          const file = input.files[0]; if (!file) return;
+          const side = input.dataset.side;
+          try {
+            await uploadToStorage(`${safePath(emp.full_name)}/certs/${certId}/${side}`, file);
+            const url = certImageUrl(emp.full_name, certId, side) + '?t=' + Date.now();
+            const slotEl = panel.querySelector(`#slot-${side}-${certId}`);
+            const old = slotEl.querySelector('.img-preview,.img-placeholder');
+            const img = document.createElement('img');
+            img.className = 'img-preview'; img.src = url;
+            if (old) old.replaceWith(img); else slotEl.prepend(img);
+            slotEl.querySelector('.img-del-btn').style.display = 'block';
+            triggerBtn.classList.add('has-img');
+          } catch (err) { alert('Upload failed: ' + err.message); }
+        });
+      });
+
+      panel.querySelectorAll('.img-del-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this image?')) return;
+          const side = btn.dataset.side;
+          await deleteFromStorage(`${safePath(emp.full_name)}/certs/${certId}/${side}`);
+          const slotEl = panel.querySelector(`#slot-${side}-${certId}`);
+          const img = slotEl.querySelector('.img-preview');
+          if (img) { const ph = document.createElement('div'); ph.className = 'img-placeholder'; ph.textContent = 'Click to upload'; img.replaceWith(ph); }
+          btn.style.display = 'none';
+          const fExists = await imgExists(certImageUrl(emp.full_name, certId, 'front'));
+          const bExists = await imgExists(certImageUrl(emp.full_name, certId, 'back'));
+          if (!fExists && !bExists) triggerBtn.classList.remove('has-img');
+        });
+      });
+    }
+
+    /* ── PROFILE PHOTO ── */
     function triggerProfileUpload(emp, overlay) {
       const input = document.createElement('input');
       input.type = 'file'; input.accept = 'image/*';
@@ -643,14 +788,11 @@ window.BromarPages.employees = {
         const file = input.files[0]; if (!file) return;
         try {
           await uploadToStorage(`${safePath(emp.full_name)}/profile/photo`, file);
-          /* refresh avatar in panel */
           const newUrl = profilePhotoUrl(emp.full_name) + '?t=' + Date.now();
           const existing = overlay.querySelector('.emp-panel-avatar, #panel-avatar-wrap');
           if (existing) {
             const img = document.createElement('img');
-            img.className = 'emp-panel-avatar';
-            img.src = newUrl;
-            img.title = 'Click to change photo';
+            img.className = 'emp-panel-avatar'; img.src = newUrl; img.title = 'Click to change photo';
             existing.replaceWith(img);
             img.addEventListener('click', () => triggerProfileUpload(emp, overlay));
           }
@@ -660,148 +802,9 @@ window.BromarPages.employees = {
       input.click();
     }
 
-    /* ── CERT IMAGE PANEL ── */
-    function openCertImagePanel(emp, certKey, certLabel, overlay, triggerBtn) {
-      /* remove any existing panel */
-      overlay.querySelectorAll('.img-upload-panel').forEach(p => p.remove());
-
-      const panel = document.createElement('div');
-      panel.className = 'img-upload-panel';
-      panel.innerHTML = `
-        <h4>📎 ${certLabel} — Images</h4>
-        <div class="img-slots">
-          <div class="img-slot" id="slot-front">
-            <label>Front</label>
-            <div class="img-placeholder" id="front-placeholder">Click to upload</div>
-            <div class="img-slot-actions">
-              <label class="img-upload-btn">Upload<input type="file" accept="image/*" style="display:none" data-side="front"></label>
-              <button class="img-del-btn" data-side="front" style="display:none">Delete</button>
-            </div>
-          </div>
-          <div class="img-slot" id="slot-back">
-            <label>Back</label>
-            <div class="img-placeholder" id="back-placeholder">Click to upload</div>
-            <div class="img-slot-actions">
-              <label class="img-upload-btn">Upload<input type="file" accept="image/*" style="display:none" data-side="back"></label>
-              <button class="img-del-btn" data-side="back" style="display:none">Delete</button>
-            </div>
-          </div>
-        </div>`;
-
-      /* insert after the cert row containing the trigger button */
-      const certRow = triggerBtn.closest('.cert-row');
-      certRow.insertAdjacentElement('afterend', panel);
-
-      async function loadSlot(side) {
-        const url = certImageUrl(emp.full_name, certKey, side);
-        const exists = await imgExists(url);
-        const placeholder = panel.querySelector(`#${side}-placeholder`);
-        const delBtn = panel.querySelector(`.img-del-btn[data-side="${side}"]`);
-        if (exists) {
-          const img = document.createElement('img');
-          img.className = 'img-preview';
-          img.src = url + '?t=' + Date.now();
-          placeholder.replaceWith(img);
-          delBtn.style.display = 'block';
-          triggerBtn.classList.add('has-img');
-        }
-      }
-      loadSlot('front'); loadSlot('back');
-
-      /* upload handlers */
-      panel.querySelectorAll('input[type=file]').forEach(input => {
-        input.addEventListener('change', async () => {
-          const file = input.files[0]; if (!file) return;
-          const side = input.dataset.side;
-          try {
-            await uploadToStorage(`${safePath(emp.full_name)}/certs/${certKey}/${side}`, file);
-            /* reload slot */
-            const url = certImageUrl(emp.full_name, certKey, side) + '?t=' + Date.now();
-            const slot = panel.querySelector(`#slot-${side}`);
-            const old = slot.querySelector('.img-preview,.img-placeholder');
-            const img = document.createElement('img');
-            img.className = 'img-preview'; img.src = url;
-            if (old) old.replaceWith(img); else slot.prepend(img);
-            slot.querySelector('.img-del-btn').style.display = 'block';
-            triggerBtn.classList.add('has-img');
-          } catch (err) { alert('Upload failed: ' + err.message); }
-        });
-      });
-
-      /* delete handlers */
-      panel.querySelectorAll('.img-del-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Delete this image?')) return;
-          const side = btn.dataset.side;
-          await deleteFromStorage(`${safePath(emp.full_name)}/certs/${certKey}/${side}`);
-          const slot = panel.querySelector(`#slot-${side}`);
-          const img = slot.querySelector('.img-preview');
-          if (img) { const ph = document.createElement('div'); ph.className='img-placeholder'; ph.textContent='Click to upload'; img.replaceWith(ph); }
-          btn.style.display = 'none';
-          /* check if any images remain */
-          const frontExists = await imgExists(certImageUrl(emp.full_name, certKey, 'front'));
-          const backExists  = await imgExists(certImageUrl(emp.full_name, certKey, 'back'));
-          if (!frontExists && !backExists) triggerBtn.classList.remove('has-img');
-        });
-      });
-    }
-
-    /* ── CERT VIEW ── */
-    function buildCertView(emp) {
-      const groups = CERT_GROUPS.map(group => {
-        const rows = group.certs.map(cert => {
-          const imgBtn = `<button class="cert-img-btn" data-cert-key="${cert.key}" data-cert-label="${cert.label}" title="Upload images">📎</button>`;
-          if (cert.isText && !cert.expiryOnly) {
-            const val = emp[cert.key]; if (!val) return '';
-            const s = expiryStatus(cert.expiry ? emp[cert.expiry] : null);
-            return `<div class="cert-row"><span class="cert-label">${cert.label}</span><div class="cert-right"><span class="cert-expiry">${val}</span>${cert.expiry&&emp[cert.expiry]?`<span class="cert-expiry">${fmtDate(emp[cert.expiry])}</span>`:''}<div class="cert-dot ${s?`dot-${s}`:'dot-none'}"></div>${imgBtn}</div></div>`;
-          }
-          if (cert.expiryOnly) {
-            const val = emp[cert.expiry]; if (!val) return '';
-            const s = expiryStatus(val);
-            return `<div class="cert-row"><span class="cert-label">${cert.label}</span><div class="cert-right"><span class="cert-expiry">${fmtDate(val)}</span><div class="cert-dot dot-${s}"></div>${imgBtn}</div></div>`;
-          }
-          /* show all certs with + button, dim if not held */
-          const held = !!emp[cert.key];
-          const expVal = cert.expiry ? emp[cert.expiry] : null;
-          const s = expiryStatus(expVal);
-          const dot = held ? (s ? `dot-${s}` : 'dot-valid') : 'dot-none';
-          const note = cert.notes && emp[cert.notes] ? `<div class="cert-notes">${emp[cert.notes]}</div>` : '';
-          const style = held ? '' : 'opacity:0.4';
-          return `<div class="cert-row" style="${style}"><div style="flex:1"><div class="cert-label">${cert.label}${held?'':' <span style="font-size:0.72rem;color:var(--text-secondary)">(not held)</span>'}</div>${note}</div><div class="cert-right">${held?`<span class="cert-expiry">${expVal?fmtDate(expVal):'No expiry'}</span>`:''}<div class="cert-dot ${dot}"></div>${imgBtn}</div></div>`;
-        }).filter(Boolean).join('');
-        if (!rows) return '';
-        return `<div class="cert-group"><div class="cert-group-title">${group.label}</div><div class="cert-rows">${rows}</div></div>`;
-      }).filter(Boolean).join('');
-      const pdfBtn = `<div style="margin-bottom:1rem;display:flex;justify-content:flex-end"><button class="btn-primary" id="generate-pdf-btn" style="padding:0.6rem 1.2rem;font-size:0.86rem">📄 Licences &amp; Accreditations PDF</button></div>`;
-      return pdfBtn + (groups || `<p style="color:var(--text-secondary);padding:1rem 0">No certifications recorded.</p>`);
-    }
-
     /* ── EDIT FORM ── */
     function buildEditForm(emp) {
       const inactive = emp.is_active === false;
-      let certHTML = '';
-      for (const [sectionLabel, keys] of Object.entries(CERT_SECTIONS)) {
-        certHTML += `<div class="edit-section-title">${sectionLabel}</div>`;
-        keys.forEach(key => {
-          const f = ALL_CERT_FIELDS.find(x => x.key === key); if (!f) return;
-          if (f.type === 'bool') {
-            const held = !!emp[f.key];
-            certHTML += `
-              <div class="cert-edit-item">
-                <div class="cert-edit-header"><span>${f.label}</span>${held?`<span class="cert-held-badge">Held</span>`:`<span class="cert-add-btn">+ Add</span>`}</div>
-                <div class="cert-edit-body${held?'':' hidden'}">
-                  <input type="checkbox" data-field="${f.key}" style="display:none" ${held?'checked':''}>
-                  ${f.expiry?`<div class="cert-edit-row"><label>Expiry Date</label><input class="edit-input" data-field="${f.expiry}" type="date" value="${emp[f.expiry]||''}"></div>`:''}
-                  ${f.notes ?`<div class="cert-edit-row"><label>Notes</label><input class="edit-input" data-field="${f.notes}" type="text" value="${emp[f.notes]||''}" placeholder="Notes…"></div>`:''}
-                  ${held?`<button class="cert-remove-btn">Remove certification</button>`:''}
-                </div>
-              </div>`;
-          } else {
-            certHTML += `<div class="edit-field" style="margin-bottom:0.5rem"><label>${f.label}</label><input class="edit-input" data-field="${f.key}" type="${f.type==='date'?'date':'text'}" value="${emp[f.key]||''}"></div>`;
-          }
-        });
-      }
       return `
         <div class="edit-grid">
           <div class="edit-section-title">Contact Details</div>
@@ -816,7 +819,6 @@ window.BromarPages.employees = {
           </div>
           <div class="edit-field"><label>Date of Birth</label><input class="edit-input" data-field="dob" type="month" value="${emp.dob||''}"></div>
         </div>
-        <div style="margin-top:1.25rem">${certHTML}</div>
         <div class="edit-actions">
           <button class="btn-danger" id="former-btn">${inactive?'Reactivate Employee':'Mark as Former Employee'}</button>
           <button class="btn-sm" id="edit-cancel-btn">Close</button>
@@ -830,32 +832,22 @@ window.BromarPages.employees = {
       btn.textContent = 'Saving…'; btn.disabled = true;
       const updates = {}, histP = [];
       overlay.querySelectorAll('[data-field]').forEach(input => {
-        if (input.type === 'hidden') return;
         const field = input.dataset.field;
-        let newVal, oldVal;
-        if (input.type === 'checkbox') { newVal = input.checked; oldVal = !!emp[field]; }
-        else { newVal = input.value.trim() || null; oldVal = emp[field] || null; }
-        const changed = input.type==='checkbox' ? (!!newVal!==!!oldVal) : (String(newVal??'')!==String(oldVal??''));
-        if (changed) { updates[field] = newVal; histP.push(logHistory(emp.full_name, field, oldVal, newVal)); }
+        const newVal = input.value.trim() || null;
+        const oldVal = emp[field] || null;
+        if (String(newVal??'') !== String(oldVal??'')) {
+          updates[field] = newVal;
+          histP.push(logHistory(emp.full_name, field, oldVal, newVal));
+        }
       });
-      overlay.querySelectorAll('.cert-edit-body').forEach(body => {
-        const cb = body.querySelector('input[type=checkbox]'); if (!cb) return;
-        const field = cb.dataset.field;
-        const newVal = cb.checked, oldVal = !!emp[field];
-        if (newVal !== oldVal) { updates[field] = newVal; histP.push(logHistory(emp.full_name, field, oldVal, newVal)); }
-      });
-      if (!Object.keys(updates).length) { if (closeAfter) { overlay.remove(); return; } btn.textContent = 'Save & Close'; btn.disabled = false; return; }
+      if (!Object.keys(updates).length) { if (closeAfter) overlay.remove(); else { btn.textContent = 'Save & Close'; btn.disabled = false; } return; }
       try {
         await sbPatch('employees', { full_name: emp.full_name }, updates);
         await Promise.all(histP);
         Object.assign(emp, updates);
         const idx = allEmployees.findIndex(e => e.full_name === emp.full_name);
         if (idx >= 0) allEmployees[idx] = emp;
-        renderStats(); renderGrid();
-        overlay.querySelector('#tab-certs').innerHTML = buildCertView(emp);
-        /* re-bind pdf and img buttons */
-        overlay.querySelectorAll('.cert-img-btn').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openCertImagePanel(emp, b.dataset.certKey, b.dataset.certLabel, overlay, b); }));
-        overlay.querySelector('#generate-pdf-btn')?.addEventListener('click', () => openPdfModal(emp, overlay));
+        renderGrid();
         if (closeAfter) { overlay.remove(); return; }
         btn.textContent = 'Save & Close'; btn.disabled = false;
       } catch (err) { btn.textContent = 'Save & Close'; btn.disabled = false; alert('Save failed: ' + err.message); }
@@ -871,7 +863,7 @@ window.BromarPages.employees = {
         emp.is_active = false; emp.departed_at = today;
         const idx = allEmployees.findIndex(e => e.full_name === emp.full_name);
         if (idx >= 0) allEmployees[idx] = emp;
-        renderStats(); renderGrid(); overlay.remove();
+        renderGrid(); overlay.remove();
       } catch (err) { alert('Failed: ' + err.message); }
     }
     async function reactivate(emp, overlay) {
@@ -882,7 +874,7 @@ window.BromarPages.employees = {
         emp.is_active = true; emp.departed_at = null;
         const idx = allEmployees.findIndex(e => e.full_name === emp.full_name);
         if (idx >= 0) allEmployees[idx] = emp;
-        renderStats(); renderGrid(); overlay.remove();
+        renderGrid(); overlay.remove();
       } catch (err) { alert('Failed: ' + err.message); }
     }
 
@@ -901,16 +893,14 @@ window.BromarPages.employees = {
     /* ── INDUCTIONS ── */
     async function loadInductions(name, overlay) {
       const tab = overlay.querySelector('#tab-inductions');
-      try {
-        const rows = await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`);
-        renderInductionsTab(name, rows, tab);
-      } catch { tab.innerHTML = `<div class="emp-empty">Failed to load inductions.</div>`; }
+      try { const rows = await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`); renderInductionsTab(name, rows, tab); }
+      catch { tab.innerHTML = `<div class="emp-empty">Failed to load inductions.</div>`; }
     }
     function renderInductionsTab(name, rows, tab) {
       const listHTML = rows.length ? rows.map(r => {
         const s = expiryStatus(r.expiry_date);
         const dot = s ? `dot-${s}` : 'dot-none';
-        return `<div class="ind-row" data-id="${r.id}"><div class="ind-main"><div class="ind-type">${r.induction_type}</div><div class="ind-meta">${r.site_or_client?`📍 ${r.site_or_client}`:''}${r.document_name?` · ${r.document_name}`:''}${r.notes?` · <em>${r.notes}</em>`:''}</div><div class="ind-meta">Completed: ${fmtDate(r.completed_date)}</div></div>${r.expiry_date?`<span class="ind-expiry">${fmtDate(r.expiry_date)}</span><div class="ind-dot ${dot}"></div>`:`<div class="ind-dot dot-none"></div>`}<button class="ind-del" data-id="${r.id}" title="Delete">✕</button></div>`;
+        return `<div class="ind-row"><div class="ind-main"><div class="ind-type">${r.induction_type}</div><div class="ind-meta">${r.site_or_client?`📍 ${r.site_or_client}`:''}${r.document_name?` · ${r.document_name}`:''}${r.notes?` · <em>${r.notes}</em>`:''}</div><div class="ind-meta">Completed: ${fmtDate(r.completed_date)}</div></div>${r.expiry_date?`<span class="ind-expiry">${fmtDate(r.expiry_date)}</span><div class="ind-dot ${dot}"></div>`:`<div class="ind-dot dot-none"></div>`}<button class="ind-del" data-id="${r.id}">✕</button></div>`;
       }).join('') : `<div class="emp-empty" style="padding:1rem">No inductions recorded yet.</div>`;
       tab.innerHTML = `
         <div class="ind-list">${listHTML}</div>
@@ -934,24 +924,22 @@ window.BromarPages.employees = {
       tab.querySelector('#ind-add-toggle').addEventListener('click', () => tab.querySelector('#ind-add-form').classList.toggle('open'));
       tab.querySelector('#ind-cancel').addEventListener('click', () => tab.querySelector('#ind-add-form').classList.remove('open'));
       tab.querySelector('#ind-save').addEventListener('click', async () => {
-        const btn = tab.querySelector('#ind-save');
-        const errEl = tab.querySelector('#ind-err');
-        const type = tab.querySelector('#ind-type').value.trim();
-        const date = tab.querySelector('#ind-date').value;
-        if (!type||!date) { errEl.textContent='Induction type and completed date are required.'; errEl.style.display='block'; return; }
-        btn.textContent='Saving…'; btn.disabled=true;
+        const btn=tab.querySelector('#ind-save'); const errEl=tab.querySelector('#ind-err');
+        const type=tab.querySelector('#ind-type').value.trim(); const date=tab.querySelector('#ind-date').value;
+        if (!type||!date){errEl.textContent='Type and date required.';errEl.style.display='block';return;}
+        btn.textContent='Saving…';btn.disabled=true;
         try {
-          await sbPost('inductions', { employee_name:name, induction_type:type, site_or_client:tab.querySelector('#ind-site').value.trim()||null, document_name:tab.querySelector('#ind-doc').value.trim()||null, completed_date:date, expiry_date:tab.querySelector('#ind-expiry').value||null, notes:tab.querySelector('#ind-notes').value.trim()||null });
-          if (!inductionTypeSuggestions.includes(type)) { inductionTypeSuggestions.push(type); inductionTypeSuggestions.sort(); }
-          const rows = await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`);
-          renderInductionsTab(name, rows, tab);
-        } catch (err) { errEl.textContent='Failed: '+err.message; errEl.style.display='block'; btn.textContent='Save Induction'; btn.disabled=false; }
+          await sbPost('inductions',{employee_name:name,induction_type:type,site_or_client:tab.querySelector('#ind-site').value.trim()||null,document_name:tab.querySelector('#ind-doc').value.trim()||null,completed_date:date,expiry_date:tab.querySelector('#ind-expiry').value||null,notes:tab.querySelector('#ind-notes').value.trim()||null});
+          if (!inductionTypeSuggestions.includes(type)){inductionTypeSuggestions.push(type);inductionTypeSuggestions.sort();}
+          const rows=await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`);
+          renderInductionsTab(name,rows,tab);
+        } catch(err){errEl.textContent='Failed: '+err.message;errEl.style.display='block';btn.textContent='Save Induction';btn.disabled=false;}
       });
-      tab.querySelectorAll('.ind-del').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Delete this induction record?')) return;
-          try { await sbDelete('inductions',{id:btn.dataset.id}); const rows=await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`); renderInductionsTab(name,rows,tab); }
-          catch (err) { alert('Failed: '+err.message); }
+      tab.querySelectorAll('.ind-del').forEach(btn=>{
+        btn.addEventListener('click',async()=>{
+          if(!confirm('Delete?'))return;
+          try{await sbDelete('inductions',{id:btn.dataset.id});const rows=await sbFetch(`inductions?employee_name=eq.${encodeURIComponent(name)}&order=completed_date.desc`);renderInductionsTab(name,rows,tab);}
+          catch(err){alert('Failed: '+err.message);}
         });
       });
     }
@@ -959,19 +947,17 @@ window.BromarPages.employees = {
     /* ── SKILLS ── */
     async function loadSkills(name, overlay) {
       const tab = overlay.querySelector('#tab-skills');
-      try {
-        const rows = await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);
-        renderSkillsTab(name, rows, tab);
-      } catch { tab.innerHTML = `<div class="emp-empty">Failed to load skills.</div>`; }
+      try { const rows=await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`); renderSkillsTab(name,rows,tab); }
+      catch { tab.innerHTML=`<div class="emp-empty">Failed to load skills.</div>`; }
     }
     function renderSkillsTab(name, rows, tab) {
-      const listHTML = rows.length ? rows.map(r=>`<div class="skill-row"><div class="skill-main"><div class="skill-name">${r.skill_name}</div>${r.notes?`<div class="skill-notes">${r.notes}</div>`:''}</div><button class="skill-del" data-id="${r.id}" title="Delete">✕</button></div>`).join('') : `<div class="emp-empty" style="padding:1rem">No skills recorded yet.</div>`;
-      tab.innerHTML = `
+      const listHTML = rows.length ? rows.map(r=>`<div class="skill-row"><div class="skill-main"><div class="skill-name">${r.skill_name}</div>${r.notes?`<div class="skill-notes">${r.notes}</div>`:''}</div><button class="skill-del" data-id="${r.id}">✕</button></div>`).join('') : `<div class="emp-empty" style="padding:1rem">No skills recorded yet.</div>`;
+      tab.innerHTML=`
         <div class="skill-list">${listHTML}</div>
         <button class="btn-sm" id="skill-add-toggle" style="margin-bottom:0.75rem">+ Add Skill</button>
         <div class="add-form" id="skill-add-form">
           <div class="add-form-grid">
-            <div class="edit-field full"><label>Skill / Experience <span style="color:#dc2626">*</span></label><div class="ac-wrap"><input class="edit-input" id="skill-name" type="text" placeholder="e.g. Thermal Imaging…" autocomplete="off"></div></div>
+            <div class="edit-field full"><label>Skill <span style="color:#dc2626">*</span></label><div class="ac-wrap"><input class="edit-input" id="skill-name" type="text" placeholder="e.g. Thermal Imaging…" autocomplete="off"></div></div>
             <div class="edit-field full"><label>Notes</label><input class="edit-input" id="skill-notes" type="text" placeholder="Optional"></div>
           </div>
           <div id="skill-err" style="color:#dc2626;font-size:0.8rem;margin-top:0.5rem;display:none"></div>
@@ -980,38 +966,177 @@ window.BromarPages.employees = {
             <button class="btn-primary" id="skill-save" style="padding:0.6rem 1.2rem;font-size:0.86rem">Save Skill</button>
           </div>
         </div>`;
-      attachAutocomplete(tab.querySelector('#skill-name'), () => skillSuggestions);
-      tab.querySelector('#skill-add-toggle').addEventListener('click', () => tab.querySelector('#skill-add-form').classList.toggle('open'));
-      tab.querySelector('#skill-cancel').addEventListener('click', () => tab.querySelector('#skill-add-form').classList.remove('open'));
-      tab.querySelector('#skill-save').addEventListener('click', async () => {
-        const btn=tab.querySelector('#skill-save'); const errEl=tab.querySelector('#skill-err');
+      attachAutocomplete(tab.querySelector('#skill-name'),()=>skillSuggestions);
+      tab.querySelector('#skill-add-toggle').addEventListener('click',()=>tab.querySelector('#skill-add-form').classList.toggle('open'));
+      tab.querySelector('#skill-cancel').addEventListener('click',()=>tab.querySelector('#skill-add-form').classList.remove('open'));
+      tab.querySelector('#skill-save').addEventListener('click',async()=>{
+        const btn=tab.querySelector('#skill-save');const errEl=tab.querySelector('#skill-err');
         const sn=tab.querySelector('#skill-name').value.trim();
-        if (!sn){errEl.textContent='Skill name is required.';errEl.style.display='block';return;}
+        if(!sn){errEl.textContent='Skill name required.';errEl.style.display='block';return;}
         btn.textContent='Saving…';btn.disabled=true;
-        try {
+        try{
           await sbPost('employee_skills',{employee_name:name,skill_name:sn,notes:tab.querySelector('#skill-notes').value.trim()||null});
-          if (!skillSuggestions.includes(sn)){skillSuggestions.push(sn);skillSuggestions.sort();}
+          if(!skillSuggestions.includes(sn)){skillSuggestions.push(sn);skillSuggestions.sort();}
           const rows=await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);
           renderSkillsTab(name,rows,tab);
-        } catch(err){errEl.textContent='Failed: '+err.message;errEl.style.display='block';btn.textContent='Save Skill';btn.disabled=false;}
+        }catch(err){errEl.textContent='Failed: '+err.message;errEl.style.display='block';btn.textContent='Save Skill';btn.disabled=false;}
       });
       tab.querySelectorAll('.skill-del').forEach(btn=>{
         btn.addEventListener('click',async()=>{
-          if(!confirm('Remove this skill?'))return;
+          if(!confirm('Remove?'))return;
           try{await sbDelete('employee_skills',{id:btn.dataset.id});const rows=await sbFetch(`employee_skills?employee_name=eq.${encodeURIComponent(name)}&order=skill_name.asc`);renderSkillsTab(name,rows,tab);}
           catch(err){alert('Failed: '+err.message);}
         });
       });
     }
 
-    /* ── PDF MODAL ── */
-    function openPdfModal(emp, detailOverlay) {
-      const heldCerts = ALL_CERTS.filter(c => {
-        if (c.expiryOnly) return !!emp[c.expiry];
-        if (c.isText)     return !!emp[c.key];
-        return !!emp[c.key];
+    /* ── MANAGE CERT TYPES ── */
+    function openCertTypesManager() {
+      const overlay = document.createElement('div');
+      overlay.className = 'emp-overlay';
+      overlay.style.zIndex = '250';
+      overlay.innerHTML = `
+        <div class="emp-panel" style="max-width:680px">
+          <button class="emp-panel-close">✕</button>
+          <div class="emp-panel-name" style="font-size:1.2rem;margin-bottom:1.25rem">⚙ Manage Cert Types</div>
+          <div style="margin-bottom:1rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+            <button class="btn-sm" id="ct-filter-all" style="border-color:var(--accent);color:var(--accent)">All</button>
+            ${[...GROUP_ORDER].map(g=>`<button class="btn-sm ct-filter-group" data-group="${g}">${g}</button>`).join('')}
+          </div>
+          <div id="ct-list" style="margin-bottom:1.25rem"></div>
+          <div style="border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem">
+            <div class="edit-section-title" style="padding-top:0">Add New Cert Type</div>
+            <div class="cert-add-grid" style="margin-top:0.75rem">
+              <div class="edit-field">
+                <label>Label <span style="color:#dc2626">*</span></label>
+                <input class="edit-input" id="ct-new-label" type="text" placeholder="e.g. Rigging Licence">
+              </div>
+              <div class="edit-field">
+                <label>Group <span style="color:#dc2626">*</span></label>
+                <select class="edit-input" id="ct-new-group">
+                  ${GROUP_ORDER.map(g=>`<option value="${g}">${g}</option>`).join('')}
+                  <option value="__new__">+ New group…</option>
+                </select>
+              </div>
+              <div class="edit-field" id="ct-new-group-wrap" style="display:none;grid-column:1/-1">
+                <label>New Group Name</label>
+                <input class="edit-input" id="ct-new-group-name" type="text" placeholder="Group name">
+              </div>
+              <div class="edit-field" style="display:flex;flex-direction:row;align-items:center;gap:1rem;padding-top:1.25rem">
+                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;font-weight:600;color:var(--text-secondary);text-transform:none;letter-spacing:0">
+                  <input type="checkbox" id="ct-new-expiry" checked style="accent-color:var(--accent)"> Has Expiry
+                </label>
+                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;font-weight:600;color:var(--text-secondary);text-transform:none;letter-spacing:0">
+                  <input type="checkbox" id="ct-new-notes" style="accent-color:var(--accent)"> Has Notes
+                </label>
+                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;font-weight:600;color:var(--text-secondary);text-transform:none;letter-spacing:0">
+                  <input type="checkbox" id="ct-new-licence" style="accent-color:var(--accent)"> Licence Number
+                </label>
+              </div>
+            </div>
+            <div id="ct-err" style="color:#dc2626;font-size:0.8rem;margin-top:0.5rem;display:none"></div>
+            <div class="edit-actions" style="margin-top:0.85rem">
+              <button class="btn-primary" id="ct-save" style="padding:0.6rem 1.2rem;font-size:0.86rem">Add Cert Type</button>
+            </div>
+          </div>
+        </div>`;
+
+      document.body.appendChild(overlay);
+      overlay.querySelector('.emp-panel-close').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+      let activeFilter = 'all';
+      function renderCtList() {
+        const list = overlay.querySelector('#ct-list');
+        const filtered = activeFilter === 'all' ? certTypes : certTypes.filter(ct => ct.group_name === activeFilter);
+        const byGroup = {};
+        filtered.forEach(ct => { if (!byGroup[ct.group_name]) byGroup[ct.group_name] = []; byGroup[ct.group_name].push(ct); });
+        if (!filtered.length) { list.innerHTML = `<div class="emp-empty" style="padding:1rem">No cert types found.</div>`; return; }
+        list.innerHTML = Object.entries(byGroup).map(([group, cts]) => `
+          <div style="margin-bottom:1rem">
+            <div class="cert-group-title">${group}</div>
+            ${cts.map(ct => `
+              <div class="ct-row${ct.is_active?'':' ct-inactive'}">
+                <span class="ct-label">${ct.label}</span>
+                <div class="ct-flags">
+                  ${ct.has_expiry         ? `<span class="ct-flag">Expiry</span>`  : ''}
+                  ${ct.has_notes          ? `<span class="ct-flag">Notes</span>`   : ''}
+                  ${ct.has_licence_number ? `<span class="ct-flag">Licence #</span>` : ''}
+                </div>
+                <button class="btn-sm ct-toggle" data-id="${ct.id}" data-active="${ct.is_active}" style="font-size:0.72rem;padding:0.2rem 0.6rem">${ct.is_active?'Disable':'Enable'}</button>
+                <button class="ct-del" data-id="${ct.id}" title="Delete">🗑</button>
+              </div>`).join('')}
+          </div>`).join('');
+
+        list.querySelectorAll('.ct-toggle').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const newActive = btn.dataset.active !== 'true';
+            try {
+              await sbPatch('cert_types', { id: btn.dataset.id }, { is_active: newActive });
+              const ct = certTypes.find(c => c.id === btn.dataset.id);
+              if (ct) ct.is_active = newActive;
+              renderCtList();
+            } catch (err) { alert('Failed: ' + err.message); }
+          });
+        });
+        list.querySelectorAll('.ct-del').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Delete this cert type? This cannot be undone.')) return;
+            try {
+              await sbDelete('cert_types', { id: btn.dataset.id });
+              certTypes = certTypes.filter(c => c.id !== btn.dataset.id);
+              renderCtList();
+            } catch (err) { alert('Failed — cert type may be in use: ' + err.message); }
+          });
+        });
+      }
+
+      /* filter buttons */
+      overlay.querySelector('#ct-filter-all').addEventListener('click', () => { activeFilter = 'all'; renderCtList(); });
+      overlay.querySelectorAll('.ct-filter-group').forEach(btn => {
+        btn.addEventListener('click', () => { activeFilter = btn.dataset.group; renderCtList(); });
       });
 
+      /* new group toggle */
+      overlay.querySelector('#ct-new-group').addEventListener('change', function() {
+        overlay.querySelector('#ct-new-group-wrap').style.display = this.value === '__new__' ? '' : 'none';
+      });
+
+      /* save new cert type */
+      overlay.querySelector('#ct-save').addEventListener('click', async () => {
+        const btn = overlay.querySelector('#ct-save');
+        const errEl = overlay.querySelector('#ct-err');
+        const label = overlay.querySelector('#ct-new-label').value.trim();
+        let group = overlay.querySelector('#ct-new-group').value;
+        if (group === '__new__') group = overlay.querySelector('#ct-new-group-name').value.trim();
+        if (!label || !group) { errEl.textContent = 'Label and group are required.'; errEl.style.display = 'block'; return; }
+        btn.textContent = 'Adding…'; btn.disabled = true;
+        try {
+          const [newCt] = await sbPost('cert_types', {
+            label,
+            group_name:          group,
+            has_expiry:          overlay.querySelector('#ct-new-expiry').checked,
+            has_notes:           overlay.querySelector('#ct-new-notes').checked,
+            has_licence_number:  overlay.querySelector('#ct-new-licence').checked,
+            sort_order:          certTypes.filter(c => c.group_name === group).length * 10 + 10,
+            is_active:           true,
+          });
+          certTypes.push(newCt);
+          certTypes.sort((a,b) => a.group_name.localeCompare(b.group_name) || a.sort_order - b.sort_order);
+          overlay.querySelector('#ct-new-label').value = '';
+          errEl.style.display = 'none';
+          renderCtList();
+          btn.textContent = '✓ Added';
+          setTimeout(() => { btn.textContent = 'Add Cert Type'; btn.disabled = false; }, 1500);
+        } catch (err) { errEl.textContent = 'Failed: ' + err.message; errEl.style.display = 'block'; btn.textContent = 'Add Cert Type'; btn.disabled = false; }
+      });
+
+      renderCtList();
+    }
+
+    /* ── PDF MODAL ── */
+    function openPdfModal(emp, empCerts, detailOverlay) {
+      if (!empCerts.length) { alert('No certifications to include.'); return; }
       const pdfOverlay = document.createElement('div');
       pdfOverlay.className = 'emp-overlay';
       pdfOverlay.style.zIndex = '300';
@@ -1024,18 +1149,19 @@ window.BromarPages.employees = {
             <button class="pdf-side-btn active" data-side="front">Front only</button>
             <button class="pdf-side-btn" data-side="both">Front &amp; Back</button>
           </div>
-          <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.5rem">Select certifications to include:</div>
+          <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.5rem">Select certifications:</div>
           <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
             <button class="btn-sm" id="pdf-select-all" style="font-size:0.78rem;padding:0.3rem 0.75rem">Select All</button>
             <button class="btn-sm" id="pdf-clear-all" style="font-size:0.78rem;padding:0.3rem 0.75rem">Clear All</button>
           </div>
           <div class="pdf-cert-list">
-            ${heldCerts.length ? heldCerts.map(c => {
-              const expVal = c.expiry ? emp[c.expiry] : null;
-              const s = expiryStatus(expVal);
+            ${empCerts.map(ec => {
+              const ct = certTypes.find(c => c.id === ec.cert_type_id);
+              if (!ct) return '';
+              const s = expiryStatus(ec.expiry_date);
               const dot = s ? `<span style="width:7px;height:7px;border-radius:50%;background:${s==='expired'?'#dc2626':s==='expiring'?'#ca8a04':'#15803d'};display:inline-block;margin-right:0.35rem"></span>` : '';
-              return `<label class="pdf-cert-check"><input type="checkbox" value="${c.key}" checked>${dot}<span>${c.label}${expVal?` — ${fmtDate(expVal)}`:''}</span></label>`;
-            }).join('') : '<div class="emp-empty" style="padding:0.5rem">No held certifications found.</div>'}
+              return `<label class="pdf-cert-check"><input type="checkbox" value="${ec.id}" checked>${dot}<span>${ct.label}${ec.expiry_date?` — ${fmtDate(ec.expiry_date)}`:''}</span></label>`;
+            }).join('')}
           </div>
           <div id="pdf-err" style="color:#dc2626;font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>
           <div class="edit-actions">
@@ -1051,10 +1177,7 @@ window.BromarPages.employees = {
 
       let showSide = 'front';
       pdfOverlay.querySelectorAll('.pdf-side-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          showSide = btn.dataset.side;
-          pdfOverlay.querySelectorAll('.pdf-side-btn').forEach(b => b.classList.toggle('active', b === btn));
-        });
+        btn.addEventListener('click', () => { showSide = btn.dataset.side; pdfOverlay.querySelectorAll('.pdf-side-btn').forEach(b => b.classList.toggle('active', b === btn)); });
       });
       pdfOverlay.querySelector('#pdf-select-all').addEventListener('click', () => pdfOverlay.querySelectorAll('.pdf-cert-list input').forEach(cb => cb.checked = true));
       pdfOverlay.querySelector('#pdf-clear-all').addEventListener('click',  () => pdfOverlay.querySelectorAll('.pdf-cert-list input').forEach(cb => cb.checked = false));
@@ -1062,21 +1185,20 @@ window.BromarPages.employees = {
       pdfOverlay.querySelector('#pdf-generate').addEventListener('click', async () => {
         const btn = pdfOverlay.querySelector('#pdf-generate');
         const errEl = pdfOverlay.querySelector('#pdf-err');
-        const selected = [...pdfOverlay.querySelectorAll('.pdf-cert-list input:checked')].map(cb => cb.value);
-        if (!selected.length) { errEl.textContent = 'Select at least one certification.'; errEl.style.display='block'; return; }
+        const selectedIds = [...pdfOverlay.querySelectorAll('.pdf-cert-list input:checked')].map(cb => cb.value);
+        if (!selectedIds.length) { errEl.textContent = 'Select at least one certification.'; errEl.style.display = 'block'; return; }
         btn.textContent = 'Generating…'; btn.disabled = true;
         try {
-          await generatePdf(emp, selected, showSide);
+          const selectedCerts = empCerts.filter(ec => selectedIds.includes(ec.id));
+          await generatePdf(emp, selectedCerts, showSide);
           pdfOverlay.remove();
-        } catch (err) { errEl.textContent = 'PDF failed: ' + err.message; errEl.style.display='block'; btn.textContent='Generate PDF'; btn.disabled=false; }
+        } catch (err) { errEl.textContent = 'PDF failed: ' + err.message; errEl.style.display = 'block'; btn.textContent = 'Generate PDF'; btn.disabled = false; }
       });
     }
 
     /* ── PDF GENERATION ── */
-    async function generatePdf(emp, selectedKeys, showSide) {
-      /* jsPDF loaded via index.html CDN — check availability */
+    async function generatePdf(emp, selectedCerts, showSide) {
       if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
-        /* load on demand */
         await new Promise((res, rej) => {
           const s = document.createElement('script');
           s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
@@ -1087,259 +1209,140 @@ window.BromarPages.employees = {
       const { jsPDF } = window.jspdf || window;
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-      const PW = 210, PH = 297;
-      const ML = 14, MR = 14, MT = 14, MB = 28;
-      const CW = PW - ML - MR;
-      const ORANGE = [234, 88, 12];
-      const DARK   = [26, 26, 30];
-      const GREY   = [99, 99, 105];
-      const LGREY  = [230, 230, 235];
-      const WHITE  = [255, 255, 255];
+      const PW=210, PH=297, ML=14, MR=14, MT=14, MB=28;
+      const CW=PW-ML-MR;
+      const ORANGE=[234,88,12], DARK=[26,26,30], GREY=[99,99,105], LGREY=[230,230,235], WHITE=[255,255,255];
+      let y=MT;
 
-      let y = MT;
-
-      /* ── HEADER (every page) ── */
       async function drawHeader() {
-        /* orange bar */
         doc.setFillColor(...ORANGE);
-        doc.rect(0, 0, PW, 18, 'F');
-
-        /* logo */
+        doc.rect(0,0,PW,18,'F');
         try {
           const logoData = await loadImageAsDataUrl('assets/logo/bromar-logo-white.png');
-          if (logoData) doc.addImage(logoData, 'PNG', ML, 3, 52, 12);
-        } catch (_) {}
-
-        /* OPS label */
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(9);
-        doc.setTextColor(...WHITE);
-        doc.text('LICENCES & ACCREDITATIONS', PW - MR, 11, { align: 'right' });
-
-        y = 26;
+          if (logoData) doc.addImage(logoData,'PNG',ML,3,52,12);
+        } catch(_){}
+        doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...WHITE);
+        doc.text('LICENCES & ACCREDITATIONS', PW-MR, 11, { align:'right' });
+        y=26;
       }
 
-      /* ── EMPLOYEE SUMMARY ── */
       async function drawSummary() {
-        const CARD_H = 38;
-        /* background card */
-        doc.setFillColor(245, 245, 248);
-        doc.roundedRect(ML, y, CW, CARD_H, 3, 3, 'F');
-
-        /* profile photo */
-        let photoX = ML + 4;
+        const CARD_H=42;
+        doc.setFillColor(245,245,248);
+        doc.roundedRect(ML,y,CW,CARD_H,3,3,'F');
+        let photoX=ML+4;
         try {
           const photoData = await loadImageAsDataUrl(profilePhotoUrl(emp.full_name));
-          if (photoData) {
-            doc.addImage(photoData, 'JPEG', photoX, y + 4, 24, 24);
-            photoX += 28;
-          }
-        } catch (_) { photoX = ML + 4; }
-
-        /* employee details — left */
-        const tx = photoX + 4;
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(13);
-        doc.setTextColor(...DARK);
-        doc.text(emp.full_name, tx, y + 11);
-
-        if (emp.employee_type) {
-          doc.setFont('helvetica','normal');
-          doc.setFontSize(8);
-          doc.setTextColor(...ORANGE);
-          doc.text(emp.employee_type, tx, y + 17);
-        }
-
-        doc.setFont('helvetica','normal');
-        doc.setFontSize(8);
-        doc.setTextColor(...GREY);
-        let metaY = y + 23;
-        if (emp.mobile) { doc.text(`Ph: ${emp.mobile}`, tx, metaY); metaY += 5; }
+          if (photoData) { doc.addImage(photoData,'JPEG',photoX,y+4,26,26); photoX+=30; }
+        } catch(_){}
+        const tx=photoX+4;
+        doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...DARK);
+        doc.text(emp.full_name, tx, y+11);
+        if (emp.employee_type) { doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...ORANGE); doc.text(emp.employee_type, tx, y+17); }
+        doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GREY);
+        let metaY=y+23;
+        if (emp.mobile) { doc.text(`Ph: ${emp.mobile}`, tx, metaY); metaY+=5; }
         if (emp.email)  { doc.text(`Email: ${emp.email}`, tx, metaY); }
-
-        /* company details — right */
-        const rx = PW - MR - 2;
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(8);
-        doc.setTextColor(...DARK);
-        doc.text('Bromar Electrical Services', rx, y + 9, { align: 'right' });
-
-        doc.setFont('helvetica','normal');
-        doc.setFontSize(7);
-        doc.setTextColor(...GREY);
-        const companyLines = [
-          'REC 30340',
-          '12 Hanrahan Place',
-          'Westmeadows VIC 3049',
-          'admin@bromar.com.au',
-          'www.bromar.com.au',
-        ];
-        companyLines.forEach((line, i) => {
-          doc.text(line, rx, y + 15 + (i * 4.5), { align: 'right' });
+        /* company right */
+        const rx=PW-MR-2;
+        doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...DARK);
+        doc.text('Bromar Electrical Services', rx, y+9, { align:'right' });
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...GREY);
+        ['REC 30340','12 Hanrahan Place','Westmeadows VIC 3049','admin@bromar.com.au','www.bromar.com.au'].forEach((line,i) => {
+          doc.text(line, rx, y+15+(i*4.5), { align:'right' });
         });
-
-        /* vertical divider */
-        doc.setDrawColor(...LGREY);
-        doc.setLineWidth(0.3);
-        doc.line(PW / 2 + 10, y + 5, PW / 2 + 10, y + CARD_H - 5);
-
-        y += CARD_H + 4;
+        doc.setDrawColor(...LGREY); doc.setLineWidth(0.3);
+        doc.line(PW/2+10, y+5, PW/2+10, y+CARD_H-5);
+        y+=CARD_H+4;
       }
 
-      /* ── TABLE HEADER ── */
       function drawTableHeader() {
-        doc.setFillColor(...ORANGE);
-        doc.rect(ML, y, CW, 7, 'F');
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(7.5);
-        doc.setTextColor(...WHITE);
-        const cols = getColX();
-        doc.text('CERTIFICATION', cols.label + 1, y + 5);
-        doc.text('EXPIRY',        cols.expiry + 1, y + 5);
-        doc.text('STATUS',        cols.status + 1, y + 5);
-        doc.text('IMAGE(S)',      cols.img + 1,    y + 5);
-        y += 7;
+        doc.setFillColor(...ORANGE); doc.rect(ML,y,CW,7,'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...WHITE);
+        const cols=getColX();
+        doc.text('CERTIFICATION', cols.label+1, y+5);
+        doc.text('EXPIRY',        cols.expiry+1, y+5);
+        doc.text('STATUS',        cols.status+1, y+5);
+        doc.text('IMAGE(S)',      cols.img+1,    y+5);
+        y+=7;
       }
 
       function getColX() {
-        /* label | expiry | status | images */
-        const label  = ML;
-        const expiry = ML + 56;
-        const status = ML + 90;
-        const img    = ML + 112;
-        return { label, expiry, status, img };
+        return { label:ML, expiry:ML+60, status:ML+96, img:ML+118 };
       }
 
-      /* ── CERT ROW ── */
-      async function drawCertRow(cert, rowIndex) {
-        const ROW_H = showSide === 'both' ? 36 : 22;
-        const IMG_W = showSide === 'both' ? 38 : 36;
-        const IMG_H = showSide === 'both' ? 22 : 16;
-
-        /* page break */
-        if (y + ROW_H > PH - MB - 10) {
-          doc.addPage();
-          await drawHeader();
-          drawTableHeader();
-        }
-
-        const cols = getColX();
-        const bg = rowIndex % 2 === 0 ? WHITE : [248, 248, 252];
-        doc.setFillColor(...bg);
-        doc.rect(ML, y, CW, ROW_H, 'F');
-
-        /* border */
-        doc.setDrawColor(...LGREY);
-        doc.setLineWidth(0.2);
-        doc.rect(ML, y, CW, ROW_H);
-
+      async function drawCertRow(ec, rowIndex) {
+        const ct = certTypes.find(c => c.id === ec.cert_type_id);
+        if (!ct) return;
+        const ROW_H = showSide==='both' ? 38 : 24;
+        const IMG_W = showSide==='both' ? 36 : 34;
+        const IMG_H = showSide==='both' ? 17 : 16;
+        if (y+ROW_H > PH-MB-10) { doc.addPage(); await drawHeader(); drawTableHeader(); }
+        const cols=getColX();
+        const bg = rowIndex%2===0 ? WHITE : [248,248,252];
+        doc.setFillColor(...bg); doc.rect(ML,y,CW,ROW_H,'F');
+        doc.setDrawColor(...LGREY); doc.setLineWidth(0.2); doc.rect(ML,y,CW,ROW_H);
         /* label */
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(8);
-        doc.setTextColor(...DARK);
-        const labelLines = doc.splitTextToSize(cert.label, 52);
-        doc.text(labelLines, cols.label + 1, y + 6);
-
-        /* licence number if applicable */
-        let licenceNum = null;
-        if (cert.isText && emp[cert.key]) licenceNum = emp[cert.key];
-        else if (cert.key === 'heavy_vehicle_licence' && emp.heavy_vehicle_licence_class) licenceNum = `Class: ${emp.heavy_vehicle_licence_class}`;
-        else if (cert.key === 'high_risk_work_over_11m' && emp.high_risk_work_classes) licenceNum = emp.high_risk_work_classes;
-        else if (cert.key === 'ewp_under_11m' && emp.ewp_under_11m_classes) licenceNum = emp.ewp_under_11m_classes;
-        else if (cert.key === 'confined_space_code' && emp.confined_space_code) licenceNum = emp.confined_space_code;
-        if (licenceNum) {
-          doc.setFont('helvetica','normal');
-          doc.setFontSize(6.5);
-          doc.setTextColor(...GREY);
-          doc.text(licenceNum, cols.label + 1, y + 6 + (labelLines.length * 3.5));
+        doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...DARK);
+        const labelLines = doc.splitTextToSize(ct.label, 56);
+        doc.text(labelLines, cols.label+1, y+6);
+        /* licence number */
+        if (ec.licence_number) {
+          doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...GREY);
+          doc.text(ec.licence_number, cols.label+1, y+6+(labelLines.length*3.5));
         }
-
+        /* notes */
+        if (ec.notes) {
+          doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(...GREY);
+          doc.text(ec.notes, cols.label+1, y+6+(labelLines.length*3.5)+(ec.licence_number?3.5:0));
+        }
         /* expiry */
-        const expVal = cert.expiry ? emp[cert.expiry] : null;
-        doc.setFont('helvetica','normal');
-        doc.setFontSize(7.5);
-        doc.setTextColor(...GREY);
-        doc.text(expVal ? fmtDate(expVal) : 'No expiry', cols.expiry + 1, y + 6);
-
-        /* status dot + text */
-        const s = expiryStatus(expVal);
-        const statusColor = s === 'expired' ? [220,38,38] : s === 'expiring' ? [202,138,4] : [21,128,61];
-        const statusText  = s === 'expired' ? 'EXPIRED' : s === 'expiring' ? 'EXPIRING' : 'VALID';
-        doc.setFillColor(...statusColor);
-        doc.circle(cols.status + 2.5, y + 4.5, 2, 'F');
-        doc.setTextColor(...statusColor);
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(7);
-        doc.text(statusText, cols.status + 6, y + 6);
-
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...GREY);
+        doc.text(ec.expiry_date ? fmtDate(ec.expiry_date) : 'No expiry', cols.expiry+1, y+6);
+        /* status */
+        const s=expiryStatus(ec.expiry_date);
+        const statusColor=s==='expired'?[220,38,38]:s==='expiring'?[202,138,4]:[21,128,61];
+        const statusText=s==='expired'?'EXPIRED':s==='expiring'?'EXPIRING':'VALID';
+        doc.setFillColor(...statusColor); doc.circle(cols.status+2.5, y+4.5, 2,'F');
+        doc.setTextColor(...statusColor); doc.setFont('helvetica','bold'); doc.setFontSize(7);
+        doc.text(statusText, cols.status+6, y+6);
         /* images */
-        const imgAreaX = cols.img;
-        const imgY = y + 3;
         try {
-          const frontUrl = certImageUrl(emp.full_name, cert.key, 'front');
-          const frontData = await loadImageAsDataUrl(frontUrl);
+          const frontData = await loadImageAsDataUrl(certImageUrl(emp.full_name, ec.id, 'front'));
           if (frontData) {
-            doc.addImage(frontData, 'JPEG', imgAreaX, imgY, IMG_W, IMG_H);
-            if (showSide === 'both') {
-              const backUrl = certImageUrl(emp.full_name, cert.key, 'back');
-              const backData = await loadImageAsDataUrl(backUrl);
-              if (backData) doc.addImage(backData, 'JPEG', imgAreaX, imgY + IMG_H + 1, IMG_W, IMG_H);
+            doc.addImage(frontData,'JPEG',cols.img,y+3,IMG_W,IMG_H);
+            if (showSide==='both') {
+              const backData = await loadImageAsDataUrl(certImageUrl(emp.full_name, ec.id, 'back'));
+              if (backData) doc.addImage(backData,'JPEG',cols.img,y+3+IMG_H+1,IMG_W,IMG_H);
             }
-          } // no text if no image
-        } catch (_) {}
-
-        y += ROW_H;
+          }
+        } catch(_){}
+        y+=ROW_H;
       }
 
-      /* ── FOOTER ── */
       function drawFooter(pageNum, total) {
-        const genDate = new Date().toLocaleDateString('en-AU');
-
-        /* confidentiality disclaimer — above the rule */
-        doc.setFillColor(245, 245, 248);
-        doc.rect(ML, PH - 22, CW, 8, 'F');
-        doc.setFont('helvetica','italic');
-        doc.setFontSize(5.8);
-        doc.setTextColor(...GREY);
+        const genDate=new Date().toLocaleDateString('en-AU');
+        doc.setFillColor(245,245,248);
+        doc.rect(ML,PH-22,CW,8,'F');
+        doc.setFont('helvetica','italic'); doc.setFontSize(5.8); doc.setTextColor(...GREY);
         doc.text(
-          'CONFIDENTIAL: This document contains personal information and is intended solely for the named recipient. ' +
-          'It must not be distributed, copied or disclosed to any unauthorised person. ' +
-          'If received in error, please notify Bromar Electrical Services immediately.',
-          ML + 1, PH - 18, { maxWidth: CW - 2 }
+          'CONFIDENTIAL: This document contains personal information and is intended solely for the named recipient. It must not be distributed, copied or disclosed to any unauthorised person. If received in error, please notify Bromar Electrical Services immediately.',
+          ML+1, PH-18, { maxWidth:CW-2 }
         );
-
-        /* page rule */
-        doc.setDrawColor(...LGREY);
-        doc.setLineWidth(0.2);
-        doc.line(ML, PH - 13, ML + CW, PH - 13);
-
-        /* page line: company left, generated date centre, page number right */
-        doc.setFont('helvetica','normal');
-        doc.setFontSize(7);
-        doc.setTextColor(...GREY);
-        doc.text('Bromar Electrical Services  |  REC 30340', ML, PH - 9);
-        doc.text(`Generated: ${genDate}`, PW / 2, PH - 9, { align: 'center' });
-        doc.text(`Page ${pageNum} of ${total}`, PW - MR, PH - 9, { align: 'right' });
+        doc.setDrawColor(...LGREY); doc.setLineWidth(0.2); doc.line(ML,PH-13,ML+CW,PH-13);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...GREY);
+        doc.text('Bromar Electrical Services  |  REC 30340', ML, PH-9);
+        doc.text(`Generated: ${genDate}`, PW/2, PH-9, { align:'center' });
+        doc.text(`Page ${pageNum} of ${total}`, PW-MR, PH-9, { align:'right' });
       }
 
-      /* ── BUILD ── */
       await drawHeader();
       await drawSummary();
       drawTableHeader();
-
-      const certsToInclude = ALL_CERTS.filter(c => selectedKeys.includes(c.key));
-      for (let i = 0; i < certsToInclude.length; i++) {
-        await drawCertRow(certsToInclude[i], i);
-      }
-
-      /* add footers — jsPDF internal page count */
-      const totalPages = doc.internal.getNumberOfPages();
-      for (let p = 1; p <= totalPages; p++) {
-        doc.setPage(p);
-        drawFooter(p, totalPages);
-      }
-
-      doc.save(`${emp.full_name.replace(/\s+/g,'_')}_credentials_${new Date().toISOString().split('T')[0]}.pdf`);
+      for (let i=0; i<selectedCerts.length; i++) await drawCertRow(selectedCerts[i], i);
+      const totalPages=doc.internal.getNumberOfPages();
+      for (let p=1; p<=totalPages; p++) { doc.setPage(p); drawFooter(p, totalPages); }
+      doc.save(`${emp.full_name.replace(/\s+/g,'_')}_licences_${new Date().toISOString().split('T')[0]}.pdf`);
     }
 
     /* ── ADD EMPLOYEE ── */
@@ -1377,18 +1380,17 @@ window.BromarPages.employees = {
       overlay.querySelector('#add-cancel-btn').addEventListener('click', () => overlay.remove());
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
       overlay.querySelector('#add-save-btn').addEventListener('click', async () => {
-        const btn=overlay.querySelector('#add-save-btn');
-        const errEl=overlay.querySelector('#add-error');
+        const btn=overlay.querySelector('#add-save-btn'); const errEl=overlay.querySelector('#add-error');
         const fullName=overlay.querySelector('#add-fullname').value.trim();
         if (!fullName){errEl.textContent='Full name is required.';errEl.style.display='block';return;}
-        if (allEmployees.find(e=>e.full_name.toLowerCase()===fullName.toLowerCase())){errEl.textContent='An employee with this name already exists.';errEl.style.display='block';return;}
+        if (allEmployees.find(e=>e.full_name.toLowerCase()===fullName.toLowerCase())){errEl.textContent='Employee already exists.';errEl.style.display='block';return;}
         btn.textContent='Adding…';btn.disabled=true;
         try {
           const newEmp={full_name:fullName,first_name:overlay.querySelector('#add-firstname').value.trim()||null,last_name:overlay.querySelector('#add-lastname').value.trim()||null,employee_type:overlay.querySelector('#add-employee-type').value||null,dob:overlay.querySelector('#add-dob').value||null,mobile:overlay.querySelector('#add-mobile').value.trim()||null,email:overlay.querySelector('#add-email').value.trim()||null,is_active:true};
           await sbPost('employees',newEmp);
           allEmployees.push(newEmp);
           allEmployees.sort((a,b)=>a.full_name.localeCompare(b.full_name));
-          renderStats();renderGrid();overlay.remove();
+          renderGrid(); overlay.remove();
         } catch(err){errEl.textContent='Failed: '+err.message;errEl.style.display='block';btn.textContent='Add Employee';btn.disabled=false;}
       });
     }
@@ -1410,10 +1412,12 @@ window.BromarPages.employees = {
       renderGrid();
     });
     container.querySelector('#add-emp-btn').addEventListener('click', openAddModal);
+    container.querySelector('#manage-cert-types-btn').addEventListener('click', openCertTypesManager);
 
     /* ── LOAD ── */
     load().catch(err => {
-      document.getElementById('emp-grid').innerHTML = `<div class="emp-empty">Failed to load: ${err.message}</div>`;
+      const g = document.getElementById('emp-grid');
+      if (g) g.innerHTML = `<div class="emp-empty">Failed to load: ${err.message}</div>`;
     });
   },
 
