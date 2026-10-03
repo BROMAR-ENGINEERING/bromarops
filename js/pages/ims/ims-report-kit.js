@@ -1,12 +1,16 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.05
+   Version: V1.06
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.06: generateAuditPack() — one PDF with audit cover, clickable document
+   register (page refs + bookmarks) and every document. Shared renderer
+   renderDocumentInto() used by all builders.
 
    V1.05: cover DOCUMENT NAME uses the IMS asset number (schema.doc_number),
    falling back to the slug.
@@ -31,6 +35,7 @@
    Exposes: window.BromarIMSReportKit
      .generatePolicyPDF({ doc, revisionMeta, schema, historyRows })
      .generateFormPDF({ doc, revisionMeta, schema, historyRows, submission })
+     .generateAuditPack({ entries, scopeLabel, generatedBy, onProgress })
      .download(pdfDoc, filename)
 
    REQUIRED ASSET (upload once):
@@ -42,7 +47,7 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.05';
+  const VERSION = 'V1.06';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const LICENCE = 'REC. 30340';
@@ -725,33 +730,137 @@ window.BromarIMSReportKit = (() => {
     return new jsPDF({ unit: 'mm', format: 'a4' });
   }
 
-  function addPageNumbers(pdf, doc, fromPage) {
-    const total = pdf.internal.getNumberOfPages();
-    for (let p = fromPage; p <= total; p++) {
-      pdf.setPage(p);
-      drawFooter(pdf, doc, p - fromPage + 1);
-    }
-  }
-
-  async function generatePolicyPDF({ doc: rawDoc, revisionMeta, schema, historyRows }) {
+  // Renders one complete document (cover + body + footers) into an existing PDF.
+  // Page numbers in footers restart at 1 for each document. Returns its page range.
+  function renderDocumentInto(pdf, { doc: rawDoc, revisionMeta, schema, historyRows, submission }, onNewPage) {
     const doc = { ...rawDoc, doc_number: schema?.doc_number || rawDoc?.doc_number };
-    const pdf = await newDoc();
+    if (onNewPage) pdf.addPage();
+    const coverPage = pdf.internal.getNumberOfPages();
     drawCoverPage(pdf, doc, revisionMeta, historyRows);
     pdf.addPage();
     const startY = drawContentHeader(pdf, doc, revisionMeta);
-    drawPolicyBody(pdf, doc, revisionMeta, schema?.blocks, startY);
-    addPageNumbers(pdf, doc, 2);
+    if (Array.isArray(schema?.fields)) drawFormBody(pdf, doc, revisionMeta, schema, startY, submission);
+    else drawPolicyBody(pdf, doc, revisionMeta, schema?.blocks, startY);
+    const endPage = pdf.internal.getNumberOfPages();
+    for (let p = coverPage + 1; p <= endPage; p++) {
+      pdf.setPage(p);
+      drawFooter(pdf, doc, p - coverPage);
+    }
+    pdf.setPage(endPage);
+    return { coverPage, endPage };
+  }
+
+  async function generatePolicyPDF(args) {
+    const pdf = await newDoc();
+    renderDocumentInto(pdf, { ...args, schema: { ...(args.schema || {}), fields: undefined } }, false);
     return pdf;
   }
 
-  async function generateFormPDF({ doc: rawDoc, revisionMeta, schema, historyRows, submission }) {
-    const doc = { ...rawDoc, doc_number: schema?.doc_number || rawDoc?.doc_number };
+  async function generateFormPDF(args) {
     const pdf = await newDoc();
-    drawCoverPage(pdf, doc, revisionMeta, historyRows);
+    renderDocumentInto(pdf, { ...args, schema: { ...(args.schema || {}), fields: args.schema?.fields || [] } }, false);
+    return pdf;
+  }
+
+  /* ── AUDIT PACK ──
+     One PDF: audit cover → document register (clickable rows, page refs) →
+     every document in order. Bookmarks added for each document.
+     entries: [{ doc, revisionMeta, schema, historyRows, meta: { section, type, category, prepared_by, reviewed_by } }] */
+  async function generateAuditPack({ entries, scopeLabel, generatedBy, onProgress }) {
+    const pdf = await newDoc();
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const marginX = 15;
+    const today = new Date();
+
+    // Cover
+    let y = 22;
+    if (logoDataUrl) {
+      let w = 120, h = 28;
+      try { const pr = pdf.getImageProperties(logoDataUrl); h = w * pr.height / pr.width; } catch (e) { /* defaults */ }
+      pdf.addImage(logoDataUrl, 'PNG', (pageW - w) / 2, y, w, h);
+      y += h + 18;
+    } else y += 45;
+    pdf.setDrawColor(0, 0, 0); pdf.setLineWidth(0.4);
+    pdf.line(20, y, pageW - 20, y); y += 13;
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(24); pdf.setTextColor(...ORANGE);
+    pdf.text('IMS AUDIT PACK', pageW / 2, y, { align: 'center' }); y += 6;
+    pdf.line(20, y, pageW - 20, y); y += 12;
+    pdf.setTextColor(...BLACK); pdf.setFontSize(11);
+    pdf.text('Integrated Management System', pageW / 2, y, { align: 'center' }); y += 8;
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(String(scopeLabel || 'All sections'), pageW / 2, y, { align: 'center' }); y += 10;
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5);
+    [
+      `Generated ${fmtDate(today)}${generatedBy ? ` by ${generatedBy}` : ''}`,
+      `${entries.length} current published document${entries.length === 1 ? '' : 's'}`,
+      COMPANY_NAME, COMPANY_ADDRESS, LICENCE
+    ].forEach(line => { pdf.text(line, pageW / 2, y, { align: 'center' }); y += 5.5; });
+    if (badgeDataUrl) { const bw = 30, bh = 30 * (287 / 233); pdf.addImage(badgeDataUrl, 'PNG', pageW / 2 - bw / 2, y + 12, bw, bh); }
+
+    // Register
     pdf.addPage();
-    const startY = drawContentHeader(pdf, doc, revisionMeta);
-    drawFormBody(pdf, doc, revisionMeta, schema, startY, submission);
-    addPageNumbers(pdf, doc, 2);
+    const registerStart = pdf.internal.getNumberOfPages();
+    const regHeader = () => {
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.setTextColor(...BLACK);
+      pdf.text('DOCUMENT REGISTER', marginX, 16);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...GREY);
+      pdf.text(`${scopeLabel || 'All sections'} · ${fmtDate(today)} · click a row to jump to the document`, marginX, 21);
+    };
+    const pageCells = [];   // { page, x, y, w, h, row } for page refs + links
+    pdf.autoTable({
+      startY: 26,
+      margin: { left: marginX, right: marginX, top: 26, bottom: 18 },
+      head: [['No.', 'Document number', 'Title', 'Section', 'Type', 'Category', 'Rev', 'Date', 'Prepared by', 'Reviewed by', 'Page']],
+      body: entries.map((e, i) => [
+        i + 1, String(e.schema?.doc_number || e.doc.slug || '').toUpperCase(), e.doc.title || '',
+        e.meta?.section || '', e.meta?.type || '', e.meta?.category || '',
+        padRev(e.revisionMeta?.revision || 0), fmtDate(e.revisionMeta?.version_date),
+        e.meta?.prepared_by || '', e.meta?.reviewed_by || '', ''
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 7, cellPadding: 1.4, textColor: BLACK, lineColor: [0, 0, 0], lineWidth: 0.2, valign: 'middle' },
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 27 }, 6: { cellWidth: 8, halign: 'center' }, 7: { cellWidth: 16, halign: 'center' }, 10: { cellWidth: 10, halign: 'center' } },
+      didDrawPage: regHeader,
+      didDrawCell: (data) => {
+        if (data.section === 'body' && data.column.index === 10) {
+          pageCells.push({ page: pdf.internal.getCurrentPageInfo().pageNumber, x: data.cell.x, y: data.cell.y, w: data.cell.width, h: data.cell.height, row: data.row.index });
+        }
+      }
+    });
+    const registerEnd = pdf.internal.getNumberOfPages();
+
+    // Documents
+    const starts = [];
+    for (let i = 0; i < entries.length; i++) {
+      if (onProgress) onProgress(i, entries.length, entries[i].doc.title);
+      await new Promise(r => setTimeout(r, 0));          // keep the UI responsive
+      const { coverPage } = renderDocumentInto(pdf, entries[i], true);
+      starts.push(coverPage);
+    }
+    if (onProgress) onProgress(entries.length, entries.length, '');
+
+    // Fill register page refs, make each row a link, add bookmarks
+    const tableLeft = marginX, tableW = pageW - marginX * 2;
+    pageCells.forEach(c => {
+      pdf.setPage(c.page);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7); pdf.setTextColor(...ORANGE);
+      pdf.text(String(starts[c.row]), c.x + c.w / 2, c.y + c.h / 2 + 1.1, { align: 'center' });
+      try { pdf.link(tableLeft, c.y, tableW, c.h, { pageNumber: starts[c.row] }); } catch (e) { /* links optional */ }
+    });
+    for (let p = registerStart; p <= registerEnd; p++) {
+      pdf.setPage(p);
+      drawFooter(pdf, { title: 'IMS Audit Pack — Document Register' }, p - registerStart + 1);
+    }
+    try {
+      if (pdf.outline) {
+        const reg = pdf.outline.add(null, 'Document register', { pageNumber: registerStart });
+        entries.forEach((e, i) => pdf.outline.add(null, `${String(e.schema?.doc_number || e.doc.slug || '').toUpperCase()} — ${e.doc.title}`, { pageNumber: starts[i] }));
+        void reg;
+      }
+    } catch (e) { /* bookmarks optional */ }
+    pdf.setPage(pdf.internal.getNumberOfPages());
     return pdf;
   }
 
@@ -759,5 +868,5 @@ window.BromarIMSReportKit = (() => {
     pdf.save(filename.endsWith('.pdf') ? filename : filename + '.pdf');
   }
 
-  return { generatePolicyPDF, generateFormPDF, download, version: VERSION };
+  return { generatePolicyPDF, generateFormPDF, generateAuditPack, download, version: VERSION };
 })();
