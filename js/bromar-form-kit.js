@@ -1,19 +1,21 @@
 /* ============================================================
    BROMAR OPS — FORM KIT
-   V1.01
+   V1.02
    Schema-driven form renderer. Forms are authored once in the IMS
    document builder (stored in ims_documents) and rendered anywhere
    — IMS, Fleet, Equipment — with no hardcoded fields.
 
-   NOTE: ims_documents uses a status column (draft/published/archived)
-   as its canonical lifecycle field — form-kit reads status='published'.
+   Live ims_documents columns (verified via information_schema):
+     id, slug, section, title, schema, revision, is_active, is_form,
+     is_featured, hub_order, hub_icon, created_at
+   form-kit reads is_active = true as the "current, usable" flag.
 
    Exposes window.BromarFormKit:
      .render(container, schema, { values, onSubmit, submitLabel, readOnly })
          → builds inputs from schema.fields, returns a controller
            { getData(), validate(), setValues(obj), destroy() }
      .fetchForm(slug)
-         → latest published ims_documents row for that slug
+         → active ims_documents row for that slug
      .submitForm(formId, data, linkedRecord)
          → inserts ims_form_submissions with a revision snapshot
      .renderBySlug(container, slug, opts)
@@ -233,19 +235,19 @@
     return { getData, validate, setValues, destroy() { container.innerHTML = ''; } };
   }
 
-  /* ── FETCH (ims_documents, published, by slug) ── */
+  /* ── FETCH (ims_documents, active, by slug) ── */
   async function fetchForm(slug) {
     const client = window.supabaseClient;
     if (!client) { console.error('[form-kit] no supabaseClient'); return null; }
     try {
       const { data, error } = await client
         .from('ims_documents')
-        .select('id, slug, section, title, schema, revision, status, is_form')
+        .select('id, slug, section, title, schema, revision, is_active, is_form')
         .eq('slug', slug)
-        .eq('status', 'published')
+        .eq('is_active', true)
         .maybeSingle();
       if (error) { console.error('[form-kit] fetchForm:', error); U()?.showToast('Could not load form', 'error'); return null; }
-      if (!data) { console.warn('[form-kit] no published form for slug:', slug); return null; }
+      if (!data) { console.warn('[form-kit] no active form for slug:', slug); return null; }
       if (data.is_form === false) console.warn('[form-kit] document is not flagged is_form:', slug);
       return data;
     } catch (err) {
@@ -261,7 +263,7 @@
     if (!client) { console.error('[form-kit] no supabaseClient'); return null; }
     linkedRecord = linkedRecord || {};
 
-    // Snapshot the revision at submission time (independent of status)
+    // Snapshot the revision at submission time
     let revision = null;
     try {
       const { data: doc } = await client
@@ -321,7 +323,7 @@
   }
 
   window.BromarFormKit = {
-    version: 'V1.01',
+    version: 'V1.02',
     render,
     fetchForm,
     submitForm,
