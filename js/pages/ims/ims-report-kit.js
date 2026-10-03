@@ -1,12 +1,15 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.03
+   Version: V1.04
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.04: choice fields labelled "(select one only)" / "(select all that
+   apply)" unless the help text already says so.
 
    V1.03: cover restyled (DOCUMENT NAME line, REC number, black-header
    revision table with REVIEWED BY). Layout controls: 'spacer' and
@@ -36,7 +39,7 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.03';
+  const VERSION = 'V1.04';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const LICENCE = 'REC. 30340';
@@ -405,18 +408,37 @@ window.BromarIMSReportKit = (() => {
     p.setLineWidth(0.3);
   }
 
-  function drawLabel(p, f, x, y, w) {
+  // note: optional grey italic instruction shown after the label, e.g. "Select one only"
+  function drawLabel(p, f, x, y, w, note) {
     p.setFont('helvetica', 'bold');
     p.setFontSize(9);
     p.setTextColor(...BLACK);
     const lines = p.splitTextToSize(f.label || f.name || '', w - 4);
     lines.forEach((ln, i) => p.text(ln, x, y + 3.2 + i * 4.2));
+    const lastY = y + 3.2 + (lines.length - 1) * 4.2;
+    let endX = x + p.getTextWidth(lines[lines.length - 1] || '');
     if (f.required) {
-      const lastW = p.getTextWidth(lines[lines.length - 1] || '');
       p.setTextColor(...ORANGE);
-      p.text('*', x + lastW + 1, y + 3.2 + (lines.length - 1) * 4.2);
+      p.text('*', endX + 1, lastY);
+      endX += 2.5;
     }
-    return y + lines.length * 4.2 + 1.8;
+    let extra = 0;
+    if (note) {
+      p.setFont('helvetica', 'italic');
+      p.setFontSize(7.5);
+      p.setTextColor(...GREY);
+      const txt = `(${note})`;
+      if (endX + 3 + p.getTextWidth(txt) <= x + w) p.text(txt, endX + 3, lastY);
+      else { p.text(txt, x, lastY + 3.6); extra = 3.6; }
+    }
+    return y + lines.length * 4.2 + 1.8 + extra;
+  }
+
+  function choiceNote(f) {
+    const type = f.type || 'text';
+    if (!['select', 'radio', 'multiselect'].includes(type)) return null;
+    if (f.help && /select|choose|tick|pick/i.test(f.help)) return null;   // help text already explains it
+    return type === 'multiselect' ? 'select all that apply' : 'select one only';
   }
 
   function drawHelp(p, f, x, y, w) {
@@ -518,7 +540,7 @@ window.BromarIMSReportKit = (() => {
       return h;
     }
 
-    let cy = drawLabel(p, f, x, y, w);
+    let cy = drawLabel(p, f, x, y, w, choiceNote(f));
 
     if (type === 'textarea') {
       const lineH = 7;
