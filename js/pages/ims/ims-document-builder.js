@@ -1,7 +1,11 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.01
+   Version: V2.02
+   V2.02: previous-revision editor in the editor (add/edit/delete migrated
+   revisions); Prepared By uses employee full name; per-field settings
+   panel (help text, placeholder, lines, options, type); live PDF pane
+   stays beside the editor.
    V2.01: Reviewed By on revisions; spacer + page-break blocks; per-field
    PDF layout (gap / page break before / own row); live PDF preview pane;
    options editable for radio/multiselect.
@@ -82,7 +86,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.01';
+  const VERSION = 'V2.02';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -106,6 +110,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     { type: 'pagebreak', label: 'Page break' }
   ];
   const SHORT_FIELD_TYPES = ['text', 'email', 'tel', 'number', 'date', 'time', 'datetime'];
+  const TEXT_GROUP = ['text', 'textarea', 'number', 'email', 'tel', 'date', 'time', 'datetime'];
+  const TYPE_LABELS = {
+    text: 'Short text', textarea: 'Long text (multi-line)', number: 'Number', email: 'Email', tel: 'Phone',
+    date: 'Date', time: 'Time', datetime: 'Date & time', select: 'Pick one (dropdown)', radio: 'Pick one (buttons)',
+    multiselect: 'Pick many', checkbox: 'Checkbox', passfail: 'Pass / Fail / N/A', signature: 'Signature',
+    photo: 'Photo', dynamiclist: 'Dynamic list', heading: 'Section heading'
+  };
   const OPTION_FIELD_TYPES = ['select', 'radio', 'multiselect'];
   const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
@@ -129,8 +140,25 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }[c]));
   }
   function newId() { return 'x_' + Math.random().toString(36).slice(2, 9); }
-  function currentUser() {
-    return window.BromarAuth?.user()?.email || window.BromarAuth?.employee()?.full_name || 'unknown';
+  function pickName(emp) {
+    if (!emp) return '';
+    return emp.full_name || emp.name || [emp.first_name, emp.last_name].filter(Boolean).join(' ') || '';
+  }
+  let cachedUserName = null;
+  async function currentUserName() {
+    if (cachedUserName) return cachedUserName;
+    const auth = window.BromarAuth;
+    const email = auth?.user?.()?.email || '';
+    let name = '';
+    try { name = pickName(await auth?.employee?.()); } catch (e) { /* fall through */ }
+    if (!name && email) {
+      try {
+        const { data } = await window.supabaseClient.from('employees').select('*').ilike('email', email).limit(1);
+        name = pickName(data && data[0]);
+      } catch (e) { /* fall through */ }
+    }
+    cachedUserName = name || email || 'unknown';
+    return cachedUserName;
   }
   async function confirmDialog(opts) {
     if (window.BromarUtils?.confirmDialog) return window.BromarUtils.confirmDialog(opts);
@@ -169,6 +197,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     let liveTimer = null;
     let liveUrl = null;
     let liveHistory = null;
+    let editorHistory = [];       // revision rows for the doc open in the editor
+    let expandedFields = new Set(); // field names with their settings panel open
 
     /* ── SLUG GENERATION (doubles as "document number") ── */
     async function nextSlug(docType) {
@@ -275,7 +305,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         document_id: currentDoc.id, revision: newRevision, schema: workingSchema,
         version_date: revMeta.version_date || todayISO(),
         version_description: revMeta.version_description || '',
-        prepared_by: revMeta.prepared_by || currentUser(),
+        prepared_by: revMeta.prepared_by || (await currentUserName()),
         reviewed_by: revMeta.reviewed_by || null
       });
       if (e2) { alert('Document published, but the revision-history record failed to save: ' + e2.message); }
@@ -303,24 +333,26 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (!workingSchema.doc_type) workingSchema.doc_type = effectiveDocType(currentDoc);
       if (DIGITAL_TYPES.includes(workingSchema.doc_type) && !workingSchema.fields) workingSchema.fields = [];
       if (CONTENT_TYPES.includes(workingSchema.doc_type) && !workingSchema.blocks) workingSchema.blocks = [];
-      revMeta = { version_date: todayISO(), version_description: '', prepared_by: currentUser(), reviewed_by: '' };
+      revMeta = { version_date: todayISO(), version_description: '', prepared_by: await currentUserName(), reviewed_by: '' };
       liveHistory = null;
+      expandedFields = new Set();
+      editorHistory = await loadHistory(currentDoc.id);
       view = 'editor';
       renderView();
     }
 
     async function discardDraft() {
       if (!currentDoc) return;
-      if (!currentDoc.revision) {
-        const ok = await confirmDialog({ title: 'Delete this document?', message: 'It has never been published — discarding deletes it entirely.', okLabel: 'Delete', danger: true });
+      const history = await loadHistory(currentDoc.id);
+      const lastPublished = history.find(r => r.schema);
+      if (!lastPublished) {
+        const ok = await confirmDialog({ title: 'Delete this document?', message: "It hasn't been published in Bromar Ops yet — discarding deletes it, including any previous revisions you've entered.", okLabel: 'Delete', danger: true });
         if (!ok) return;
         await sb().from('ims_documents').delete().eq('id', currentDoc.id);
         view = 'list'; await loadDocuments(); renderView(); return;
       }
       const ok = await confirmDialog({ title: 'Discard changes?', message: 'Reverts to the last published version and brings it back online.', okLabel: 'Discard', danger: true });
       if (!ok) return;
-      const history = await loadHistory(currentDoc.id);
-      const lastPublished = history.find(r => r.schema);
       const { data, error } = await sb().from('ims_documents')
         .update({ schema: lastPublished ? lastPublished.schema : currentDoc.schema, is_active: true })
         .eq('id', currentDoc.id).select().maybeSingle();
@@ -339,9 +371,23 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const newSchema = { ...doc.schema, archived: !archived };
       const updates = { schema: newSchema };
       if (!archived) updates.is_active = false;            // archiving always takes it offline
-      else if (doc.revision) updates.is_active = true;      // restoring brings a previously-published doc back online
+      else if ((await loadHistory(doc.id)).some(r => r.schema)) updates.is_active = true; // restore → back online only if it was published
       await sb().from('ims_documents').update(updates).eq('id', doc.id);
       await loadDocuments(); renderView();
+    }
+
+    // Keeps ims_documents.revision equal to the highest recorded revision, so the
+    // next publish gets the right number after previous revisions are entered.
+    async function syncRevisionState(doc) {
+      const hist = await loadHistory(doc.id);
+      const max = hist.reduce((m, r) => Math.max(m, r.revision || 0), 0);
+      let updated = doc;
+      if (max !== (doc.revision || 0)) {
+        const { data } = await sb().from('ims_documents').update({ revision: max }).eq('id', doc.id).select().maybeSingle();
+        updated = data || { ...doc, revision: max };
+      }
+      if (currentDoc && currentDoc.id === doc.id) currentDoc = updated;
+      editorHistory = hist; historyList = hist; liveHistory = null;
     }
 
     async function addLegacyRevision(doc, { revision, versionDate, versionDescription, preparedBy, reviewedBy }) {
@@ -350,10 +396,38 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         version_date: versionDate, version_description: versionDescription,
         prepared_by: preparedBy, reviewed_by: reviewedBy || null
       });
-      if (error) { alert('Could not add legacy revision: ' + error.message); return; }
-      if (revision >= (doc.revision || 0)) {
-        await sb().from('ims_documents').update({ revision }).eq('id', doc.id);
+      if (error) {
+        alert(/duplicate|unique/i.test(error.message || '') ? `Revision ${revision} already exists for this document.` : 'Could not add revision: ' + error.message);
+        return false;
       }
+      await syncRevisionState(doc);
+      return true;
+    }
+
+    async function updateLegacyRevision(doc, id, { revision, versionDate, versionDescription, preparedBy, reviewedBy }) {
+      let { error } = await sb().from('ims_document_revisions').update({
+        revision, version_date: versionDate, version_description: versionDescription,
+        prepared_by: preparedBy, reviewed_by: reviewedBy || null
+      }).eq('id', id);
+      if (error && /reviewed_by/i.test(error.message || '')) {
+        ({ error } = await sb().from('ims_document_revisions').update({
+          revision, version_date: versionDate, version_description: versionDescription, prepared_by: preparedBy
+        }).eq('id', id));
+      }
+      if (error) {
+        alert(/duplicate|unique/i.test(error.message || '') ? `Revision ${revision} already exists for this document.` : 'Could not update revision: ' + error.message);
+        return false;
+      }
+      await syncRevisionState(doc);
+      return true;
+    }
+
+    async function deleteLegacyRevision(doc, row) {
+      const ok = await confirmDialog({ title: `Delete revision ${row.revision}?`, message: 'Removes this previous-revision record from the history.', okLabel: 'Delete', danger: true });
+      if (!ok) return;
+      const { error } = await sb().from('ims_document_revisions').delete().eq('id', row.id);
+      if (error) { alert('Could not delete revision: ' + error.message); return; }
+      await syncRevisionState(doc);
     }
 
     /* ── PDF EXPORT ── */
@@ -473,38 +547,47 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── LEGACY REVISION MODAL ── */
-    function showLegacyModal() {
+    function showLegacyModal(existing) {
+      const doc = currentDoc;
+      const rows = view === 'editor' ? editorHistory : historyList;
+      const suggested = existing ? existing.revision : rows.reduce((m, r) => Math.max(m, r.revision || 0), 0) + 1;
+      const inputStyle = 'width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;';
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
       overlay.innerHTML = `
-        <div class="card" style="max-width:420px;width:100%;padding:1.5rem;animation:none;">
-          <div class="section-label" style="margin-top:0;">Add legacy revision</div>
-          <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.9rem;">Records an old paper/Word revision against this document's history. No content is stored — just the record.</p>
+        <div class="card" style="max-width:440px;width:100%;padding:1.5rem;animation:none;">
+          <div class="section-label" style="margin-top:0;">${existing ? 'Edit previous revision' : 'Add previous revision'}</div>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.9rem;">Copy a row from the old document's revision table. Only the record is kept, not the old content.</p>
           <div style="display:flex;flex-direction:column;gap:0.9rem;">
-            <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Revision number *</label>
-              <input type="number" id="legacy-rev" min="1" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
-            </div>
-            <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Version date</label>
-              <input type="date" id="legacy-date" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:0.75rem;">
+              <div>
+                <label style="font-size:0.8rem;color:var(--text-secondary);">Revision *</label>
+                <input type="number" id="legacy-rev" min="1" value="${esc(suggested)}" style="${inputStyle}">
+              </div>
+              <div>
+                <label style="font-size:0.8rem;color:var(--text-secondary);">Version date</label>
+                <input type="date" id="legacy-date" value="${esc(existing?.version_date || '')}" style="${inputStyle}">
+              </div>
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Version description</label>
-              <input type="text" id="legacy-desc" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              <input type="text" id="legacy-desc" value="${esc(existing?.version_description || '')}" placeholder="e.g. Review 2019" style="${inputStyle}">
             </div>
-            <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by</label>
-              <input type="text" id="legacy-by" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
-            </div>
-            <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Reviewed by</label>
-              <input type="text" id="legacy-reviewed" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+              <div>
+                <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by</label>
+                <input type="text" id="legacy-by" value="${esc(existing?.prepared_by || '')}" style="${inputStyle}">
+              </div>
+              <div>
+                <label style="font-size:0.8rem;color:var(--text-secondary);">Reviewed by</label>
+                <input type="text" id="legacy-reviewed" value="${esc(existing?.reviewed_by || '')}" style="${inputStyle}">
+              </div>
             </div>
           </div>
-          <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.25rem;">
+          <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.25rem;flex-wrap:wrap;">
             <button class="btn-secondary" id="legacy-cancel">Cancel</button>
-            <button class="btn-primary" id="legacy-add">Add</button>
+            ${existing ? '' : '<button class="btn-secondary" id="legacy-add-another">Add &amp; add another</button>'}
+            <button class="btn-primary" id="legacy-add">${existing ? 'Save' : 'Add'}</button>
           </div>
         </div>
       `;
@@ -512,18 +595,26 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       function close() { overlay.remove(); }
       overlay.querySelector('#legacy-cancel').addEventListener('click', close);
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-      overlay.querySelector('#legacy-add').addEventListener('click', async () => {
-        const revision = parseInt(overlay.querySelector('#legacy-rev').value, 10);
-        const versionDate = overlay.querySelector('#legacy-date').value || null;
-        const versionDescription = overlay.querySelector('#legacy-desc').value.trim();
-        const preparedBy = overlay.querySelector('#legacy-by').value.trim();
-        const reviewedBy = overlay.querySelector('#legacy-reviewed').value.trim();
-        if (!revision) { alert('Revision number is required.'); return; }
+
+      async function submit(again) {
+        const values = {
+          revision: parseInt(overlay.querySelector('#legacy-rev').value, 10),
+          versionDate: overlay.querySelector('#legacy-date').value || null,
+          versionDescription: overlay.querySelector('#legacy-desc').value.trim(),
+          preparedBy: overlay.querySelector('#legacy-by').value.trim(),
+          reviewedBy: overlay.querySelector('#legacy-reviewed').value.trim()
+        };
+        if (!values.revision) { alert('Revision number is required.'); return; }
+        const ok = existing
+          ? await updateLegacyRevision(doc, existing.id, values)
+          : await addLegacyRevision(doc, values);
+        if (!ok) return;
         close();
-        await addLegacyRevision(currentDoc, { revision, versionDate, versionDescription, preparedBy, reviewedBy });
-        historyList = await loadHistory(currentDoc.id);
         renderView();
-      });
+        if (again) showLegacyModal();
+      }
+      overlay.querySelector('#legacy-add').addEventListener('click', () => submit(false));
+      overlay.querySelector('#legacy-add-another')?.addEventListener('click', () => submit(true));
     }
 
     /* ── PREVIEW (read-only — never flips is_active, unlike Edit) ── */
@@ -730,7 +821,57 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
           </div>
-          <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-secondary);">Version fields apply when you next publish — they're recorded against that revision in history.</div>
+          <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-secondary);">These details become revision ${String((currentDoc.revision || 0) + 1).padStart(2, '0')} when you publish.</div>
+        </div>
+      `;
+    }
+
+    function revisionPanelHTML() {
+      const rows = editorHistory.slice().sort((a, b) => a.revision - b.revision);
+      const nextRev = (currentDoc.revision || 0) + 1;
+      const td = 'padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);vertical-align:middle;';
+      const pad = n => String(n).padStart(2, '0');
+      const smallBtn = 'padding:0.2rem 0.5rem;font-size:0.72rem;';
+      return `
+        <div class="card" style="margin-bottom:1rem;padding:1.25rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.4rem;">
+            <div style="font-weight:600;">Revision history</div>
+            <button class="btn-secondary" data-action="add-legacy" style="padding:0.45rem 0.9rem;font-size:0.8rem;">+ Add previous revision</button>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.6rem;">
+            Migrating an existing document? Enter its old revisions from the cover-page table so the history carries over.
+            Tip: enter all but the latest, then put the latest's date/description below — publishing makes it that revision.
+          </div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+              <thead><tr>${['Ver', 'Date', 'Description', 'Prepared by', 'Reviewed by', ''].map(h =>
+                `<th style="text-align:left;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);color:var(--text-secondary);font-weight:600;white-space:nowrap;">${h}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td style="${td}font-family:'JetBrains Mono',monospace;">${pad(r.revision)}</td>
+                    <td style="${td}white-space:nowrap;">${esc(fmtDateShort(r.version_date))}</td>
+                    <td style="${td}">${esc(r.version_description || '')}</td>
+                    <td style="${td}">${esc(r.prepared_by || '')}</td>
+                    <td style="${td}">${esc(r.reviewed_by || '')}</td>
+                    <td style="${td}white-space:nowrap;text-align:right;">
+                      ${r.schema
+                        ? '<span style="font-size:0.7rem;color:var(--success);">Published in Ops</span>'
+                        : `<button class="btn-secondary" style="${smallBtn}" data-action="edit-legacy" data-rev-id="${r.id}">Edit</button>
+                           <button class="btn-secondary" style="${smallBtn}color:var(--error);" data-action="delete-legacy" data-rev-id="${r.id}">✕</button>`}
+                    </td>
+                  </tr>`).join('')}
+                <tr style="background:var(--card-hover);">
+                  <td style="${td}font-family:'JetBrains Mono',monospace;">${pad(nextRev)}</td>
+                  <td style="${td}white-space:nowrap;">${esc(fmtDateShort(revMeta.version_date))}</td>
+                  <td style="${td}">${esc(revMeta.version_description || '') || '<em style="color:var(--text-secondary);">this draft</em>'}</td>
+                  <td style="${td}">${esc(revMeta.prepared_by || '')}</td>
+                  <td style="${td}">${esc(revMeta.reviewed_by || '')}</td>
+                  <td style="${td}text-align:right;"><span style="font-size:0.7rem;color:var(--accent);white-space:nowrap;">On publish</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       `;
     }
@@ -751,7 +892,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <button class="${livePdf ? 'btn-primary' : 'btn-secondary'}" data-action="toggle-live">${livePdf ? 'Hide live PDF' : 'Live PDF'}</button>
             <button class="btn-secondary" data-action="preview-doc">Preview</button>
             <button class="btn-secondary" data-action="export-pdf">Export PDF</button>
-            <button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">${d.revision ? 'Discard changes' : 'Delete'}</button>
+            <button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">${editorHistory.some(r => r.schema) ? 'Discard changes' : 'Delete'}</button>
             <button class="btn-secondary" data-action="save-draft">Save draft</button>
             <button class="btn-primary" data-action="publish">Publish</button>
           </div>
@@ -882,47 +1023,104 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
     /* ── Fields editor (Form/Checklist/ITC) ── */
     function fieldRowHTML(field, index, total) {
-      const typeLabel = FIELD_TYPES.find(t => t.type === field.type)?.label || field.type;
-      const needsRequired = !NO_REQUIRED_TOGGLE.includes(field.type);
+      const type = field.type || 'text';
+      const typeLabel = TYPE_LABELS[type] || FIELD_TYPES.find(t => t.type === type)?.label || type;
+      const needsRequired = !NO_REQUIRED_TOGGLE.includes(type);
       const lay = field.pdf || {};
       const layVal = lay.pageBreakBefore ? 'break' : lay.spaceBefore ? (lay.spaceBefore <= 8 ? 's6' : 's15') : '';
+      const isOptions = OPTION_FIELD_TYPES.includes(type);
+      const optionLabels = (field.options || []).map(o => (o && typeof o === 'object') ? (o.label ?? o.value) : o);
       const objectOptions = (field.options || []).some(o => o && typeof o === 'object');
+      const open = expandedFields.has(field.name);
+      const inp = 'width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.82rem;margin-top:0.25rem;';
+      const lbl = 'font-size:0.72rem;color:var(--text-secondary);';
+      const chip = (text, color) => `<span style="font-size:0.65rem;color:${color};border:1px solid ${color};border-radius:999px;padding:0.05rem 0.45rem;white-space:nowrap;">${text}</span>`;
+
       const breakMarker = lay.pageBreakBefore
         ? `<div style="display:flex;align-items:center;gap:0.5rem;margin:0.4rem 0 0.1rem;"><div style="flex:1;border-top:2px dashed var(--accent);"></div><span style="font-size:0.65rem;color:var(--accent);font-weight:600;">NEW PDF PAGE</span><div style="flex:1;border-top:2px dashed var(--accent);"></div></div>`
         : '';
-      return `${breakMarker}
-        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.25rem;${lay.spaceBefore ? 'padding-top:' + (lay.spaceBefore <= 8 ? '0.9rem' : '1.6rem') + ';' : ''}${index < total - 1 ? 'border-bottom:1px solid var(--border);' : ''}flex-wrap:wrap;">
-          <span style="font-size:0.7rem;color:var(--text-secondary);width:1.1rem;text-align:right;flex-shrink:0;">${index + 1}</span>
-          <input type="text" value="${esc(field.label)}" placeholder="Field label"
-            data-field-prop="label" data-index="${index}"
-            style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;">
-          ${OPTION_FIELD_TYPES.includes(field.type) ? `
-            <input type="text" value="${esc((field.options || []).map(o => (o && typeof o === 'object') ? (o.label ?? o.value) : o).join(', '))}" placeholder="Options, comma separated"
-              data-field-prop="options" data-index="${index}" ${objectOptions ? 'disabled title="Options were set via SQL with separate values/labels — edit them in SQL"' : ''}
 
-              style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.8rem;">
-          ` : ''}
-          <span style="font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;" title="submission data key">${typeLabel} · ${esc(field.name)}</span>
-          ${needsRequired ? `
-            <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;">
-              <input type="checkbox" ${field.required ? 'checked' : ''} data-field-prop="required" data-index="${index}"> Req
-            </label>` : ''}
-          ${SHORT_FIELD_TYPES.includes(field.type || 'text') ? `
-            <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;" title="In the PDF, short fields sit two per row — tick to give this one its own row">
-              <input type="checkbox" ${lay.fullWidth ? 'checked' : ''} data-field-fullwidth data-index="${index}"> Own row
-            </label>` : ''}
-          <select data-field-layout data-index="${index}" title="PDF layout before this field"
-            style="font-size:0.72rem;padding:0.25rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-secondary);flex-shrink:0;">
-            <option value="" ${layVal === '' ? 'selected' : ''}>Normal spacing</option>
-            <option value="s6" ${layVal === 's6' ? 'selected' : ''}>Small gap before</option>
-            <option value="s15" ${layVal === 's15' ? 'selected' : ''}>Large gap before</option>
-            <option value="break" ${layVal === 'break' ? 'selected' : ''}>New page before</option>
-          </select>
-          <div style="display:flex;gap:0.15rem;flex-shrink:0;">
-            <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-field-up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
-            <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-field-down" data-index="${index}" ${index === total - 1 ? 'disabled' : ''}>↓</button>
-            <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;color:var(--error);" data-action="remove-field" data-index="${index}">✕</button>
+      const typeOptions = TEXT_GROUP.includes(type) ? TEXT_GROUP : isOptions ? OPTION_FIELD_TYPES : null;
+
+      const settings = !open ? '' : `
+        <div style="margin:0.4rem 0 0.3rem 1.6rem;padding:0.75rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.75rem;">
+          ${typeOptions ? `
+            <div>
+              <label style="${lbl}">Field type</label>
+              <select data-field-prop="type" data-index="${index}" style="${inp}">
+                ${typeOptions.map(t => `<option value="${t}" ${t === type ? 'selected' : ''}>${TYPE_LABELS[t]}</option>`).join('')}
+              </select>
+            </div>` : ''}
+          ${type !== 'heading' ? `
+            <div>
+              <label style="${lbl}">Help text (small grey text under the field)</label>
+              <input type="text" value="${esc(field.help || '')}" data-field-prop="help" data-index="${index}" placeholder="e.g. Only if supervisor was notified" style="${inp}">
+            </div>` : ''}
+          ${(TEXT_GROUP.includes(type) || type === 'select') && !['date', 'time', 'datetime'].includes(type) ? `
+            <div>
+              <label style="${lbl}">Placeholder (grey hint inside the box on the Hub)</label>
+              <input type="text" value="${esc(field.placeholder || '')}" data-field-prop="placeholder" data-index="${index}" style="${inp}">
+            </div>` : ''}
+          ${type === 'textarea' ? `
+            <div>
+              <label style="${lbl}">Lines (box height on Hub & writing space in PDF)</label>
+              <input type="number" min="2" max="30" value="${esc(field.rows || 3)}" data-field-prop="rows" data-index="${index}" style="${inp}">
+            </div>` : ''}
+          ${type === 'checkbox' ? `
+            <div>
+              <label style="${lbl}">Text beside the tick box</label>
+              <input type="text" value="${esc(field.checkboxLabel || '')}" data-field-prop="checkboxLabel" data-index="${index}" placeholder="Defaults to the field label" style="${inp}">
+            </div>` : ''}
+          ${isOptions ? `
+            <div style="grid-column:1/-1;">
+              <label style="${lbl}">Options — one per line</label>
+              <textarea rows="${Math.min(Math.max(optionLabels.length, 3), 10)}" data-field-prop="options" data-index="${index}" ${objectOptions ? 'disabled title="These options were set via SQL with separate values and labels — edit them in SQL"' : ''}
+                style="${inp}resize:vertical;font-family:inherit;">${esc(optionLabels.join('\n'))}</textarea>
+            </div>` : ''}
+          <div>
+            <label style="${lbl}">PDF layout before this field</label>
+            <select data-field-layout data-index="${index}" style="${inp}">
+              <option value="" ${layVal === '' ? 'selected' : ''}>Normal spacing</option>
+              <option value="s6" ${layVal === 's6' ? 'selected' : ''}>Small gap before</option>
+              <option value="s15" ${layVal === 's15' ? 'selected' : ''}>Large gap before</option>
+              <option value="break" ${layVal === 'break' ? 'selected' : ''}>New page before</option>
+            </select>
           </div>
+          ${SHORT_FIELD_TYPES.includes(type) ? `
+            <div style="display:flex;align-items:flex-end;">
+              <label style="font-size:0.78rem;color:var(--text-secondary);display:flex;gap:0.4rem;align-items:center;padding-bottom:0.5rem;" title="In the PDF, short fields sit two per row">
+                <input type="checkbox" ${lay.fullWidth ? 'checked' : ''} data-field-fullwidth data-index="${index}"> Own row in PDF (don't pair)
+              </label>
+            </div>` : ''}
+          <div style="grid-column:1/-1;font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">Saved as: ${esc(field.name)}</div>
+        </div>`;
+
+      const summaryBits = [];
+      if (field.help) summaryBits.push(`<span style="font-style:italic;">${esc(field.help)}</span>`);
+      if (isOptions && optionLabels.length) summaryBits.push(esc(optionLabels.join(' · ')));
+      if (type === 'textarea') summaryBits.push(`${field.rows || 3} lines`);
+
+      return `${breakMarker}
+        <div style="padding:0.45rem 0.25rem;${lay.spaceBefore ? 'padding-top:' + (lay.spaceBefore <= 8 ? '0.9rem' : '1.6rem') + ';' : ''}${index < total - 1 ? 'border-bottom:1px solid var(--border);' : ''}">
+          <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+            <span style="font-size:0.7rem;color:var(--text-secondary);width:1.1rem;text-align:right;flex-shrink:0;">${index + 1}</span>
+            <input type="text" value="${esc(field.label)}" placeholder="Field label" data-field-prop="label" data-index="${index}"
+              style="flex:1 1 180px;min-width:140px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;${type === 'heading' ? 'font-weight:700;' : ''}">
+            <span style="font-size:0.68rem;color:var(--text-secondary);white-space:nowrap;flex-shrink:0;">${esc(typeLabel)}</span>
+            ${lay.pageBreakBefore ? chip('new page', 'var(--accent)') : lay.spaceBefore ? chip('gap', 'var(--text-secondary)') : ''}
+            ${needsRequired ? `
+              <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;">
+                <input type="checkbox" ${field.required ? 'checked' : ''} data-field-prop="required" data-index="${index}"> Req
+              </label>` : ''}
+            <div style="display:flex;gap:0.15rem;flex-shrink:0;margin-left:auto;">
+              <button class="${open ? 'btn-primary' : 'btn-secondary'}" style="padding:0.25rem 0.55rem;font-size:0.75rem;" data-action="toggle-field-settings" data-index="${index}" title="Field settings">⚙</button>
+              <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-field-up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
+              <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;" data-action="move-field-down" data-index="${index}" ${index === total - 1 ? 'disabled' : ''}>↓</button>
+              <button class="btn-secondary" style="padding:0.25rem 0.45rem;font-size:0.75rem;color:var(--error);" data-action="remove-field" data-index="${index}">✕</button>
+            </div>
+          </div>
+          ${summaryBits.length && !open ? `<div style="margin:0.2rem 0 0 1.6rem;font-size:0.72rem;color:var(--text-secondary);">${summaryBits.join(' &nbsp;·&nbsp; ')}</div>` : ''}
+          ${settings}
         </div>
       `;
     }
@@ -943,16 +1141,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
     function renderEditor() {
       const isDigital = DIGITAL_TYPES.includes(workingSchema.doc_type);
-      const editorHtml = editorHeaderHTML() + metaCardHTML() + (isDigital ? renderFieldsEditor() : renderContentEditor());
+      const editorHtml = editorHeaderHTML() + metaCardHTML() + revisionPanelHTML() + (isDigital ? renderFieldsEditor() : renderContentEditor());
       if (!livePdf) { root.innerHTML = editorHtml; return; }
       root.innerHTML = `
         <style>
-          @media (max-width: 1100px) {
+          @media (max-width: 760px) {
             .ims-live-split { grid-template-columns: 1fr !important; }
             .ims-live-pane { position: static !important; height: 75vh !important; }
           }
         </style>
-        <div class="ims-live-split" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.25rem;align-items:start;">
+        <div class="ims-live-split" style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,0.9fr);gap:1rem;align-items:start;">
           <div style="min-width:0;">${editorHtml}</div>
           <div class="ims-live-pane" style="position:sticky;top:calc(var(--header-height) + 1rem);height:calc(100vh - var(--header-height) - 2rem);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg-secondary);">
             <div id="ims-live-status" style="font-size:0.75rem;color:var(--text-secondary);padding:0.45rem 0.75rem;border-bottom:1px solid var(--border);">Generating PDF…</div>
@@ -968,7 +1166,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         <button class="btn-secondary" data-action="back-from-history" style="margin-bottom:0.75rem;">← Back to list</button>
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div class="section-label">Revision history — ${esc(currentDoc.title)}</div>
-          <button class="btn-secondary" data-action="add-legacy">+ Add legacy revision</button>
+          <button class="btn-secondary" data-action="add-legacy">+ Add previous revision</button>
         </div>
         ${!historyList.length ? `<div class="ims-empty-state">No revisions found.</div>` : `
           <div style="display:flex;flex-direction:column;gap:0.6rem;">
@@ -1042,6 +1240,19 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         if (action === 'discard-draft') { await discardDraft(); return; }
         if (action === 'export-pdf') { await exportPDF(); return; }
         if (action === 'add-legacy') { showLegacyModal(); return; }
+        if (action === 'edit-legacy' || action === 'delete-legacy') {
+          const rows = view === 'editor' ? editorHistory : historyList;
+          const row = rows.find(r => r.id === btn.dataset.revId);
+          if (!row) return;
+          if (action === 'edit-legacy') showLegacyModal(row);
+          else { await deleteLegacyRevision(currentDoc, row); renderView(); }
+          return;
+        }
+        if (action === 'toggle-field-settings') {
+          const f = workingSchema.fields[Number(btn.dataset.index)];
+          if (f) { expandedFields.has(f.name) ? expandedFields.delete(f.name) : expandedFields.add(f.name); }
+          renderEditor(); return;
+        }
 
         if (action === 'add-block') {
           const type = btn.dataset.type;
@@ -1163,12 +1374,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         }
         const fieldTarget = e.target.closest('[data-field-prop]');
         if (fieldTarget && workingSchema) {
-          const idx = Number(fieldTarget.dataset.index);
+          if (fieldTarget.type === 'checkbox') return;          // handled in 'change'
           const prop = fieldTarget.dataset.fieldProp;
-          const field = workingSchema.fields[idx];
+          if (prop === 'type') return;                          // handled in 'change'
+          const field = workingSchema.fields[Number(fieldTarget.dataset.index)];
           if (!field) return;
-          if (prop === 'options') field.options = fieldTarget.value.split(',').map(s => s.trim()).filter(Boolean);
-          else field.label = fieldTarget.value;
+          const val = fieldTarget.value;
+          if (prop === 'options') field.options = val.split('\n').map(s => s.trim()).filter(Boolean);
+          else if (prop === 'rows') { const n = parseInt(val, 10); if (n > 0) field.rows = Math.min(n, 30); else delete field.rows; }
+          else if (prop === 'label') field.label = val;
+          else if (val.trim()) field[prop] = val;
+          else delete field[prop];
         }
       });
 
@@ -1214,6 +1430,15 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           const block = workingSchema.blocks[Number(tableCellCheck.dataset.index)];
           block.rows[Number(tableCellCheck.dataset.row)].cells[Number(tableCellCheck.dataset.col)] = tableCellCheck.checked;
           return;
+        }
+        const typeSel = e.target.closest('[data-field-prop="type"]');
+        if (typeSel && workingSchema) {
+          const f = workingSchema.fields[Number(typeSel.dataset.index)];
+          if (!f) return;
+          f.type = typeSel.value;
+          if (OPTION_FIELD_TYPES.includes(f.type) && !Array.isArray(f.options)) f.options = [];
+          if (f.type !== 'textarea') delete f.rows;
+          renderEditor(); return;
         }
         const fieldTarget = e.target.closest('[data-field-prop="required"]');
         if (fieldTarget && workingSchema) {
