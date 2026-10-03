@@ -1,7 +1,14 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.02
+   Version: V2.03
+   V2.03: two-person review — the author(s) of a draft cannot publish it;
+   "Submit for review" → someone who hasn't edited it approves & publishes
+   (prepared by / reviewed by recorded automatically). Editable IMS asset
+   number (schema.doc_number, separate from the slug the Hub loads by).
+   Editable field "Saved as" names; builder fields now get names from
+   their label (same as SQL-authored ones).
+   Draft workflow data lives in schema._draft and is stripped on publish.
    V2.02: previous-revision editor in the editor (add/edit/delete migrated
    revisions); Prepared By uses employee full name; per-field settings
    panel (help text, placeholder, lines, options, type); live PDF pane
@@ -86,7 +93,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.02';
+  const VERSION = 'V2.03';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -199,20 +206,31 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     let liveHistory = null;
     let editorHistory = [];       // revision rows for the doc open in the editor
     let expandedFields = new Set(); // field names with their settings panel open
+    let autoNamed = new Set();      // fields added this session whose data key still follows their label
+    let baseline = '';              // JSON of title + content at last load/save (to detect real edits)
 
     /* ── SLUG GENERATION (doubles as "document number") ── */
-    async function nextSlug(docType) {
-      const prefix = `bro-${SECTION_CODES[section].toLowerCase()}-${DOC_TYPES[docType].code.toLowerCase()}-`;
-      const { data, error } = await sb().from('ims_documents')
-        .select('slug').ilike('slug', prefix + '%');
+    function docNumberOf(d) {
+      return String(d?.schema?.doc_number || d?.slug || '').toUpperCase();
+    }
+    async function allDocIds() {
+      const { data, error } = await sb().from('ims_documents').select('id, slug, schema');
+      return error ? [] : (data || []);
+    }
+    async function suggestDocNumber(docType) {
+      const prefix = `BRO-${SECTION_CODES[section]}-${DOC_TYPES[docType].code}-`;
       let max = 0;
-      if (!error && data) {
-        data.forEach(row => {
-          const m = new RegExp(`${prefix}(\\d+)$`).exec(row.slug || '');
+      (await allDocIds()).forEach(row => {
+        [String(row.slug || '').toUpperCase(), String(row.schema?.doc_number || '').toUpperCase()].forEach(v => {
+          const m = new RegExp(`^${prefix}(\\d+)$`).exec(v);
           if (m) max = Math.max(max, parseInt(m[1], 10));
         });
-      }
+      });
       return prefix + String(max + 1).padStart(3, '0');
+    }
+    async function docNumberTaken(num, exceptId) {
+      const n = String(num || '').trim().toUpperCase();
+      return (await allDocIds()).some(r => r.id !== exceptId && docNumberOf(r) === n);
     }
 
     /* ── DATA ── */
@@ -245,8 +263,34 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     function docStatus(d) {
       if (d.schema?.archived) return 'archived';
       if (d.is_active) return 'published';
+      if (d.schema?._draft?.status === 'in_review') return 'review';
       return 'draft';
     }
+
+    /* ── REVIEW WORKFLOW HELPERS ── */
+    function myEmail() { return String(window.BromarAuth?.user?.()?.email || '').toLowerCase(); }
+    function stripDraft(s) { const { _draft, ...rest } = s || {}; return rest; }
+    function draftInfo() { return workingSchema?._draft || null; }
+    function ensureDraft() {
+      if (!workingSchema._draft) workingSchema._draft = { status: 'draft', editors: [] };
+      if (!Array.isArray(workingSchema._draft.editors)) workingSchema._draft.editors = [];
+      return workingSchema._draft;
+    }
+    function isEditorOf(schema) {
+      const e = myEmail();
+      return !!e && !!schema?._draft?.editors?.some(x => String(x.email).toLowerCase() === e);
+    }
+    function iAmEditor() { return isEditorOf(workingSchema); }
+    async function addMeAsEditor(d) {
+      const email = myEmail();
+      if (!email || d.editors.some(x => String(x.email).toLowerCase() === email)) return;
+      d.editors.push({ email, name: await currentUserName() });
+    }
+    function preparedNames() {
+      return (draftInfo()?.editors || []).map(x => x.name || x.email).join(', ');
+    }
+    function snapshotBaseline() { baseline = JSON.stringify([currentDoc?.title, stripDraft(workingSchema)]); }
+    function hasContentChanges() { return JSON.stringify([currentDoc?.title, stripDraft(workingSchema)]) !== baseline; }
     function emptySchema(docType, category, description) {
       return CONTENT_TYPES.includes(docType)
         ? { doc_type: docType, category, description, blocks: [] }
@@ -264,53 +308,126 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── CRUD ── */
-    async function createDocument({ title, docType, category, description }) {
-      const slug = await nextSlug(docType);
+    async function createDocument({ title, docType, category, description, docNumber }) {
+      const existing = await allDocIds();
+      let slug = String(docNumber).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if (!slug || existing.some(r => r.slug === slug)) slug = `${slug || 'doc'}-${Date.now().toString(36)}`;
+      const schema = { ...emptySchema(docType, category, description), doc_number: String(docNumber).toUpperCase() };
       const { data: docRow, error } = await sb().from('ims_documents').insert({
-        slug, section, title, schema: emptySchema(docType, category, description),
+        slug, section, title, schema,
         revision: 0, is_active: false, is_form: DIGITAL_TYPES.includes(docType)
       }).select().single();
       if (error || !docRow) { alert('Could not create document: ' + (error?.message || 'unknown error')); return null; }
       return docRow;
     }
 
-    async function saveDraft() {
-      if (!currentDoc || !workingSchema) return;
+    async function persistDraft() {
+      const d = ensureDraft();
+      d.version_date = revMeta.version_date;
+      d.version_description = revMeta.version_description;
       const { data, error } = await sb().from('ims_documents')
         .update({ title: currentDoc.title, schema: workingSchema })
         .eq('id', currentDoc.id).select().maybeSingle();
-      if (error || !data) { alert('Save failed: ' + (error?.message || 'no row updated')); return; }
+      if (error || !data) { alert('Save failed: ' + (error?.message || 'no row updated')); return false; }
       currentDoc = data;
+      snapshotBaseline();
+      liveHistory = null;
+      return true;
+    }
+
+    async function saveDraft() {
+      if (!currentDoc || !workingSchema) return;
+      const d = ensureDraft();
+      const changed = hasContentChanges();
+      if (changed && d.status === 'in_review' && !iAmEditor()) {
+        const ok = await confirmDialog({
+          title: 'Save your changes?',
+          message: "Changing the document makes you a co-author. It goes back to draft and must then be reviewed by someone who hasn't edited it.",
+          okLabel: 'Save changes'
+        });
+        if (!ok) return;
+      }
+      if (changed) {
+        await addMeAsEditor(d);
+        if (d.status === 'in_review') d.status = 'draft';
+      }
+      if (!(await persistDraft())) return;
+      if (changed) renderEditor();
       flashSaved();
+    }
+
+    async function submitForReview() {
+      if (!currentDoc || !workingSchema) return;
+      const ok = await confirmDialog({
+        title: 'Submit for review?',
+        message: "Someone who hasn't edited this draft must review and publish it — you won't be able to publish it yourself.",
+        okLabel: 'Submit'
+      });
+      if (!ok) return;
+      const d = ensureDraft();
+      await addMeAsEditor(d);
+      d.status = 'in_review';
+      d.submitted_at = new Date().toISOString();
+      d.submitted_by = await currentUserName();
+      delete d.returned_note; delete d.returned_by; delete d.returned_at;
+      if (await persistDraft()) renderEditor();
+    }
+
+    async function withdrawReview() {
+      const d = ensureDraft();
+      d.status = 'draft';
+      if (await persistDraft()) renderEditor();
+    }
+
+    async function returnToAuthor() {
+      if (hasContentChanges()) { alert('You have unsaved changes. Discard them (Back to list) before returning the draft, or save them — saving makes you a co-author.'); return; }
+      const note = window.prompt('What needs changing? (shown to the author)', '');
+      if (note === null) return;
+      const d = ensureDraft();
+      d.status = 'draft';
+      d.returned_note = note.trim();
+      d.returned_by = await currentUserName();
+      d.returned_at = new Date().toISOString();
+      if (await persistDraft()) renderEditor();
     }
 
     async function publishRevision() {
       if (!currentDoc || !workingSchema) return;
+      const d = draftInfo();
+      if (!d || d.status !== 'in_review') { alert('Submit this draft for review first. Someone who hasn\'t edited it then approves and publishes it.'); return; }
+      if (iAmEditor()) { alert('You helped prepare this draft, so someone else must review and publish it.'); return; }
+      if (hasContentChanges()) { alert("You've changed the document since it was submitted. Save your changes (it goes back to draft for another reviewer) or go back to the list to discard them."); return; }
       const ok = await confirmDialog({
-        title: 'Publish this revision?',
-        message: DIGITAL_TYPES.includes(currentDoc.schema?.doc_type || workingSchema.doc_type)
+        title: 'Approve & publish?',
+        message: (DIGITAL_TYPES.includes(workingSchema.doc_type)
           ? 'This will go live on Bromar Hub immediately.'
-          : 'This becomes the current version of this document.',
-        okLabel: 'Publish'
+          : 'This becomes the current version of this document.') + ` You'll be recorded as the reviewer; prepared by: ${preparedNames()}.`,
+        okLabel: 'Approve & publish'
       });
       if (!ok) return;
 
+      const reviewer = await currentUserName();
+      const prepared = preparedNames();
+      const cleanSchema = stripDraft(workingSchema);
       const newRevision = (currentDoc.revision || 0) + 1;
       const { data: docRow, error: e1 } = await sb().from('ims_documents').update({
-        title: currentDoc.title, schema: workingSchema, revision: newRevision, is_active: true
+        title: currentDoc.title, schema: cleanSchema, revision: newRevision, is_active: true
       }).eq('id', currentDoc.id).select().maybeSingle();
       if (e1 || !docRow) { alert('Publish failed: ' + (e1?.message || 'unknown error')); return; }
 
       const e2 = await insertRevisionRow({
-        document_id: currentDoc.id, revision: newRevision, schema: workingSchema,
+        document_id: currentDoc.id, revision: newRevision, schema: cleanSchema,
         version_date: revMeta.version_date || todayISO(),
         version_description: revMeta.version_description || '',
-        prepared_by: revMeta.prepared_by || (await currentUserName()),
-        reviewed_by: revMeta.reviewed_by || null
+        prepared_by: prepared, reviewed_by: reviewer
       });
       if (e2) { alert('Document published, but the revision-history record failed to save: ' + e2.message); }
 
       currentDoc = docRow;
+      workingSchema = JSON.parse(JSON.stringify(cleanSchema));
+      revMeta = { version_date: todayISO(), version_description: '' };
+      snapshotBaseline();
+      editorHistory = await loadHistory(currentDoc.id);
       liveHistory = null;
       renderEditor();
     }
@@ -333,7 +450,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (!workingSchema.doc_type) workingSchema.doc_type = effectiveDocType(currentDoc);
       if (DIGITAL_TYPES.includes(workingSchema.doc_type) && !workingSchema.fields) workingSchema.fields = [];
       if (CONTENT_TYPES.includes(workingSchema.doc_type) && !workingSchema.blocks) workingSchema.blocks = [];
-      revMeta = { version_date: todayISO(), version_description: '', prepared_by: await currentUserName(), reviewed_by: '' };
+      const dInfo = workingSchema._draft;
+      revMeta = { version_date: dInfo?.version_date || todayISO(), version_description: dInfo?.version_description || '' };
+      await currentUserName();          // warm the name cache
+      snapshotBaseline();
+      autoNamed = new Set();
       liveHistory = null;
       expandedFields = new Set();
       editorHistory = await loadHistory(currentDoc.id);
@@ -440,7 +561,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const historyRows = (history || []).filter(r => r.revision !== nextRev).concat([{
         revision: nextRev, version_date: revisionMeta.version_date,
         version_description: revMeta.version_description || '',
-        prepared_by: revMeta.prepared_by || '', reviewed_by: revMeta.reviewed_by || ''
+        prepared_by: preparedNames() || cachedUserName || '', reviewed_by: ''
       }]);
       const args = { doc: currentDoc, revisionMeta, schema: workingSchema, historyRows };
       const pdf = CONTENT_TYPES.includes(workingSchema.doc_type) ? await kit.generatePolicyPDF(args) : await kit.generateFormPDF(args);
@@ -481,7 +602,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const history = await loadHistory(currentDoc.id);
       try {
         const { pdf, nextRev } = await buildPendingPDF(history);
-        window.BromarIMSReportKit.download(pdf, `${currentDoc.slug}-v${nextRev}-draft`);
+        window.BromarIMSReportKit.download(pdf, `${(workingSchema.doc_number || currentDoc.slug || 'document').toUpperCase()}-V${String(nextRev).padStart(2, '0')}-DRAFT`);
       } catch (e) {
         alert('PDF export failed: ' + e.message);
       }
@@ -490,16 +611,19 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     /* ── NEW DOCUMENT MODAL ── */
     async function showNewDocModal() {
       const categories = getCategories();
-      const previewSlug = await nextSlug(activeType);
+      const suggested = await suggestDocNumber(activeType);
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
       overlay.innerHTML = `
         <div class="card" style="max-width:460px;width:100%;padding:1.5rem;animation:none;">
           <div class="section-label" style="margin-top:0;">New ${esc(DOC_TYPES[activeType].label)}</div>
-          <div style="background:var(--bg-main);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin-bottom:1rem;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:var(--accent);">
-            Document number: ${esc(previewSlug.toUpperCase())}
-          </div>
           <div style="display:flex;flex-direction:column;gap:0.9rem;">
+            <div>
+              <label style="font-size:0.8rem;color:var(--text-secondary);">IMS asset / document number *</label>
+              <input type="text" id="doc-modal-number" value="${esc(suggested)}"
+                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--accent);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;text-transform:uppercase;">
+              <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.25rem;">Suggested next number — change it to match your existing register if needed.</div>
+            </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Title *</label>
               <input type="text" id="doc-modal-title" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
@@ -539,9 +663,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         const title = overlay.querySelector('#doc-modal-title').value.trim();
         const category = catSelect.value === '__new__' ? newCatInput.value.trim() : catSelect.value;
         const description = overlay.querySelector('#doc-modal-description').value.trim();
+        const docNumber = overlay.querySelector('#doc-modal-number').value.trim().toUpperCase();
         if (!title) { alert('Title is required.'); return; }
+        if (!docNumber) { alert('Document number is required.'); return; }
+        if (await docNumberTaken(docNumber)) { alert(`${docNumber} is already used by another document.`); return; }
         close();
-        const docRow = await createDocument({ title, docType: activeType, category, description });
+        const docRow = await createDocument({ title, docType: activeType, category, description, docNumber });
         if (docRow) { await loadDocuments(); await openForEdit(docRow); }
       });
     }
@@ -692,12 +819,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const map = {
         draft:     { color: 'var(--text-secondary)', label: 'Draft' },
         published: { color: 'var(--success)',        label: 'Published' },
-        archived:  { color: 'var(--error)',           label: 'Archived' }
+        archived:  { color: 'var(--error)',           label: 'Archived' },
+        review:    { color: 'var(--accent)',          label: 'In review' }
       };
       const s = map[docStatus(d)];
       return `<span style="font-size:0.75rem;font-weight:600;color:${s.color};border:1px solid ${s.color};border-radius:999px;padding:0.15rem 0.6rem;">${s.label}</span>`;
     }
-    function docNumberDisplay(d) { return `${(d.slug || '').toUpperCase()}-V${d.revision || 0}`; }
+    function docNumberDisplay(d) { return `${docNumberOf(d)}-V${String(d.revision || 0).padStart(2, '0')}`; }
 
     function typeRailHTML() {
       return `
@@ -754,7 +882,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                         ${statusBadge(d)}
                         <button class="btn-secondary" data-action="view-doc" data-id="${d.id}">View</button>
                         <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
-                        ${docStatus(d) !== 'archived' ? `<button class="btn-primary" data-action="edit" data-id="${d.id}">Edit</button>` : ''}
+                        ${docStatus(d) === 'archived' ? '' : (docStatus(d) === 'review' && !isEditorOf(d.schema))
+                          ? `<button class="btn-primary" data-action="edit" data-id="${d.id}">Review</button>`
+                          : `<button class="btn-primary" data-action="edit" data-id="${d.id}">Edit</button>`}
                         <button class="btn-secondary" data-action="archive" data-id="${d.id}">${docStatus(d) === 'archived' ? 'Restore' : 'Archive'}</button>
                       </div>
                     </div>
@@ -778,9 +908,10 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Document number</label>
-              <input type="text" value="${esc((d.slug || '').toUpperCase())}" disabled
-                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
+              <label style="font-size:0.8rem;color:var(--text-secondary);">IMS asset / document number</label>
+              <input type="text" value="${esc(String(s.doc_number || d.slug || '').toUpperCase())}" data-schema-meta="doc_number"
+                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;text-transform:uppercase;">
+              <div style="font-size:0.68rem;color:var(--text-secondary);margin-top:0.25rem;">System ID (used by Hub links, doesn't change): <span style="font-family:'JetBrains Mono',monospace;">${esc(d.slug || '')}</span></div>
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Type${!d.schema?.doc_type ? ' <span style="color:var(--error);">(set this — was uncategorized)</span>' : ''}</label>
@@ -811,14 +942,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by</label>
-              <input type="text" value="${esc(revMeta.prepared_by || '')}" data-rev-meta="prepared_by"
-                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by (automatic)</label>
+              <div style="padding:0.6rem;border:1px dashed var(--border);border-radius:8px;margin-top:0.3rem;font-size:0.9rem;color:${preparedNames() ? 'var(--text-primary)' : 'var(--text-secondary)'};">${esc(preparedNames() || 'Whoever edits or submits this draft')}</div>
             </div>
             <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">Reviewed by</label>
-              <input type="text" value="${esc(revMeta.reviewed_by || '')}" data-rev-meta="reviewed_by"
-                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              <label style="font-size:0.8rem;color:var(--text-secondary);">Reviewed by (automatic)</label>
+              <div style="padding:0.6rem;border:1px dashed var(--border);border-radius:8px;margin-top:0.3rem;font-size:0.9rem;color:var(--text-secondary);">The person who approves & publishes</div>
             </div>
           </div>
           <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-secondary);">These details become revision ${String((currentDoc.revision || 0) + 1).padStart(2, '0')} when you publish.</div>
@@ -865,8 +994,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                   <td style="${td}font-family:'JetBrains Mono',monospace;">${pad(nextRev)}</td>
                   <td style="${td}white-space:nowrap;">${esc(fmtDateShort(revMeta.version_date))}</td>
                   <td style="${td}">${esc(revMeta.version_description || '') || '<em style="color:var(--text-secondary);">this draft</em>'}</td>
-                  <td style="${td}">${esc(revMeta.prepared_by || '')}</td>
-                  <td style="${td}">${esc(revMeta.reviewed_by || '')}</td>
+                  <td style="${td}">${esc(preparedNames() || '')}</td>
+                  <td style="${td}color:var(--text-secondary);">on approval</td>
                   <td style="${td}text-align:right;"><span style="font-size:0.7rem;color:var(--accent);white-space:nowrap;">On publish</span></td>
                 </tr>
               </tbody>
@@ -876,16 +1005,36 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       `;
     }
 
+    function reviewBannerHTML() {
+      const d = draftInfo() || {};
+      const status = d.status || 'draft';
+      const box = (color, html) => `<div style="border:1px solid ${color};border-left:4px solid ${color};border-radius:var(--radius-sm);padding:0.7rem 0.9rem;margin-bottom:1rem;font-size:0.85rem;background:var(--card-hover);">${html}</div>`;
+      const when = iso => iso ? new Date(iso).toLocaleDateString('en-AU') : '';
+      if (status === 'in_review' && iAmEditor()) {
+        return box('var(--accent)', `<strong>Submitted for review</strong>${d.submitted_by ? ` by ${esc(d.submitted_by)}` : ''} ${when(d.submitted_at)}. Waiting for someone who hasn't edited it to approve and publish. Editing it again sends it back to draft.`);
+      }
+      if (status === 'in_review') {
+        return box('var(--accent)', `<strong>Ready for your review.</strong> Prepared by ${esc(preparedNames())}. Check it with Live PDF or Preview, then <strong>Approve &amp; publish</strong> or <strong>Return to author</strong>. If you change anything you become a co-author and someone else must review.`);
+      }
+      if (d.returned_note !== undefined && d.returned_by) {
+        return box('var(--error)', `<strong>Returned by ${esc(d.returned_by)}</strong> ${when(d.returned_at)}${d.returned_note ? `: ${esc(d.returned_note)}` : ''}. Make the changes, then submit for review again.`);
+      }
+      return box('var(--border)', `<span style="color:var(--text-secondary);">Draft. When it's ready, <strong>Submit for review</strong> — someone who hasn't edited it must approve before it's published.</span>`);
+    }
+
     function editorHeaderHTML() {
       const d = currentDoc;
-      const status = docStatus(d);
+      const status = docStatus({ ...d, schema: workingSchema, is_active: d.is_active });
+      const rStatus = draftInfo()?.status || 'draft';
+      const reviewer = rStatus === 'in_review' && !iAmEditor();
+      const statusText = status === 'published' ? 'Published (live)' : status === 'archived' ? 'Archived' : status === 'review' ? 'In review (offline)' : 'Draft (offline)';
       return `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
           <div>
             <button class="btn-secondary" data-action="back" style="margin-bottom:0.6rem;">← Back to list</button>
             <div class="section-label" style="margin:0;">${esc(d.title)}</div>
             <div style="font-size:0.8rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">
-              ${esc(docNumberDisplay(d))} — ${status === 'published' ? 'Published (live)' : status === 'archived' ? 'Archived' : 'Draft (offline)'}
+              ${esc(String(workingSchema.doc_number || d.slug || '').toUpperCase())}-V${String(d.revision || 0).padStart(2, '0')} — ${statusText}
             </div>
           </div>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
@@ -894,9 +1043,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <button class="btn-secondary" data-action="export-pdf">Export PDF</button>
             <button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">${editorHistory.some(r => r.schema) ? 'Discard changes' : 'Delete'}</button>
             <button class="btn-secondary" data-action="save-draft">Save draft</button>
-            <button class="btn-primary" data-action="publish">Publish</button>
+            ${rStatus !== 'in_review' ? `<button class="btn-primary" data-action="submit-review">Submit for review</button>` : ''}
+            ${rStatus === 'in_review' && !reviewer ? `<button class="btn-secondary" data-action="withdraw-review">Withdraw</button>` : ''}
+            ${reviewer ? `<button class="btn-secondary" data-action="return-author">Return to author</button>
+                          <button class="btn-primary" data-action="publish">Approve &amp; publish</button>` : ''}
           </div>
         </div>
+        ${reviewBannerHTML()}
       `;
     }
 
@@ -1092,7 +1245,15 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 <input type="checkbox" ${lay.fullWidth ? 'checked' : ''} data-field-fullwidth data-index="${index}"> Own row in PDF (don't pair)
               </label>
             </div>` : ''}
-          <div style="grid-column:1/-1;font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">Saved as: ${esc(field.name)}</div>
+          <div>
+            <label style="${lbl}">Saved as (data name in submissions)</label>
+            <input type="text" value="${esc(field.name)}" data-field-prop="name" data-index="${index}" style="${inp}font-family:'JetBrains Mono',monospace;">
+            <div style="font-size:0.66rem;color:${editorHistory.some(r => r.schema) ? 'var(--error)' : 'var(--text-secondary)'};margin-top:0.2rem;">
+              ${editorHistory.some(r => r.schema)
+                ? 'Already published — renaming means new answers are stored under a different name than older submissions.'
+                : 'Lowercase letters, numbers and _ only. Must be unique in this form.'}
+            </div>
+          </div>
         </div>`;
 
       const summaryBits = [];
@@ -1200,11 +1361,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── EVENTS (delegated) ── */
+    // Listeners belong to this sub-tab instance and are removed in destroy(), so a
+    // container shared between sections never runs another section's handlers.
+    let listenerAbort = null;
     function bindEvents(container) {
-      if (container.dataset.imsDocBound === '1') return;
-      container.dataset.imsDocBound = '1';
+      if (listenerAbort) listenerAbort.abort();
+      listenerAbort = new AbortController();
+      const opts = { signal: listenerAbort.signal };
+      const on = (type, fn) => container.addEventListener(type, fn, opts);
 
-      container.addEventListener('click', async (e) => {
+      on('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const action = btn.dataset.action;
@@ -1237,6 +1403,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         if (action === 'back-from-history') { view = 'list'; renderView(); return; }
         if (action === 'save-draft') { await saveDraft(); return; }
         if (action === 'publish') { await publishRevision(); return; }
+        if (action === 'submit-review') { await submitForReview(); return; }
+        if (action === 'withdraw-review') { await withdrawReview(); return; }
+        if (action === 'return-author') { await returnToAuthor(); return; }
         if (action === 'discard-draft') { await discardDraft(); return; }
         if (action === 'export-pdf') { await exportPDF(); return; }
         if (action === 'add-legacy') { showLegacyModal(); return; }
@@ -1325,6 +1494,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           }[type] || 'New field');
           workingSchema.fields = workingSchema.fields || [];
           const field = { name: uniqueFieldName(defaultLabel, workingSchema.fields), type, label: defaultLabel, required: false };
+          autoNamed.add(field.name);
           if (type === 'select') field.options = [];
           if (type === 'dynamiclist') { field.placeholder = 'Describe...'; field.addButtonLabel = '+ Add Issue'; }
           workingSchema.fields.push(field);
@@ -1340,7 +1510,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         }
       });
 
-      container.addEventListener('input', (e) => {
+      on('input', (e) => {
         scheduleLivePdf();
         const metaTarget = e.target.closest('[data-meta]');
         if (metaTarget && currentDoc) { currentDoc[metaTarget.dataset.meta] = metaTarget.value; return; }
@@ -1376,19 +1546,32 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         if (fieldTarget && workingSchema) {
           if (fieldTarget.type === 'checkbox') return;          // handled in 'change'
           const prop = fieldTarget.dataset.fieldProp;
-          if (prop === 'type') return;                          // handled in 'change'
+          if (prop === 'type' || prop === 'name') return;       // handled in 'change'
           const field = workingSchema.fields[Number(fieldTarget.dataset.index)];
           if (!field) return;
           const val = fieldTarget.value;
           if (prop === 'options') field.options = val.split('\n').map(s => s.trim()).filter(Boolean);
           else if (prop === 'rows') { const n = parseInt(val, 10); if (n > 0) field.rows = Math.min(n, 30); else delete field.rows; }
-          else if (prop === 'label') field.label = val;
+          else if (prop === 'label') {
+            field.label = val;
+            if (autoNamed.has(field.name)) {
+              const others = workingSchema.fields.filter(x => x !== field);
+              const nn = uniqueFieldName(val || 'field', others);
+              if (nn !== field.name) {
+                autoNamed.delete(field.name); autoNamed.add(nn);
+                if (expandedFields.delete(field.name)) expandedFields.add(nn);
+                field.name = nn;
+                const nameInput = root.querySelector(`[data-field-prop="name"][data-index="${fieldTarget.dataset.index}"]`);
+                if (nameInput) nameInput.value = nn;
+              }
+            }
+          }
           else if (val.trim()) field[prop] = val;
           else delete field[prop];
         }
       });
 
-      container.addEventListener('change', (e) => {
+      on('change', async (e) => {
         scheduleLivePdf();
         const layoutSel = e.target.closest('[data-field-layout]');
         if (layoutSel && workingSchema) {
@@ -1431,6 +1614,26 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           block.rows[Number(tableCellCheck.dataset.row)].cells[Number(tableCellCheck.dataset.col)] = tableCellCheck.checked;
           return;
         }
+        const nameInput = e.target.closest('[data-field-prop="name"]');
+        if (nameInput && workingSchema) {
+          const f = workingSchema.fields[Number(nameInput.dataset.index)];
+          if (!f) return;
+          const nn = String(nameInput.value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+          if (!nn) { alert('The saved-as name cannot be empty.'); renderEditor(); return; }
+          if (nn !== f.name && workingSchema.fields.some(x => x !== f && x.name === nn)) { alert(`"${nn}" is already used by another field in this form.`); renderEditor(); return; }
+          autoNamed.delete(f.name);
+          if (expandedFields.delete(f.name)) expandedFields.add(nn);
+          f.name = nn;
+          renderEditor(); return;
+        }
+        const numInput = e.target.closest('[data-schema-meta="doc_number"]');
+        if (numInput && workingSchema) {
+          const n = String(numInput.value || '').trim().toUpperCase();
+          if (!n) { alert('Document number cannot be empty.'); numInput.value = workingSchema.doc_number || currentDoc.slug.toUpperCase(); workingSchema.doc_number = numInput.value; return; }
+          if (await docNumberTaken(n, currentDoc.id)) { alert(`${n} is already used by another document.`); numInput.focus(); return; }
+          workingSchema.doc_number = n;
+          renderEditor(); return;
+        }
         const typeSel = e.target.closest('[data-field-prop="type"]');
         if (typeSel && workingSchema) {
           const f = workingSchema.fields[Number(typeSel.dataset.index)];
@@ -1463,6 +1666,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         renderView();
       },
       destroy() {
+        if (listenerAbort) { listenerAbort.abort(); listenerAbort = null; }
         clearTimeout(liveTimer);
         if (liveUrl) { URL.revokeObjectURL(liveUrl); liveUrl = null; }
         root = null; currentDoc = null; workingSchema = null; revMeta = null;
