@@ -1,12 +1,12 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.06
-   Tabs: Overview (default) / Safety / Quality / Environment / Bromar Hub / Other
+   Version: V1.07
+   Tabs: Overview (default) / Safety / Quality / Environment / Bromar Hub / Other / Audit
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy(), search(query)? })
-   sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub' | 'other'
+   sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub' | 'other' | 'audit'
    Sub-tab files must load AFTER ims.js in index.html.
 
    OPTIONAL search(query) on a registered sub-tab: return an array of
@@ -14,7 +14,7 @@
    If omitted, the sub-tab is still matched by its own label/title.
    ============================================================ */
 
-window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], 'bromar-hub': [], other: [] } };
+window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], 'bromar-hub': [], other: [], audit: [] } };
 window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (section, subtab) {
   if (!window.BromarIMS.subtabs[section]) window.BromarIMS.subtabs[section] = [];
   window.BromarIMS.subtabs[section].push(subtab);
@@ -23,7 +23,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.06';
+  const VERSION = 'V1.07';
 
   const SECTIONS = [
     { id: 'overview',    label: 'Overview',    desc: '' },
@@ -31,10 +31,11 @@ window.BromarPages.ims = (() => {
     { id: 'quality',     label: 'Quality',     desc: 'ITC, Testing, Policies' },
     { id: 'environment', label: 'Environment', desc: 'Policies, Procedures' },
     { id: 'bromar-hub',  label: 'Bromar Hub',  desc: 'Job Types, Customisation' },
-    { id: 'other',       label: 'Other',       desc: 'Forms, Policies, Plans' }
+    { id: 'other',       label: 'Other',       desc: 'Forms, Policies, Plans' },
+    { id: 'audit',       label: 'Audit',       desc: 'Exports, Registers' }
   ];
 
-  const SEARCHABLE_SECTIONS = ['safety', 'quality', 'environment', 'other'];
+  const SEARCHABLE_SECTIONS = ['safety', 'quality', 'environment', 'other', 'audit'];
 
   const OVERVIEW_SUMMARY = [
     { title: 'Safety (ISO 45001)', text: 'SWMS, hazard reports, incident reports, toolbox meetings. Use this to record and manage anything related to worker health and safety on site.' },
