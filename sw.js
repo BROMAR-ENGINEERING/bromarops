@@ -1,10 +1,11 @@
 /* ============================================================
    BROMAR OPS — SERVICE WORKER
-   V1.03
+   V1.04
    Strategy: network-first, fall back to cache when offline.
+   Bumping CACHE name auto-purges old caches on activate.
    ============================================================ */
 
-const CACHE = 'bromar-ops-v1-03';
+const CACHE = 'bromar-ops-v1-04';
 
 const PRECACHE_URLS = [
   'index.html',
@@ -16,6 +17,7 @@ const PRECACHE_URLS = [
   'js/utils.js',
   'js/core.js',
   'js/bromar-report-kit.js',
+  'js/bromar-form-kit.js',
   'js/pages/dashboard.js',
   'js/pages/jobs.js',
   'js/pages/quotes.js',
@@ -23,7 +25,11 @@ const PRECACHE_URLS = [
   'js/pages/timesheets.js',
   'js/pages/employees.js',
   'js/pages/ims.js',
-  'js/pages/ims/ims-quality-itc-builder.js',
+  'js/pages/ims/ims-report-kit.js',
+  'js/pages/ims/ims-audit.js',
+  'js/pages/ims/ims-document-builder.js',
+  'js/pages/ims/ims-placeholders.js',
+  'js/pages/ims/ims-safety-approved-swms.js',
   'js/pages/fleet.js',
   'js/pages/equipment.js',
   'js/pages/clients.js',
