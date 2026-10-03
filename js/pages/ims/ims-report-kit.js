@@ -1,16 +1,21 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.00
+   Version: V1.01
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
 
+   V1.01: rebuilt against the real ims_documents schema — takes a plain
+   `schema` object ({blocks:[...]} or {fields:[...]}) and a `revisionMeta`
+   ({revision, version_date}) instead of a revision-row-with-content
+   wrapper. historyRows now come straight from ims_document_revisions.
+
    Exposes: window.BromarIMSReportKit
-     .generatePolicyPDF({ doc, revision, historyRows })
-     .generateFormPDF({ doc, revision, historyRows, submission })
+     .generatePolicyPDF({ doc, revisionMeta, schema, historyRows })
+     .generateFormPDF({ doc, revisionMeta, schema, historyRows, submission })
      .download(pdfDoc, filename)
 
    REQUIRED ASSET (upload once):
@@ -22,7 +27,7 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.00';
+  const VERSION = 'V1.01';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const ORANGE = [234, 88, 12];
@@ -232,7 +237,7 @@ window.BromarIMSReportKit = (() => {
   }
 
   /* ── POLICY / PROCEDURE BODY ── */
-  function drawPolicyBody(pdf, blocks, startY) {
+  function drawPolicyBody(pdf, doc, revisionMeta, blocks, startY) {
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const marginX = 15;
@@ -240,11 +245,36 @@ window.BromarIMSReportKit = (() => {
     let y = startY;
 
     function newPageIfNeeded(needed) {
-      if (y + needed > pageH - 18) { pdf.addPage(); return true; }
+      if (y + needed > pageH - 18) {
+        pdf.addPage();
+        y = drawContentHeader(pdf, doc, revisionMeta);
+        return true;
+      }
       return false;
     }
 
     (blocks || []).forEach(block => {
+      if (block.type === 'table') {
+        const cols = block.columns || [];
+        const rows = (block.rows || []).map((r, ri) => r.cells.map((cell, ci) =>
+          cols[ci]?.type === 'check' ? (cell ? 'X' : '') : (cell || '')
+        ));
+        if (pdf.autoTable) {
+          pdf.autoTable({
+            startY: y,
+            margin: { left: marginX, right: marginX, top: 40 },
+            head: [cols.map(c => c.label)],
+            body: rows,
+            theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 1.8, textColor: BLACK, lineColor: [0, 0, 0], lineWidth: 0.2, halign: 'center' },
+            headStyles: { fillColor: [235, 235, 237], textColor: BLACK, fontStyle: 'bold' },
+            columnStyles: cols[0] ? { 0: { halign: 'left', cellWidth: 50 } } : {},
+            didDrawPage: () => { y = drawContentHeader(pdf, doc, revisionMeta); }
+          });
+          y = pdf.lastAutoTable.finalY + 8;
+        }
+        return;
+      }
       if (block.type === 'heading') {
         newPageIfNeeded(10);
         pdf.setTextColor(...BLACK);
@@ -305,6 +335,7 @@ window.BromarIMSReportKit = (() => {
       let answer = '';
       const ans = fieldAnswer(submission, field.id);
       if (field.type === 'passfail') answer = ans ? String(ans).toUpperCase() : '\u25A1 Pass   \u25A1 Fail   \u25A1 N/A';
+      else if (field.type === 'yesno') answer = ans ? String(ans).toUpperCase() : '\u25A1 Yes   \u25A1 No';
       else if (field.type === 'checkbox') answer = ans ? '\u2713' : '\u25A1';
       else if (field.type === 'signature') answer = ans ? '(signed)' : '';
       else if (field.type === 'photo') answer = ans ? '(photo attached)' : '';
@@ -343,22 +374,22 @@ window.BromarIMSReportKit = (() => {
     }
   }
 
-  async function generatePolicyPDF({ doc, revision, historyRows }) {
+  async function generatePolicyPDF({ doc, revisionMeta, schema, historyRows }) {
     const pdf = await newDoc();
-    drawCoverPage(pdf, doc, revision, historyRows);
+    drawCoverPage(pdf, doc, revisionMeta, historyRows);
     pdf.addPage();
-    const startY = drawContentHeader(pdf, doc, revision);
-    drawPolicyBody(pdf, revision.content?.blocks, startY);
+    const startY = drawContentHeader(pdf, doc, revisionMeta);
+    drawPolicyBody(pdf, doc, revisionMeta, schema?.blocks, startY);
     addPageNumbers(pdf, doc, 2);
     return pdf;
   }
 
-  async function generateFormPDF({ doc, revision, historyRows, submission }) {
+  async function generateFormPDF({ doc, revisionMeta, schema, historyRows, submission }) {
     const pdf = await newDoc();
-    drawCoverPage(pdf, doc, revision, historyRows);
+    drawCoverPage(pdf, doc, revisionMeta, historyRows);
     pdf.addPage();
-    const startY = drawContentHeader(pdf, doc, revision);
-    drawFormBody(pdf, revision.content?.fields, startY, submission);
+    const startY = drawContentHeader(pdf, doc, revisionMeta);
+    drawFormBody(pdf, schema?.fields, startY, submission);
     addPageNumbers(pdf, doc, 2);
     return pdf;
   }
