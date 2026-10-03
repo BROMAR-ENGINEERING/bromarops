@@ -1,51 +1,46 @@
 /* ============================================================
    BROMAR OPS — FORM KIT
-   Path: js/pages/ims/form-kit.js
-   Version: V1.02
+   V1.03
    Schema-driven form renderer. Forms are authored once in the IMS
    document builder (stored in ims_documents) and rendered anywhere
    — IMS, Fleet, Equipment — with no hardcoded fields.
 
-   NOTE: ims_documents canonical lifecycle field is is_active (boolean).
-   Confirmed live schema via information_schema.columns: id, slug,
-   section, title, schema, revision, is_active, is_form, is_featured,
-   hub_order, hub_icon, created_at. No status column exists.
+   Live ims_documents columns (verified via information_schema):
+     id, slug, section, title, schema, revision, is_active, is_form,
+     is_featured, hub_order, hub_icon, created_at
+   form-kit reads is_active = true as the "current, usable" flag.
 
    Exposes window.BromarFormKit:
      .render(container, schema, { values, onSubmit, submitLabel, readOnly })
          → builds inputs from schema.fields, returns a controller
            { getData(), validate(), setValues(obj), destroy() }
-     .fetchForm(slug)
-         → latest active ims_documents row for that slug
+     .fetchForm(slug)        → active ims_documents row for that slug
      .submitForm(formId, data, linkedRecord)
-         → inserts ims_form_submissions with a revision snapshot
+                             → inserts ims_form_submissions + revision snapshot
      .renderBySlug(container, slug, opts)
-         → convenience: fetchForm + render + wire submitForm in one call
+                             → fetchForm + render + wire submitForm in one call
 
-   SCHEMA SHAPE (schema jsonb column on ims_documents, is_form=true rows):
-     {
-       "fields": [
-         { "name": "odometer", "type": "number", "label": "Odometer (km)",
-           "required": true, "min": 0, "placeholder": "e.g. 84000" },
-         { "name": "condition", "type": "select", "label": "Overall condition",
-           "required": true, "options": ["Good", "Fair", "Poor"] },
-         { "name": "sig", "type": "signature", "label": "Signature", "required": true },
-         { "name": "photo_evidence", "type": "photo", "label": "Photo" },
-         { "name": "checks", "type": "dynamiclist", "label": "Checklist items" },
-         { "name": "section2", "type": "heading", "label": "Section 2 — Hazards" }
-       ]
-     }
-   Field types: text, textarea, number, date, time, datetime, email, tel,
-                select, radio, checkbox, multiselect, passfail, signature,
-                photo, dynamiclist, heading.
-   Optional per field: required, options (array | [{value,label}]),
-                placeholder, help, default, min, max, step, rows, pattern.
-   passfail: fixed Pass/Fail/N/A options, ignores f.options.
-   signature/photo: value is a dataURL string. required = must have a value.
-   dynamiclist: value is an array of strings. required = at least one
-                non-empty entry.
-   heading: display-only divider — no name needed, never required, never
-                appears in getData()/validate().
+   FIELD TYPES:
+     Inputs: text, textarea, number, date, time, datetime, email, tel,
+             select, radio, checkbox, multiselect
+     Added v1.03:
+       passfail    → Pass / Fail / N/A segmented control
+       signature   → draw-to-sign canvas (stored as PNG data URL)
+       photo       → image capture/upload (compressed to JPEG data URL)
+       dynamiclist → repeatable "add row" text list (stored as array)
+       heading     → non-input section divider (no data, never required)
+
+   SCHEMA SHAPE (schema jsonb on ims_documents, is_form = true):
+     { "fields": [
+         { "name":"odometer","type":"number","label":"Odometer (km)","required":true,"min":0 },
+         { "name":"cond","type":"passfail","label":"Brakes","required":true },
+         { "name":"defects","type":"dynamiclist","label":"Defects noted","addLabel":"Add defect" },
+         { "name":"sig","type":"signature","label":"Inspector signature","required":true },
+         { "name":"pic","type":"photo","label":"Photo of defect" },
+         { "type":"heading","label":"Section B — Interior" }
+       ] }
+   Optional per field: required, options, placeholder, help, default,
+                       min, max, step, rows, pattern, addLabel (dynamiclist).
    ============================================================ */
 
 (function () {
@@ -53,12 +48,8 @@
 
   const U = () => window.BromarUtils;
   const esc = (s) => (U() ? U().escHtml(s) : String(s == null ? '' : s));
+  const NON_DATA_TYPES = ['heading'];
 
-  const BASE_INPUT_STYLE =
-    'width:100%;padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:var(--radius-sm);' +
-    'background:var(--bg-main);color:var(--text-primary);font-family:\'Outfit\',sans-serif;outline:none;';
-
-  /* ── FIELD RENDERERS ── */
   function fieldId(name) { return `bfk-${name}`; }
 
   function optionList(opts) {
@@ -68,34 +59,91 @@
     });
   }
 
-  function dynamicListRowHTML(name, value) {
-    return `<div class="bfk-dynamiclist-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
-      <input type="text" class="bfk-dynamiclist-input" data-list="${esc(name)}" value="${esc(value)}" style="${BASE_INPUT_STYLE}">
-      <button type="button" class="bfk-dynamiclist-remove btn-secondary" style="padding:0.5rem 0.9rem;">✕</button>
-    </div>`;
-  }
-
+  /* ── FIELD HTML ── */
   function renderField(f, value) {
     const id = fieldId(f.name);
     const req = f.required ? '<span style="color:var(--error);">*</span>' : '';
     const help = f.help ? `<div class="bfk-help">${esc(f.help)}</div>` : '';
     const labelHtml = `<label class="bfk-label" for="${id}">${esc(f.label || f.name)} ${req}</label>`;
+    const baseInputStyle =
+      'width:100%;padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:var(--radius-sm);' +
+      'background:var(--bg-main);color:var(--text-primary);font-family:\'Outfit\',sans-serif;outline:none;';
 
-    let control = '';
     const v = value != null ? value : (f.default != null ? f.default : '');
+    let control = '';
 
     switch (f.type) {
+
+      /* ── NEW: heading (no input) ── */
       case 'heading':
-        return `<div class="bfk-heading section-label" style="margin:0.5rem 0 0;">${esc(f.label || f.text || '')}</div>`;
+        return `<div class="bfk-field bfk-heading-field" data-type="heading">
+          <div class="bfk-heading">${esc(f.label || '')}</div>
+          ${f.help ? `<div class="bfk-help">${esc(f.help)}</div>` : ''}
+        </div>`;
+
+      /* ── NEW: pass / fail / n-a ── */
+      case 'passfail': {
+        const choices = f.options && f.options.length ? optionList(f.options)
+          : [{ value: 'pass', label: 'Pass' }, { value: 'fail', label: 'Fail' }, { value: 'na', label: 'N/A' }];
+        control = `<div class="bfk-passfail" data-name="${esc(f.name)}" role="radiogroup">
+          ${choices.map(o => `
+            <button type="button" class="bfk-pf-btn pf-${esc(String(o.value).toLowerCase())}"
+              data-value="${esc(o.value)}" ${String(v) === String(o.value) ? 'aria-pressed="true"' : 'aria-pressed="false"'}>
+              ${esc(o.label)}
+            </button>`).join('')}
+          <input type="hidden" name="${esc(f.name)}" value="${esc(v)}">
+        </div>`;
+        break;
+      }
+
+      /* ── NEW: signature canvas ── */
+      case 'signature':
+        control = `<div class="bfk-signature" data-name="${esc(f.name)}">
+          <canvas class="bfk-sig-canvas" height="150"></canvas>
+          <div class="bfk-sig-actions">
+            <button type="button" class="btn-secondary bfk-sig-clear" style="padding:0.4rem 0.9rem;font-size:0.8rem;">Clear</button>
+          </div>
+          <input type="hidden" name="${esc(f.name)}" value="${esc(typeof v === 'string' ? v : '')}">
+        </div>`;
+        break;
+
+      /* ── NEW: photo capture/upload ── */
+      case 'photo':
+        control = `<div class="bfk-photo" data-name="${esc(f.name)}">
+          <input type="file" accept="image/*" capture="environment" class="bfk-photo-input" id="${id}" style="display:none;">
+          <div class="bfk-photo-preview" ${typeof v === 'string' && v ? '' : 'hidden'}>
+            <img class="bfk-photo-img" src="${typeof v === 'string' ? esc(v) : ''}" alt="preview">
+            <button type="button" class="bfk-photo-remove" aria-label="Remove photo">&times;</button>
+          </div>
+          <button type="button" class="btn-secondary bfk-photo-pick" style="padding:0.5rem 1rem;font-size:0.85rem;" ${typeof v === 'string' && v ? 'hidden' : ''}>
+            Take / choose photo
+          </button>
+          <input type="hidden" name="${esc(f.name)}" value="${esc(typeof v === 'string' ? v : '')}">
+        </div>`;
+        break;
+
+      /* ── NEW: dynamic repeatable text list ── */
+      case 'dynamiclist': {
+        const rows = Array.isArray(v) ? v : [];
+        control = `<div class="bfk-dynlist" data-name="${esc(f.name)}">
+          <div class="bfk-dynlist-rows">
+            ${rows.map(r => dynRowHtml(f.name, r)).join('')}
+          </div>
+          <button type="button" class="btn-secondary bfk-dynlist-add" style="padding:0.45rem 0.9rem;font-size:0.82rem;">
+            ${esc(f.addLabel || '+ Add row')}
+          </button>
+        </div>`;
+        break;
+      }
 
       case 'textarea':
         control = `<textarea id="${id}" name="${esc(f.name)}" rows="${f.rows || 3}"
           ${f.required ? 'required' : ''} placeholder="${esc(f.placeholder || '')}"
-          style="${BASE_INPUT_STYLE}resize:vertical;">${esc(v)}</textarea>`;
+          style="${baseInputStyle}resize:vertical;">${esc(v)}</textarea>`;
         break;
 
       case 'select':
-        control = `<select id="${id}" name="${esc(f.name)}" ${f.required ? 'required' : ''} style="${BASE_INPUT_STYLE}">
+        control = `<select id="${id}" name="${esc(f.name)}" ${f.required ? 'required' : ''} style="${baseInputStyle}">
           <option value="">${f.placeholder ? esc(f.placeholder) : '— Select —'}</option>
           ${optionList(f.options).map(o =>
             `<option value="${esc(o.value)}" ${String(v) === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`
@@ -106,7 +154,7 @@
       case 'multiselect': {
         const vals = Array.isArray(v) ? v.map(String) : [];
         control = `<select id="${id}" name="${esc(f.name)}" multiple ${f.required ? 'required' : ''}
-          style="${BASE_INPUT_STYLE}min-height:auto;">
+          style="${baseInputStyle}min-height:auto;">
           ${optionList(f.options).map(o =>
             `<option value="${esc(o.value)}" ${vals.includes(String(o.value)) ? 'selected' : ''}>${esc(o.label)}</option>`
           ).join('')}
@@ -125,19 +173,6 @@
         </div>`;
         break;
 
-      case 'passfail': {
-        const opts = ['Pass', 'Fail', 'N/A'];
-        control = `<div class="bfk-radio-group bfk-passfail" role="radiogroup">
-          ${opts.map((o, i) => `
-            <label class="bfk-choice">
-              <input type="radio" name="${esc(f.name)}" value="${o}"
-                ${String(v) === o ? 'checked' : ''} ${f.required && i === 0 ? 'required' : ''}>
-              <span>${o}</span>
-            </label>`).join('')}
-        </div>`;
-        break;
-      }
-
       case 'checkbox':
         control = `<label class="bfk-choice">
           <input type="checkbox" id="${id}" name="${esc(f.name)}" ${v === true || v === 'true' ? 'checked' : ''}>
@@ -145,39 +180,7 @@
         </label>`;
         return `<div class="bfk-field" data-field="${esc(f.name)}" data-type="checkbox">${control}${help}</div>`;
 
-      case 'signature':
-        control = `<div class="bfk-signature-wrap" data-name="${esc(f.name)}">
-          <canvas class="bfk-signature-pad" width="400" height="150"
-            style="width:100%;max-width:400px;height:150px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);touch-action:none;display:${v ? 'none' : 'block'};"></canvas>
-          ${v ? `<img class="bfk-signature-preview" src="${esc(v)}" style="max-width:400px;border:1px solid var(--border);border-radius:var(--radius-sm);">` : ''}
-          <input type="hidden" id="${id}" name="${esc(f.name)}" value="${esc(v)}">
-          <div style="margin-top:0.4rem;">
-            <button type="button" class="btn-secondary bfk-signature-clear">Clear</button>
-          </div>
-        </div>`;
-        break;
-
-      case 'photo':
-        control = `<div class="bfk-photo-wrap" data-name="${esc(f.name)}">
-          <input type="file" name="${esc(f.name)}__file" class="bfk-photo-file" accept="image/*" capture="environment" style="display:none;">
-          <input type="hidden" id="${id}" name="${esc(f.name)}" value="${esc(v)}">
-          <button type="button" class="btn-secondary bfk-photo-trigger">${v ? 'Replace Photo' : 'Add Photo'}</button>
-          <div class="bfk-photo-preview" style="margin-top:0.5rem;">${v ? `<img src="${esc(v)}" style="max-width:160px;border-radius:var(--radius-sm);border:1px solid var(--border);">` : ''}</div>
-        </div>`;
-        break;
-
-      case 'dynamiclist': {
-        const items = Array.isArray(v) ? v : (v ? [v] : ['']);
-        control = `<div class="bfk-dynamiclist" data-name="${esc(f.name)}">
-          <div class="bfk-dynamiclist-rows">
-            ${items.map(item => dynamicListRowHTML(f.name, item)).join('')}
-          </div>
-          <button type="button" class="btn-secondary bfk-dynamiclist-add">+ Add Row</button>
-        </div>`;
-        break;
-      }
-
-      default: { // text, number, date, time, datetime, email, tel
+      default: {
         const typeMap = { datetime: 'datetime-local' };
         const inputType = typeMap[f.type] || f.type || 'text';
         const extra = [
@@ -188,7 +191,7 @@
         ].join(' ');
         control = `<input type="${inputType}" id="${id}" name="${esc(f.name)}"
           value="${esc(v)}" ${f.required ? 'required' : ''} ${extra}
-          placeholder="${esc(f.placeholder || '')}" style="${BASE_INPUT_STYLE}">`;
+          placeholder="${esc(f.placeholder || '')}" style="${baseInputStyle}">`;
       }
     }
 
@@ -197,7 +200,15 @@
     </div>`;
   }
 
-  /* ── STYLE (scoped, injected once) ── */
+  function dynRowHtml(name, value) {
+    return `<div class="bfk-dynlist-row">
+      <input type="text" class="bfk-dynlist-input" value="${esc(value || '')}"
+        style="flex:1;padding:0.6rem 0.8rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;outline:none;">
+      <button type="button" class="bfk-dynlist-remove" aria-label="Remove">&times;</button>
+    </div>`;
+  }
+
+  /* ── STYLES ── */
   function ensureStyles() {
     if (document.getElementById('bfk-styles')) return;
     const s = document.createElement('style');
@@ -208,104 +219,181 @@
       .bfk-label { font-size:0.85rem; font-weight:600; color:var(--text-primary); }
       .bfk-help { font-size:0.78rem; color:var(--text-secondary); }
       .bfk-radio-group { display:flex; flex-wrap:wrap; gap:0.75rem; }
-      .bfk-choice { display:flex; align-items:center; gap:0.5rem; font-size:0.9rem;
-        color:var(--text-primary); cursor:pointer; }
+      .bfk-choice { display:flex; align-items:center; gap:0.5rem; font-size:0.9rem; color:var(--text-primary); cursor:pointer; }
       .bfk-choice input { width:18px; height:18px; accent-color:var(--accent); cursor:pointer; }
-      .bfk-field input:focus, .bfk-field select:focus, .bfk-field textarea:focus {
-        border-color:var(--accent); box-shadow:0 0 0 3px rgba(234,88,12,0.1); }
+      .bfk-field input:focus, .bfk-field select:focus, .bfk-field textarea:focus,
+      .bfk-dynlist-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(234,88,12,0.1); }
       .bfk-actions { display:flex; gap:0.5rem; margin-top:0.5rem; }
       .bfk-invalid { border-color:var(--error) !important; box-shadow:0 0 0 3px rgba(220,38,38,0.12) !important; }
-      .bfk-passfail .bfk-choice { padding:0.5rem 0.9rem; border:1px solid var(--border); border-radius:var(--radius-sm); }
-      .bfk-passfail input:checked + span { color:var(--accent); font-weight:600; }
+
+      /* heading */
+      .bfk-heading-field { margin-top:0.5rem; }
+      .bfk-heading { display:flex; align-items:center; gap:0.6rem; font-size:1.05rem; font-weight:700;
+        letter-spacing:-0.01em; color:var(--text-primary); padding-top:0.5rem; border-top:1px solid var(--border); }
+
+      /* passfail */
+      .bfk-passfail { display:inline-flex; gap:0; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; width:fit-content; }
+      .bfk-pf-btn { font-family:'Outfit',sans-serif; font-weight:600; font-size:0.85rem; padding:0.5rem 1.1rem;
+        border:none; background:var(--bg-main); color:var(--text-secondary); cursor:pointer; border-right:1px solid var(--border); transition:all 0.15s ease; }
+      .bfk-pf-btn:last-of-type { border-right:none; }
+      .bfk-pf-btn[aria-pressed="true"].pf-pass { background:#15803d; color:#fff; }
+      .bfk-pf-btn[aria-pressed="true"].pf-fail { background:#dc2626; color:#fff; }
+      .bfk-pf-btn[aria-pressed="true"].pf-na   { background:var(--text-secondary); color:#fff; }
+      .bfk-pf-btn[aria-pressed="true"]:not(.pf-pass):not(.pf-fail):not(.pf-na) { background:var(--accent); color:#fff; }
+
+      /* signature */
+      .bfk-signature { display:flex; flex-direction:column; gap:0.4rem; }
+      .bfk-sig-canvas { width:100%; height:150px; border:1px dashed var(--border); border-radius:var(--radius-sm);
+        background:var(--bg-main); touch-action:none; cursor:crosshair; }
+      .bfk-sig-actions { display:flex; justify-content:flex-end; }
+
+      /* photo */
+      .bfk-photo { display:flex; flex-direction:column; gap:0.5rem; align-items:flex-start; }
+      .bfk-photo-preview { position:relative; display:inline-block; }
+      .bfk-photo-img { max-width:200px; max-height:200px; border-radius:var(--radius-sm); border:1px solid var(--border); display:block; }
+      .bfk-photo-remove { position:absolute; top:-8px; right:-8px; width:24px; height:24px; border-radius:50%;
+        border:none; background:var(--error); color:#fff; font-size:16px; line-height:1; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+
+      /* dynamiclist */
+      .bfk-dynlist { display:flex; flex-direction:column; gap:0.5rem; }
+      .bfk-dynlist-rows { display:flex; flex-direction:column; gap:0.5rem; }
+      .bfk-dynlist-row { display:flex; gap:0.5rem; align-items:center; }
+      .bfk-dynlist-remove { width:34px; height:34px; flex-shrink:0; border:1px solid var(--border); border-radius:var(--radius-sm);
+        background:transparent; color:var(--text-secondary); font-size:18px; line-height:1; cursor:pointer; transition:all 0.15s ease; }
+      .bfk-dynlist-remove:hover { border-color:var(--error); color:var(--error); }
+      .bfk-dynlist-add { align-self:flex-start; }
     `;
     document.head.appendChild(s);
   }
 
-  /* ── CUSTOM CONTROL WIRING (signature / photo / dynamiclist) ── */
-  function wireSignaturePads(form, readOnly) {
-    form.querySelectorAll('.bfk-signature-wrap').forEach(wrap => {
-      const canvas = wrap.querySelector('.bfk-signature-pad');
+  /* ── CUSTOM WIDGET WIRING ── */
+  function wireWidgets(form, fields) {
+    // passfail
+    form.querySelectorAll('.bfk-passfail').forEach(group => {
+      const hidden = group.querySelector('input[type="hidden"]');
+      group.querySelectorAll('.bfk-pf-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          group.querySelectorAll('.bfk-pf-btn').forEach(b => b.setAttribute('aria-pressed', 'false'));
+          btn.setAttribute('aria-pressed', 'true');
+          hidden.value = btn.dataset.value;
+          group.classList.remove('bfk-invalid');
+        });
+      });
+    });
+
+    // signature
+    form.querySelectorAll('.bfk-signature').forEach(wrap => {
+      const canvas = wrap.querySelector('.bfk-sig-canvas');
       const hidden = wrap.querySelector('input[type="hidden"]');
-      const clearBtn = wrap.querySelector('.bfk-signature-clear');
-      const preview = wrap.querySelector('.bfk-signature-preview');
-
-      if (readOnly) { if (clearBtn) clearBtn.style.display = 'none'; if (canvas) canvas.style.pointerEvents = 'none'; return; }
-      if (!canvas) return;
-
       const ctx = canvas.getContext('2d');
-      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary') || '#000';
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      let drawing = false;
+      let drawing = false, hasInk = !!hidden.value;
+
+      function resize() {
+        const ratio = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth || 300;
+        canvas.width = w * ratio;
+        canvas.height = 150 * ratio;
+        ctx.scale(ratio, ratio);
+        ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#1a1a1e';
+        // Restore existing signature image if present
+        if (hidden.value) {
+          const img = new Image();
+          img.onload = () => ctx.drawImage(img, 0, 0, w, 150);
+          img.src = hidden.value;
+        }
+      }
+      setTimeout(resize, 0);
 
       function pos(e) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
+        const r = canvas.getBoundingClientRect();
         const p = e.touches ? e.touches[0] : e;
-        return { x: (p.clientX - rect.left) * scaleX, y: (p.clientY - rect.top) * scaleY };
+        return { x: p.clientX - r.left, y: p.clientY - r.top };
       }
-      function start(e) { drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
-      function move(e) { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); }
-      function end() { if (!drawing) return; drawing = false; hidden.value = canvas.toDataURL('image/png'); }
+      function start(e) { drawing = true; const { x, y } = pos(e); ctx.beginPath(); ctx.moveTo(x, y); e.preventDefault(); }
+      function move(e) { if (!drawing) return; const { x, y } = pos(e); ctx.lineTo(x, y); ctx.stroke(); hasInk = true; e.preventDefault(); }
+      function end() { if (!drawing) return; drawing = false; if (hasInk) { hidden.value = canvas.toDataURL('image/png'); wrap.classList.remove('bfk-invalid'); } }
 
-      canvas.addEventListener('pointerdown', start);
-      canvas.addEventListener('pointermove', move);
-      canvas.addEventListener('pointerup', end);
-      canvas.addEventListener('pointerleave', end);
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', end);
 
-      if (clearBtn) clearBtn.addEventListener('click', () => {
+      wrap.querySelector('.bfk-sig-clear').addEventListener('click', () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        hidden.value = '';
-        canvas.style.display = 'block';
-        if (preview) preview.remove();
+        hidden.value = ''; hasInk = false;
       });
     });
-  }
 
-  function wirePhotoFields(form, readOnly) {
-    form.querySelectorAll('.bfk-photo-wrap').forEach(wrap => {
-      const fileInput = wrap.querySelector('.bfk-photo-file');
+    // photo
+    form.querySelectorAll('.bfk-photo').forEach(wrap => {
+      const input = wrap.querySelector('.bfk-photo-input');
       const hidden = wrap.querySelector('input[type="hidden"]');
-      const trigger = wrap.querySelector('.bfk-photo-trigger');
+      const pick = wrap.querySelector('.bfk-photo-pick');
       const preview = wrap.querySelector('.bfk-photo-preview');
+      const img = wrap.querySelector('.bfk-photo-img');
+      const remove = wrap.querySelector('.bfk-photo-remove');
 
-      if (readOnly) { if (trigger) trigger.style.display = 'none'; return; }
-      if (!fileInput || !trigger) return;
-
-      trigger.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', () => {
-        const file = fileInput.files && fileInput.files[0];
+      pick.addEventListener('click', () => input.click());
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          hidden.value = reader.result;
-          if (preview) preview.innerHTML = `<img src="${reader.result}" style="max-width:160px;border-radius:var(--radius-sm);border:1px solid var(--border);">`;
-          trigger.textContent = 'Replace Photo';
-        };
-        reader.readAsDataURL(file);
+        compressImage(file, 1024, 0.7).then(dataUrl => {
+          hidden.value = dataUrl;
+          img.src = dataUrl;
+          preview.hidden = false;
+          pick.hidden = true;
+          wrap.classList.remove('bfk-invalid');
+        }).catch(() => U()?.showToast('Could not read image', 'error'));
+      });
+      remove.addEventListener('click', () => {
+        hidden.value = ''; img.src = ''; preview.hidden = true; pick.hidden = false; input.value = '';
+      });
+    });
+
+    // dynamiclist
+    form.querySelectorAll('.bfk-dynlist').forEach(wrap => {
+      const rows = wrap.querySelector('.bfk-dynlist-rows');
+      const add = wrap.querySelector('.bfk-dynlist-add');
+      const name = wrap.dataset.name;
+      function bindRemove(row) {
+        row.querySelector('.bfk-dynlist-remove').addEventListener('click', () => row.remove());
+      }
+      rows.querySelectorAll('.bfk-dynlist-row').forEach(bindRemove);
+      add.addEventListener('click', () => {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = dynRowHtml(name, '');
+        const row = tmp.firstElementChild;
+        rows.appendChild(row);
+        bindRemove(row);
+        row.querySelector('.bfk-dynlist-input').focus();
       });
     });
   }
 
-  function wireDynamicLists(form, readOnly) {
-    form.querySelectorAll('.bfk-dynamiclist').forEach(wrap => {
-      const name = wrap.dataset.name;
-      const rowsEl = wrap.querySelector('.bfk-dynamiclist-rows');
-      const addBtn = wrap.querySelector('.bfk-dynamiclist-add');
-
-      if (readOnly) {
-        wrap.querySelectorAll('.bfk-dynamiclist-remove, .bfk-dynamiclist-add').forEach(b => b.style.display = 'none');
-        wrap.querySelectorAll('.bfk-dynamiclist-input').forEach(i => i.disabled = true);
-        return;
-      }
-      if (addBtn) addBtn.addEventListener('click', () => {
-        rowsEl.insertAdjacentHTML('beforeend', dynamicListRowHTML(name, ''));
-      });
-      rowsEl.addEventListener('click', (e) => {
-        const btn = e.target.closest('.bfk-dynamiclist-remove');
-        if (btn) btn.closest('.bfk-dynamiclist-row').remove();
-      });
+  function compressImage(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim; }
+            else { width = Math.round(width * maxDim / height); height = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
   }
 
@@ -316,7 +404,7 @@
     const fields = (schema && schema.fields) || [];
     const values = opts.values || {};
 
-    const formHtml = `
+    container.innerHTML = `
       <form class="bfk-form" novalidate>
         ${fields.map(f => renderField(f, values[f.name])).join('')}
         ${opts.readOnly ? '' : `
@@ -324,67 +412,85 @@
             <button type="submit" class="btn-primary">${esc(opts.submitLabel || 'Submit')}</button>
           </div>`}
       </form>`;
-    container.innerHTML = formHtml;
     const form = container.querySelector('form');
 
+    wireWidgets(form, fields);
+
     if (opts.readOnly) {
-      form.querySelectorAll('input, select, textarea').forEach(el => { el.disabled = true; });
+      form.querySelectorAll('input, select, textarea, button').forEach(el => {
+        if (!el.classList.contains('btn-primary')) el.disabled = true;
+      });
     }
 
-    wireSignaturePads(form, opts.readOnly);
-    wirePhotoFields(form, opts.readOnly);
-    wireDynamicLists(form, opts.readOnly);
+    function readField(f) {
+      if (NON_DATA_TYPES.includes(f.type)) return undefined;
+      const wrap = form.querySelector(`.bfk-field[data-field="${CSS.escape(f.name)}"]`);
+      switch (f.type) {
+        case 'checkbox': {
+          const el = form.querySelector(`input[type="checkbox"][name="${CSS.escape(f.name)}"]`);
+          return el ? el.checked : false;
+        }
+        case 'radio': {
+          const picked = form.querySelector(`input[name="${CSS.escape(f.name)}"]:checked`);
+          return picked ? picked.value : '';
+        }
+        case 'multiselect': {
+          const el = form.querySelector(`select[name="${CSS.escape(f.name)}"]`);
+          return el ? Array.from(el.selectedOptions).map(o => o.value) : [];
+        }
+        case 'passfail':
+        case 'signature':
+        case 'photo': {
+          const el = form.querySelector(`input[type="hidden"][name="${CSS.escape(f.name)}"]`);
+          return el ? el.value : '';
+        }
+        case 'dynamiclist': {
+          if (!wrap) return [];
+          return Array.from(wrap.querySelectorAll('.bfk-dynlist-input'))
+            .map(i => i.value.trim()).filter(Boolean);
+        }
+        case 'number': {
+          const el = form.querySelector(`[name="${CSS.escape(f.name)}"]`);
+          return (!el || el.value === '') ? null : Number(el.value);
+        }
+        default: {
+          const el = form.querySelector(`[name="${CSS.escape(f.name)}"]`);
+          return el ? el.value : '';
+        }
+      }
+    }
 
     function getData() {
       const data = {};
       fields.forEach(f => {
-        if (f.type === 'heading') return;
-        if (f.type === 'dynamiclist') {
-          data[f.name] = Array.from(form.querySelectorAll(`.bfk-dynamiclist-input[data-list="${CSS.escape(f.name)}"]`))
-            .map(i => i.value.trim()).filter(Boolean);
-          return;
-        }
-        const el = form.querySelector(`[name="${CSS.escape(f.name)}"]`);
-        if (!el) return;
-        if (f.type === 'checkbox') {
-          data[f.name] = el.checked;
-        } else if (f.type === 'radio' || f.type === 'passfail') {
-          const picked = form.querySelector(`[name="${CSS.escape(f.name)}"]:checked`);
-          data[f.name] = picked ? picked.value : '';
-        } else if (f.type === 'multiselect') {
-          data[f.name] = Array.from(el.selectedOptions).map(o => o.value);
-        } else if (f.type === 'number') {
-          data[f.name] = el.value === '' ? null : Number(el.value);
-        } else {
-          data[f.name] = el.value; // covers text/date/etc, signature + photo hidden inputs
-        }
+        if (NON_DATA_TYPES.includes(f.type) || !f.name) return;
+        data[f.name] = readField(f);
       });
       return data;
     }
 
+    function markInvalid(f, bad) {
+      const wrap = form.querySelector(`.bfk-field[data-field="${CSS.escape(f.name)}"]`);
+      let target = null;
+      if (f.type === 'passfail') target = wrap?.querySelector('.bfk-passfail');
+      else if (f.type === 'signature') target = wrap?.querySelector('.bfk-sig-canvas');
+      else if (f.type === 'photo') target = wrap?.querySelector('.bfk-photo-pick') || wrap?.querySelector('.bfk-photo-img');
+      else target = form.querySelector(`[name="${CSS.escape(f.name)}"]`);
+      if (target) target.classList.toggle('bfk-invalid', bad);
+      return target;
+    }
+
     function validate() {
-      let ok = true;
-      let firstBad = null;
+      let ok = true, firstBad = null;
       fields.forEach(f => {
-        if (!f.required || f.type === 'heading') return;
-
-        if (f.type === 'dynamiclist') {
-          const wrap = form.querySelector(`.bfk-dynamiclist[data-name="${CSS.escape(f.name)}"]`);
-          const hasValue = Array.from(wrap.querySelectorAll('.bfk-dynamiclist-input')).some(i => i.value.trim());
-          if (!hasValue) { ok = false; firstBad = firstBad || wrap; }
-          return;
-        }
-
-        const el = form.querySelector(`[name="${CSS.escape(f.name)}"]`);
-        if (!el) return;
-        let empty = false;
-        if (f.type === 'checkbox') empty = !el.checked;
-        else if (f.type === 'radio' || f.type === 'passfail') empty = !form.querySelector(`[name="${CSS.escape(f.name)}"]:checked`);
-        else if (f.type === 'multiselect') empty = Array.from(el.selectedOptions).length === 0;
-        else empty = !String(el.value).trim(); // covers signature/photo hidden inputs too
-
-        if (el.classList) el.classList.toggle('bfk-invalid', empty);
-        if (empty) { ok = false; firstBad = firstBad || el; }
+        if (!f.required || NON_DATA_TYPES.includes(f.type)) return;
+        const val = readField(f);
+        let empty;
+        if (f.type === 'checkbox') empty = val !== true;
+        else if (f.type === 'dynamiclist' || f.type === 'multiselect') empty = !Array.isArray(val) || val.length === 0;
+        else empty = val == null || String(val).trim() === '';
+        const target = markInvalid(f, empty);
+        if (empty) { ok = false; firstBad = firstBad || target; }
       });
       if (firstBad && firstBad.focus) firstBad.focus();
       return ok;
@@ -397,10 +503,7 @@
     if (!opts.readOnly && typeof opts.onSubmit === 'function') {
       form.addEventListener('submit', (e) => {
         e.preventDefault();
-        if (!validate()) {
-          U()?.showToast('Please complete the required fields', 'error');
-          return;
-        }
+        if (!validate()) { U()?.showToast('Please complete the required fields', 'error'); return; }
         opts.onSubmit(getData());
       });
     }
@@ -457,15 +560,8 @@
 
     try {
       const { data: inserted, error } = await client
-        .from('ims_form_submissions')
-        .insert(row)
-        .select()
-        .maybeSingle();
-      if (error) {
-        console.error('[form-kit] submitForm:', error);
-        U()?.showToast('Could not save submission', 'error');
-        return null;
-      }
+        .from('ims_form_submissions').insert(row).select().maybeSingle();
+      if (error) { console.error('[form-kit] submitForm:', error); U()?.showToast('Could not save submission', 'error'); return null; }
       U()?.showToast('Saved', 'success');
       return inserted;
     } catch (err) {
@@ -475,7 +571,7 @@
     }
   }
 
-  /* ── CONVENIENCE: fetch + render + wire submit ── */
+  /* ── CONVENIENCE ── */
   async function renderBySlug(container, slug, opts) {
     opts = opts || {};
     container.innerHTML = `<div style="display:flex;justify-content:center;padding:2rem;"><div class="spinner"></div></div>`;
@@ -495,7 +591,7 @@
   }
 
   window.BromarFormKit = {
-    version: 'V1.02',
+    version: 'V1.03',
     render,
     fetchForm,
     submitForm,
