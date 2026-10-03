@@ -1,12 +1,15 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.04
+   Version: V1.05
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.05: cover DOCUMENT NAME uses the IMS asset number (schema.doc_number),
+   falling back to the slug.
 
    V1.04: choice fields labelled "(select one only)" / "(select all that
    apply)" unless the help text already says so.
@@ -39,7 +42,7 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.04';
+  const VERSION = 'V1.05';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const LICENCE = 'REC. 30340';
@@ -164,7 +167,7 @@ window.BromarIMSReportKit = (() => {
     y += 10;
 
     // DOCUMENT NAME: BRO-SAF-FRM-015-V03
-    const docName = `${(doc.slug || '').toUpperCase()}-V${padRev(revision.revision || 0)}`;
+    const docName = `${String(doc.doc_number || doc.slug || '').toUpperCase()}-V${padRev(revision.revision || 0)}`;
     pdf.setFontSize(9);
     const lbl = 'DOCUMENT NAME:  ';
     pdf.setFont('helvetica', 'bold');
@@ -730,7 +733,8 @@ window.BromarIMSReportKit = (() => {
     }
   }
 
-  async function generatePolicyPDF({ doc, revisionMeta, schema, historyRows }) {
+  async function generatePolicyPDF({ doc: rawDoc, revisionMeta, schema, historyRows }) {
+    const doc = { ...rawDoc, doc_number: schema?.doc_number || rawDoc?.doc_number };
     const pdf = await newDoc();
     drawCoverPage(pdf, doc, revisionMeta, historyRows);
     pdf.addPage();
@@ -740,7 +744,8 @@ window.BromarIMSReportKit = (() => {
     return pdf;
   }
 
-  async function generateFormPDF({ doc, revisionMeta, schema, historyRows, submission }) {
+  async function generateFormPDF({ doc: rawDoc, revisionMeta, schema, historyRows, submission }) {
+    const doc = { ...rawDoc, doc_number: schema?.doc_number || rawDoc?.doc_number };
     const pdf = await newDoc();
     drawCoverPage(pdf, doc, revisionMeta, historyRows);
     pdf.addPage();
