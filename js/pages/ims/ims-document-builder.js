@@ -1,78 +1,70 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V1.00
-   Registers a "Documents" sub-tab into Safety, Quality AND
-   Environment (window.BromarIMS.registerSubTab), replacing
-   js/pages/ims/ims-quality-itc-builder.js.
+   Version: V2.00 — full rebuild against the REAL ims_documents schema.
 
-   Handles all four document types in one builder:
-     Policy / Procedure  — rich content blocks (heading, paragraph,
-                            bullet list, signatory), PDF export only.
-     Form / Checklist    — field builder (same field types as the
-                            old ITC builder), PDF export AND pushed
-                            to Bromar Hub for digital completion.
+   Registers a "Documents" sub-tab into Safety, Quality, Environment
+   and Other (window.BromarIMS.registerSubTab).
 
-   Uses js/pages/ims/ims-report-kit.js (window.BromarIMSReportKit)
-   for all PDF generation — do not duplicate PDF logic here.
+   ============================================================
+   REAL SCHEMA (confirmed via information_schema — do not re-guess):
 
-   DOCUMENT NUMBERING (new scheme):
-     BRO-[SECTION]-[TYPE]-[SEQ]   e.g. BRO-QUA-FRM-008
-     SECTION: SAF / QUA / ENV
-     TYPE:    POL / PRO / FRM / CHK
-     SEQ:     3-digit, auto-incremented per section+type
-     The doc_number is permanent — revisions do not change it.
+   ims_documents: id, slug, section, title, schema, revision,
+                  is_active, is_form, is_featured, hub_order,
+                  hub_icon, created_at
+     — ONE ROW per document. No doc_number/doc_type/category/status/
+       published_revision/latest_revision columns exist.
+     — slug: the permanent identifier (doubles as "document number" in
+       this UI, e.g. "bro-qua-itc-004"). form-kit.js fetches by slug.
+     — schema (jsonb): holds EVERYTHING this builder needs that has no
+       dedicated column: { doc_type, category, description, blocks:[...] }
+       for Policy/Procedure/Plan, or { doc_type, category, description,
+       fields:[...] } for Form/Checklist/ITC. form-kit.js only ever reads
+       schema.fields on is_form=true rows — extra keys are ignored, so
+       this is safe.
+     — revision (int): how many times this document has been published.
+       0/null = never published.
+     — is_active: the ONLY flag form-kit.js and Bromar Hub check to decide
+       whether a form is live. true = published & usable on the Hub.
+       false = offline (draft, OR being re-edited, OR archived — this
+       builder tells those apart via schema.archived, see below).
+     — is_form: true for Form/Checklist/ITC (digital, Hub-usable), false
+       for Policy/Procedure/Plan (document-only, PDF export only).
 
-   REQUIRED SUPABASE TABLES (run once in SQL editor):
-
-   create table if not exists ims_documents (
-     id uuid primary key default gen_random_uuid(),
-     doc_number text not null unique,
-     section text not null,                 -- safety | quality | environment
-     doc_type text not null,                 -- policy | procedure | form | checklist
-     title text not null,
-     category text,
-     description text,
-     status text not null default 'draft',   -- draft | published | archived
-     published_revision int,
-     latest_revision int not null default 1,
-     created_by text,
-     created_at timestamptz not null default now(),
-     updated_at timestamptz not null default now()
-   );
+   ims_document_revisions (NEW — create via SQL below): document_id,
+   revision, schema, version_date, version_description, prepared_by,
+   created_at. One row per PUBLISH event (a point-in-time snapshot) plus
+   optional legacy rows (schema = null = "historical record, no content
+   captured"). This is the only source of revision history — the live
+   ims_documents row only ever holds the CURRENT schema.
 
    create table if not exists ims_document_revisions (
      id uuid primary key default gen_random_uuid(),
      document_id uuid not null references ims_documents(id) on delete cascade,
      revision int not null,
+     schema jsonb,                      -- null = legacy/metadata-only row
      version_date date,
      version_description text,
      prepared_by text,
-     content jsonb not null default '{}',    -- { blocks:[...] } policy/procedure, { fields:[...] } form/checklist
-     status text not null default 'draft',   -- draft | published | superseded | legacy
-     is_legacy boolean not null default false,
-     created_by text,
      created_at timestamptz not null default now(),
-     published_at timestamptz,
      unique (document_id, revision)
    );
 
-   create table if not exists ims_form_submissions (
-     id uuid primary key default gen_random_uuid(),
-     document_id uuid not null references ims_documents(id),
-     doc_number text not null,
-     revision int not null,
-     data jsonb not null default '{}',
-     submitted_by text,
-     job_reference text,
-     submitted_at timestamptz not null default now()
-   );
+   ============================================================
+   WORKFLOW NOTE — editing a published document:
+   There is no parallel draft row in this schema (unlike the old design).
+   To avoid half-finished edits appearing live on the Hub, clicking "Edit"
+   on a published (is_active=true) document immediately flips it offline
+   (is_active=false) for the duration of editing. "Publish" bumps revision,
+   snapshots the new schema into ims_document_revisions, and sets
+   is_active=true again. "Discard" restores the schema from the last
+   published snapshot and brings it back online unchanged.
 
-   BROMAR HUB ACTION NEEDED: point the field-portal form reader at
-   ims_documents / ims_document_revisions (doc_type in
-   ('form','checklist'), status = 'published') instead of the old
-   itc_forms / itc_form_revisions tables. Submissions write to
-   ims_form_submissions.
+   FIELD TYPES — match form-kit.js V1.02+ exactly. "Dropdown" in this UI
+   saves as type: 'select' (form-kit's real case), not 'dropdown'.
+   Field objects use `name` (the submission data key), not `id`.
+   A "Yes/No" type was considered but form-kit does not render it — use
+   Dropdown with options "Yes, No" instead until/unless that's added.
    ============================================================ */
 
 window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], other: [] } };
@@ -82,7 +74,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V1.00';
+  const VERSION = 'V2.00';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -93,8 +85,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     plan:      { code: 'PLN', label: 'Plan',      plural: 'Plans' }
   };
   const SECTION_CODES = { safety: 'SAF', quality: 'QUA', environment: 'ENV', other: 'OTH' };
-  const CONTENT_TYPES = ['policy', 'procedure', 'plan'];   // block-based
-  const DIGITAL_TYPES = ['form', 'checklist', 'itc'];      // field-based, pushed to Hub
+  const CONTENT_TYPES = ['policy', 'procedure', 'plan'];   // block-based, is_form=false
+  const DIGITAL_TYPES = ['form', 'checklist', 'itc'];      // field-based, is_form=true
 
   const BLOCK_TYPES = [
     { type: 'heading',   label: 'Heading' },
@@ -104,12 +96,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     { type: 'table',     label: 'Table / grid' }
   ];
   const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
+  // UI label -> schema `type` value actually read by form-kit.js
   const FIELD_TYPES = [
     { type: 'text',        label: 'Text field' },
-    { type: 'dropdown',    label: 'Dropdown' },
+    { type: 'select',      label: 'Dropdown' },
     { type: 'checkbox',    label: 'Checkbox' },
     { type: 'passfail',    label: 'Pass / Fail / N/A' },
-    { type: 'yesno',       label: 'Yes / No' },
     { type: 'signature',   label: 'Signature' },
     { type: 'photo',       label: 'Photo attachment' },
     { type: 'dynamiclist', label: 'Dynamic list' },
@@ -138,25 +131,38 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     if (isNaN(dt)) return d;
     return dt.toLocaleDateString('en-AU');
   }
+  function slugify(text) {
+    return String(text || '').toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'field';
+  }
+  function uniqueFieldName(label, existingFields) {
+    const base = slugify(label);
+    const taken = new Set((existingFields || []).map(f => f.name));
+    if (!taken.has(base)) return base;
+    let i = 2;
+    while (taken.has(`${base}_${i}`)) i++;
+    return `${base}_${i}`;
+  }
 
   function createDocumentsSubTab(section) {
     let root = null;
     let view = 'list';           // 'list' | 'editor' | 'history'
     let activeType = 'policy';
     let documents = [];
-    let currentDoc = null;
-    let currentRevision = null;
+    let currentDoc = null;        // the live ims_documents row
+    let workingSchema = null;     // mutable copy of currentDoc.schema being edited
+    let revMeta = null;           // { version_date, version_description, prepared_by } — transient, written to ims_document_revisions on publish
     let historyList = [];
 
-    /* ── DOC NUMBER GENERATION ── */
-    async function nextDocNumber(docType) {
-      const prefix = `BRO-${SECTION_CODES[section]}-${DOC_TYPES[docType].code}-`;
+    /* ── SLUG GENERATION (doubles as "document number") ── */
+    async function nextSlug(docType) {
+      const prefix = `bro-${SECTION_CODES[section].toLowerCase()}-${DOC_TYPES[docType].code.toLowerCase()}-`;
       const { data, error } = await sb().from('ims_documents')
-        .select('doc_number').ilike('doc_number', prefix + '%');
+        .select('slug').ilike('slug', prefix + '%');
       let max = 0;
       if (!error && data) {
         data.forEach(row => {
-          const m = new RegExp(`${prefix}(\\d+)$`).exec(row.doc_number || '');
+          const m = new RegExp(`${prefix}(\\d+)$`).exec(row.slug || '');
           if (m) max = Math.max(max, parseInt(m[1], 10));
         });
       }
@@ -166,15 +172,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     /* ── DATA ── */
     async function loadDocuments() {
       const { data, error } = await sb().from('ims_documents')
-        .select('*').eq('section', section).order('updated_at', { ascending: false });
-      if (error) { console.error(error); documents = []; return; }
+        .select('*').eq('section', section).order('created_at', { ascending: false });
+      if (error) { console.error(error); documents = null; return; }
       documents = data || [];
-    }
-    async function loadRevision(documentId, revision) {
-      const { data, error } = await sb().from('ims_document_revisions')
-        .select('*').eq('document_id', documentId).eq('revision', revision).maybeSingle();
-      if (error) { console.error(error); return null; }
-      return data;
     }
     async function loadHistory(documentId) {
       const { data, error } = await sb().from('ims_document_revisions')
@@ -184,152 +184,151 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
     function getCategories() {
       const set = new Set();
-      documents.forEach(d => { if (d.doc_type === activeType && d.category) set.add(d.category); });
+      (documents || []).forEach(d => {
+        if (d.schema?.doc_type === activeType && d.schema?.category) set.add(d.schema.category);
+      });
       return Array.from(set).sort();
+    }
+    function docStatus(d) {
+      if (d.schema?.archived) return 'archived';
+      if (d.is_active) return 'published';
+      return 'draft';
+    }
+    function emptySchema(docType, category, description) {
+      return CONTENT_TYPES.includes(docType)
+        ? { doc_type: docType, category, description, blocks: [] }
+        : { doc_type: docType, category, description, fields: [] };
     }
 
     /* ── CRUD ── */
     async function createDocument({ title, docType, category, description }) {
-      const docNumber = await nextDocNumber(docType);
-      const { data: docRow, error: e1 } = await sb().from('ims_documents').insert({
-        doc_number: docNumber, section, doc_type: docType, title, category, description,
-        status: 'draft', latest_revision: 1, created_by: currentUser()
+      const slug = await nextSlug(docType);
+      const { data: docRow, error } = await sb().from('ims_documents').insert({
+        slug, section, title, schema: emptySchema(docType, category, description),
+        revision: 0, is_active: false, is_form: DIGITAL_TYPES.includes(docType)
       }).select().single();
-      if (e1 || !docRow) { alert('Could not create document: ' + (e1?.message || 'unknown error')); return null; }
-
-      const emptyContent = CONTENT_TYPES.includes(docType) ? { blocks: [] } : { fields: [] };
-      const { data: revRow, error: e2 } = await sb().from('ims_document_revisions').insert({
-        document_id: docRow.id, revision: 1, version_date: todayISO(), version_description: 'Initial version',
-        prepared_by: currentUser(), content: emptyContent, status: 'draft', created_by: currentUser()
-      }).select().single();
-      if (e2 || !revRow) { alert('Could not create first revision: ' + (e2?.message || 'unknown error')); return null; }
-
-      return { docRow, revRow };
+      if (error || !docRow) { alert('Could not create document: ' + (error?.message || 'unknown error')); return null; }
+      return docRow;
     }
 
     async function saveDraft() {
-      if (!currentDoc || !currentRevision) return;
-      const { data, error } = await sb().from('ims_document_revisions').update({
-        content: currentRevision.content,
-        version_date: currentRevision.version_date,
-        version_description: currentRevision.version_description,
-        prepared_by: currentRevision.prepared_by
-      }).eq('id', currentRevision.id).select().maybeSingle();
+      if (!currentDoc || !workingSchema) return;
+      const { data, error } = await sb().from('ims_documents')
+        .update({ title: currentDoc.title, schema: workingSchema })
+        .eq('id', currentDoc.id).select().maybeSingle();
       if (error || !data) { alert('Save failed: ' + (error?.message || 'no row updated')); return; }
-      await sb().from('ims_documents').update({
-        title: currentDoc.title, category: currentDoc.category, description: currentDoc.description,
-        updated_at: new Date().toISOString()
-      }).eq('id', currentDoc.id);
+      currentDoc = data;
       flashSaved();
     }
 
     async function publishRevision() {
-      if (!currentDoc || !currentRevision) return;
+      if (!currentDoc || !workingSchema) return;
       const ok = await confirmDialog({
         title: 'Publish this revision?',
-        message: DIGITAL_TYPES.includes(currentDoc.doc_type)
-          ? `Rev ${currentRevision.revision} will go live in Bromar Hub immediately.`
-          : `Rev ${currentRevision.revision} becomes the current version of this document.`,
+        message: DIGITAL_TYPES.includes(currentDoc.schema?.doc_type || workingSchema.doc_type)
+          ? 'This will go live on Bromar Hub immediately.'
+          : 'This becomes the current version of this document.',
         okLabel: 'Publish'
       });
       if (!ok) return;
 
-      if (currentDoc.published_revision && currentDoc.published_revision !== currentRevision.revision) {
-        await sb().from('ims_document_revisions').update({ status: 'superseded' })
-          .eq('document_id', currentDoc.id).eq('revision', currentDoc.published_revision);
-      }
-      const { data: revRow, error: e1 } = await sb().from('ims_document_revisions').update({
-        status: 'published', published_at: new Date().toISOString(),
-        content: currentRevision.content, version_date: currentRevision.version_date,
-        version_description: currentRevision.version_description, prepared_by: currentRevision.prepared_by
-      }).eq('id', currentRevision.id).select().maybeSingle();
-      if (e1 || !revRow) { alert('Publish failed: ' + (e1?.message || 'unknown error')); return; }
-
-      const { data: docRow, error: e2 } = await sb().from('ims_documents').update({
-        status: 'published', published_revision: currentRevision.revision,
-        title: currentDoc.title, category: currentDoc.category, description: currentDoc.description,
-        updated_at: new Date().toISOString()
+      const newRevision = (currentDoc.revision || 0) + 1;
+      const { data: docRow, error: e1 } = await sb().from('ims_documents').update({
+        title: currentDoc.title, schema: workingSchema, revision: newRevision, is_active: true
       }).eq('id', currentDoc.id).select().maybeSingle();
-      if (e2 || !docRow) { alert('Publish failed on document record: ' + (e2?.message || 'unknown error')); return; }
+      if (e1 || !docRow) { alert('Publish failed: ' + (e1?.message || 'unknown error')); return; }
 
-      currentDoc = docRow; currentRevision = revRow;
+      const { error: e2 } = await sb().from('ims_document_revisions').insert({
+        document_id: currentDoc.id, revision: newRevision, schema: workingSchema,
+        version_date: revMeta.version_date || todayISO(),
+        version_description: revMeta.version_description || '',
+        prepared_by: revMeta.prepared_by || currentUser()
+      });
+      if (e2) { alert('Document published, but the revision-history record failed to save: ' + e2.message); }
+
+      currentDoc = docRow;
       renderEditor();
     }
 
     async function openForEdit(doc) {
       currentDoc = doc;
-      if (doc.latest_revision > (doc.published_revision || 0)) {
-        currentRevision = await loadRevision(doc.id, doc.latest_revision);
-      } else if (doc.published_revision) {
-        const published = await loadRevision(doc.id, doc.published_revision);
-        const nextRev = doc.latest_revision + 1;
-        const { data: revRow, error } = await sb().from('ims_document_revisions').insert({
-          document_id: doc.id, revision: nextRev, version_date: todayISO(),
-          version_description: '', prepared_by: currentUser(),
-          content: published?.content || (CONTENT_TYPES.includes(doc.doc_type) ? { blocks: [] } : { fields: [] }),
-          status: 'draft', created_by: currentUser()
-        }).select().single();
-        if (error || !revRow) { alert('Could not start new revision: ' + (error?.message || 'unknown error')); return; }
-        const { data: docRow } = await sb().from('ims_documents').update({ latest_revision: nextRev })
-          .eq('id', doc.id).select().maybeSingle();
-        currentDoc = docRow || { ...doc, latest_revision: nextRev };
-        currentRevision = revRow;
-      } else {
-        currentRevision = await loadRevision(doc.id, doc.latest_revision);
+      if (doc.is_active) {
+        const ok = await confirmDialog({
+          title: 'Edit this document?',
+          message: 'This takes it offline (unavailable on Bromar Hub) until you publish your changes again.',
+          okLabel: 'Edit'
+        });
+        if (!ok) return;
+        const { data, error } = await sb().from('ims_documents')
+          .update({ is_active: false }).eq('id', doc.id).select().maybeSingle();
+        if (error || !data) { alert('Could not start editing: ' + (error?.message || 'unknown error')); return; }
+        currentDoc = data;
       }
+      workingSchema = JSON.parse(JSON.stringify(currentDoc.schema || {}));
+      revMeta = { version_date: todayISO(), version_description: '', prepared_by: currentUser() };
       view = 'editor';
       renderView();
     }
 
     async function discardDraft() {
-      if (!currentDoc || !currentRevision) return;
-      if (currentRevision.revision === 1 && !currentDoc.published_revision) {
-        alert('This document has never been published — delete it from the list instead.');
-        return;
+      if (!currentDoc) return;
+      if (!currentDoc.revision) {
+        const ok = await confirmDialog({ title: 'Delete this document?', message: 'It has never been published — discarding deletes it entirely.', okLabel: 'Delete', danger: true });
+        if (!ok) return;
+        await sb().from('ims_documents').delete().eq('id', currentDoc.id);
+        view = 'list'; await loadDocuments(); renderView(); return;
       }
-      if (currentRevision.status === 'published') return;
-      const ok = await confirmDialog({ title: 'Discard draft?', message: 'Unsaved changes in this revision will be lost.', okLabel: 'Discard', danger: true });
+      const ok = await confirmDialog({ title: 'Discard changes?', message: 'Reverts to the last published version and brings it back online.', okLabel: 'Discard', danger: true });
       if (!ok) return;
-      await sb().from('ims_document_revisions').delete().eq('id', currentRevision.id);
-      await sb().from('ims_documents').update({ latest_revision: currentDoc.published_revision || 1 }).eq('id', currentDoc.id);
+      const history = await loadHistory(currentDoc.id);
+      const lastPublished = history.find(r => r.schema);
+      const { data, error } = await sb().from('ims_documents')
+        .update({ schema: lastPublished ? lastPublished.schema : currentDoc.schema, is_active: true })
+        .eq('id', currentDoc.id).select().maybeSingle();
+      if (error || !data) { alert('Could not discard: ' + (error?.message || 'unknown error')); return; }
       view = 'list'; await loadDocuments(); renderView();
     }
 
     async function archiveDocument(doc) {
+      const archived = !!doc.schema?.archived;
       const ok = await confirmDialog({
-        title: doc.status === 'archived' ? 'Restore document?' : 'Archive document?',
-        message: doc.status === 'archived' ? 'This document becomes active again.' : 'This document will be hidden from Bromar Hub.',
-        okLabel: doc.status === 'archived' ? 'Restore' : 'Archive'
+        title: archived ? 'Restore document?' : 'Archive document?',
+        message: archived ? 'This document becomes active again.' : 'This document will be taken offline and marked archived.',
+        okLabel: archived ? 'Restore' : 'Archive'
       });
       if (!ok) return;
-      const newStatus = doc.status === 'archived' ? (doc.published_revision ? 'published' : 'draft') : 'archived';
-      await sb().from('ims_documents').update({ status: newStatus }).eq('id', doc.id);
+      const newSchema = { ...doc.schema, archived: !archived };
+      const updates = { schema: newSchema };
+      if (!archived) updates.is_active = false;            // archiving always takes it offline
+      else if (doc.revision) updates.is_active = true;      // restoring brings a previously-published doc back online
+      await sb().from('ims_documents').update(updates).eq('id', doc.id);
       await loadDocuments(); renderView();
     }
 
     async function addLegacyRevision(doc, { revision, versionDate, versionDescription, preparedBy }) {
       const { error } = await sb().from('ims_document_revisions').insert({
-        document_id: doc.id, revision, version_date: versionDate, version_description: versionDescription,
-        prepared_by: preparedBy, content: {}, status: 'legacy', is_legacy: true, created_by: currentUser()
+        document_id: doc.id, revision, schema: null,
+        version_date: versionDate, version_description: versionDescription, prepared_by: preparedBy
       });
       if (error) { alert('Could not add legacy revision: ' + error.message); return; }
-      if (revision >= doc.latest_revision) {
-        await sb().from('ims_documents').update({ latest_revision: revision + 1 }).eq('id', doc.id);
+      if (revision >= (doc.revision || 0)) {
+        await sb().from('ims_documents').update({ revision }).eq('id', doc.id);
       }
     }
 
     /* ── PDF EXPORT ── */
     async function exportPDF() {
-      if (!currentDoc || !currentRevision || !window.BromarIMSReportKit) {
+      if (!currentDoc || !workingSchema || !window.BromarIMSReportKit) {
         alert('PDF export unavailable — report kit not loaded.');
         return;
       }
       const history = await loadHistory(currentDoc.id);
+      const revisionMeta = { revision: currentDoc.revision || 0, version_date: revMeta.version_date || todayISO() };
       try {
-        const pdf = CONTENT_TYPES.includes(currentDoc.doc_type)
-          ? await window.BromarIMSReportKit.generatePolicyPDF({ doc: currentDoc, revision: currentRevision, historyRows: history })
-          : await window.BromarIMSReportKit.generateFormPDF({ doc: currentDoc, revision: currentRevision, historyRows: history });
-        window.BromarIMSReportKit.download(pdf, `${currentDoc.doc_number}-V${currentRevision.revision}`);
+        const pdf = CONTENT_TYPES.includes(workingSchema.doc_type)
+          ? await window.BromarIMSReportKit.generatePolicyPDF({ doc: currentDoc, revisionMeta, schema: workingSchema, historyRows: history })
+          : await window.BromarIMSReportKit.generateFormPDF({ doc: currentDoc, revisionMeta, schema: workingSchema, historyRows: history });
+        window.BromarIMSReportKit.download(pdf, `${currentDoc.slug}-v${revisionMeta.revision}`);
       } catch (e) {
         alert('PDF export failed: ' + e.message);
       }
@@ -338,14 +337,14 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     /* ── NEW DOCUMENT MODAL ── */
     async function showNewDocModal() {
       const categories = getCategories();
-      const previewNumber = await nextDocNumber(activeType);
+      const previewSlug = await nextSlug(activeType);
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
       overlay.innerHTML = `
         <div class="card" style="max-width:460px;width:100%;padding:1.5rem;animation:none;">
           <div class="section-label" style="margin-top:0;">New ${esc(DOC_TYPES[activeType].label)}</div>
           <div style="background:var(--bg-main);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin-bottom:1rem;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:var(--accent);">
-            Document number: ${esc(previewNumber)}
+            Document number: ${esc(previewSlug.toUpperCase())}
           </div>
           <div style="display:flex;flex-direction:column;gap:0.9rem;">
             <div>
@@ -389,8 +388,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         const description = overlay.querySelector('#doc-modal-description').value.trim();
         if (!title) { alert('Title is required.'); return; }
         close();
-        const result = await createDocument({ title, docType: activeType, category, description });
-        if (result) { await loadDocuments(); await openForEdit(result.docRow); }
+        const docRow = await createDocument({ title, docType: activeType, category, description });
+        if (docRow) { await loadDocuments(); await openForEdit(docRow); }
       });
     }
 
@@ -444,16 +443,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── RENDER: LIST ── */
-    function statusBadge(doc) {
+    function statusBadge(d) {
       const map = {
         draft:     { color: 'var(--text-secondary)', label: 'Draft' },
         published: { color: 'var(--success)',        label: 'Published' },
         archived:  { color: 'var(--error)',           label: 'Archived' }
       };
-      const s = map[doc.status] || map.draft;
+      const s = map[docStatus(d)];
       return `<span style="font-size:0.75rem;font-weight:600;color:${s.color};border:1px solid ${s.color};border-radius:999px;padding:0.15rem 0.6rem;">${s.label}</span>`;
     }
-    function docNumberDisplay(doc, revision) { return `${doc.doc_number}-V${revision}`; }
+    function docNumberDisplay(d) { return `${(d.slug || '').toUpperCase()}-V${d.revision || 0}`; }
 
     function typeRailHTML() {
       return `
@@ -481,7 +480,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     function renderList() {
-      const filtered = documents.filter(d => d.doc_type === activeType);
+      if (documents === null) {
+        root.innerHTML = `<div class="ims-empty-state">Couldn't load documents — check the console for details, then retry.</div>`;
+        return;
+      }
+      const filtered = documents.filter(d => d.schema?.doc_type === activeType);
       root.innerHTML = `
         <div class="ims-doc-layout" style="display:flex;gap:1.5rem;align-items:flex-start;">
           ${typeRailHTML()}
@@ -496,17 +499,17 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                   ${filtered.map(d => `
                     <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
                       <div>
-                        <div style="font-weight:600;">${esc(d.title)} ${d.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.category)}</span>` : ''}</div>
-                        <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.description || '')}</div>
+                        <div style="font-weight:600;">${esc(d.title)} ${d.schema?.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.schema.category)}</span>` : ''}</div>
+                        <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.schema?.description || '')}</div>
                         <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
-                          ${esc(docNumberDisplay(d, d.latest_revision))}${d.published_revision && d.published_revision !== d.latest_revision ? ` · live: ${esc(docNumberDisplay(d, d.published_revision))}` : ''}${!d.published_revision ? ' · never published' : ''}
+                          ${esc(docNumberDisplay(d))}${!d.revision ? ' · never published' : ''}
                         </div>
                       </div>
                       <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
                         ${statusBadge(d)}
                         <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
-                        <button class="btn-primary" data-action="edit" data-id="${d.id}">${d.status === 'archived' ? 'View' : 'Edit'}</button>
-                        <button class="btn-secondary" data-action="archive" data-id="${d.id}">${d.status === 'archived' ? 'Restore' : 'Archive'}</button>
+                        <button class="btn-primary" data-action="edit" data-id="${d.id}">${docStatus(d) === 'archived' ? 'View' : 'Edit'}</button>
+                        <button class="btn-secondary" data-action="archive" data-id="${d.id}">${docStatus(d) === 'archived' ? 'Restore' : 'Archive'}</button>
                       </div>
                     </div>
                   `).join('')}
@@ -517,76 +520,78 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       `;
     }
 
-    /* ── RENDER: EDITOR — shared meta + branch by type ── */
-    function metaCardHTML(isPublished) {
-      const d = currentDoc, r = currentRevision;
+    /* ── RENDER: EDITOR ── */
+    function metaCardHTML() {
+      const d = currentDoc, s = workingSchema;
       return `
         <div class="card" style="margin-bottom:1rem;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Title</label>
-              <input type="text" value="${esc(d.title)}" data-meta="title" ${isPublished ? 'disabled' : ''}
+              <input type="text" value="${esc(d.title)}" data-meta="title"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Document number</label>
-              <input type="text" value="${esc(d.doc_number)}" disabled
+              <input type="text" value="${esc((d.slug || '').toUpperCase())}" disabled
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Category</label>
-              <input type="text" value="${esc(d.category || '')}" data-meta="category" ${isPublished ? 'disabled' : ''}
+              <input type="text" value="${esc(s.category || '')}" data-schema-meta="category"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Description</label>
-              <input type="text" value="${esc(d.description || '')}" data-meta="description" ${isPublished ? 'disabled' : ''}
+              <input type="text" value="${esc(s.description || '')}" data-schema-meta="description"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Version date</label>
-              <input type="date" value="${esc(r.version_date || '')}" data-rev-meta="version_date" ${isPublished ? 'disabled' : ''}
+              <input type="date" value="${esc(revMeta.version_date || '')}" data-rev-meta="version_date"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Version description</label>
-              <input type="text" value="${esc(r.version_description || '')}" data-rev-meta="version_description" ${isPublished ? 'disabled' : ''}
+              <input type="text" value="${esc(revMeta.version_description || '')}" data-rev-meta="version_description"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Prepared by</label>
-              <input type="text" value="${esc(r.prepared_by || '')}" data-rev-meta="prepared_by" ${isPublished ? 'disabled' : ''}
+              <input type="text" value="${esc(revMeta.prepared_by || '')}" data-rev-meta="prepared_by"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
           </div>
+          <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-secondary);">Version fields apply when you next publish — they're recorded against that revision in history.</div>
         </div>
       `;
     }
 
-    function editorHeaderHTML(isPublished, canDiscard) {
-      const d = currentDoc, r = currentRevision;
+    function editorHeaderHTML() {
+      const d = currentDoc;
+      const status = docStatus(d);
       return `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
           <div>
             <button class="btn-secondary" data-action="back" style="margin-bottom:0.6rem;">← Back to list</button>
             <div class="section-label" style="margin:0;">${esc(d.title)}</div>
             <div style="font-size:0.8rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">
-              ${esc(docNumberDisplay(d, r.revision))} — ${isPublished ? 'Published (live)' : 'Draft'}
+              ${esc(docNumberDisplay(d))} — ${status === 'published' ? 'Published (live)' : status === 'archived' ? 'Archived' : 'Draft (offline)'}
             </div>
           </div>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
             <button class="btn-secondary" data-action="export-pdf">Export PDF</button>
-            ${canDiscard ? `<button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">Discard draft</button>` : ''}
-            ${!isPublished ? `<button class="btn-secondary" data-action="save-draft">Save draft</button>` : ''}
-            ${!isPublished ? `<button class="btn-primary" data-action="publish">Publish</button>` : ''}
+            <button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">${d.revision ? 'Discard changes' : 'Delete'}</button>
+            <button class="btn-secondary" data-action="save-draft">Save draft</button>
+            <button class="btn-primary" data-action="publish">Publish</button>
           </div>
         </div>
       `;
     }
 
-    /* ── Blocks editor (Policy/Procedure) ── */
+    /* ── Blocks editor (Policy/Procedure/Plan) ── */
     function tableBlockHTML(block, index) {
       const cols = block.columns || [];
       const rows = block.rows || [];
@@ -683,22 +688,21 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       `;
     }
 
-    function renderContentEditor(isPublished) {
-      const r = currentRevision;
+    function renderContentEditor() {
+      const blocks = workingSchema.blocks || [];
       return `
-        ${!isPublished ? `
-          <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.75rem;">
-            ${BLOCK_TYPES.map(t => `<button class="btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.8rem;" data-action="add-block" data-type="${t.type}">+ ${t.label}</button>`).join('')}
-          </div>` : ''}
-        <div class="card" style="padding:${r.content.blocks?.length ? '0.25rem 0.75rem' : '2rem'};">
-          ${r.content.blocks?.length
-            ? r.content.blocks.map((b, i) => blockRowHTML(b, i, r.content.blocks.length)).join('')
-            : `<div class="ims-empty-state">No content yet. Add a heading, paragraph, bullet list or signatory above.</div>`}
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+          ${BLOCK_TYPES.map(t => `<button class="btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.8rem;" data-action="add-block" data-type="${t.type}">+ ${t.label}</button>`).join('')}
+        </div>
+        <div class="card" style="padding:${blocks.length ? '0.25rem 0.75rem' : '2rem'};">
+          ${blocks.length
+            ? blocks.map((b, i) => blockRowHTML(b, i, blocks.length)).join('')
+            : `<div class="ims-empty-state">No content yet. Add a heading, paragraph, bullet list, signatory or table above.</div>`}
         </div>
       `;
     }
 
-    /* ── Fields editor (Form/Checklist) — same mechanics as the old ITC builder ── */
+    /* ── Fields editor (Form/Checklist/ITC) ── */
     function fieldRowHTML(field, index, total) {
       const typeLabel = FIELD_TYPES.find(t => t.type === field.type)?.label || field.type;
       const needsRequired = !NO_REQUIRED_TOGGLE.includes(field.type);
@@ -708,12 +712,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           <input type="text" value="${esc(field.label)}" placeholder="Field label"
             data-field-prop="label" data-index="${index}"
             style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.85rem;">
-          ${field.type === 'dropdown' ? `
+          ${field.type === 'select' ? `
             <input type="text" value="${esc((field.options || []).join(', '))}" placeholder="Options, comma separated"
               data-field-prop="options" data-index="${index}"
               style="flex:1 1 160px;min-width:120px;padding:0.4rem 0.55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:0.8rem;">
           ` : ''}
-          <span style="font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;">${typeLabel}</span>
+          <span style="font-size:0.68rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;" title="submission data key">${typeLabel} · ${esc(field.name)}</span>
           ${needsRequired ? `
             <label style="font-size:0.7rem;color:var(--text-secondary);display:flex;gap:0.25rem;align-items:center;white-space:nowrap;flex-shrink:0;">
               <input type="checkbox" ${field.required ? 'checked' : ''} data-field-prop="required" data-index="${index}"> Req
@@ -727,34 +731,23 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       `;
     }
 
-    function renderFieldsEditor(isPublished) {
-      const r = currentRevision;
+    function renderFieldsEditor() {
+      const fields = workingSchema.fields || [];
       return `
-        ${!isPublished ? `
-          <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.75rem;">
-            ${FIELD_TYPES.map(t => `<button class="btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.8rem;" data-action="add-field" data-type="${t.type}">+ ${t.label}</button>`).join('')}
-          </div>` : ''}
-        <div class="card" style="padding:${r.content.fields?.length ? '0.25rem 0.75rem' : '2rem'};">
-          ${r.content.fields?.length
-            ? r.content.fields.map((f, i) => isPublished
-                ? `<div style="padding:0.45rem 0.25rem;${i < r.content.fields.length - 1 ? 'border-bottom:1px solid var(--border);' : ''}display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                    <span>${esc(f.label)}</span>
-                    <span style="color:var(--text-secondary);font-size:0.75rem;">${FIELD_TYPES.find(t => t.type === f.type)?.label || f.type}${f.required ? ', required' : ''}</span>
-                  </div>`
-                : fieldRowHTML(f, i, r.content.fields.length)
-              ).join('')
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+          ${FIELD_TYPES.map(t => `<button class="btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.8rem;" data-action="add-field" data-type="${t.type}">+ ${t.label}</button>`).join('')}
+        </div>
+        <div class="card" style="padding:${fields.length ? '0.25rem 0.75rem' : '2rem'};">
+          ${fields.length
+            ? fields.map((f, i) => fieldRowHTML(f, i, fields.length)).join('')
             : `<div class="ims-empty-state">No fields yet. Add one above.</div>`}
         </div>
       `;
     }
 
     function renderEditor() {
-      const isPublished = currentRevision.status === 'published';
-      const canDiscard = currentRevision.status !== 'published' && (currentDoc.published_revision ? currentRevision.revision !== currentDoc.published_revision : currentRevision.revision > 1);
-      const isDigital = DIGITAL_TYPES.includes(currentDoc.doc_type);
-      root.innerHTML = editorHeaderHTML(isPublished, canDiscard)
-        + metaCardHTML(isPublished)
-        + (isDigital ? renderFieldsEditor(isPublished) : renderContentEditor(isPublished));
+      const isDigital = DIGITAL_TYPES.includes(workingSchema.doc_type);
+      root.innerHTML = editorHeaderHTML() + metaCardHTML() + (isDigital ? renderFieldsEditor() : renderContentEditor());
     }
 
     /* ── RENDER: HISTORY ── */
@@ -772,7 +765,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 <div>
                   <strong>Rev ${r.revision}</strong>
                   <span style="font-size:0.8rem;color:var(--text-secondary);margin-left:0.5rem;">
-                    ${r.is_legacy ? 'legacy' : r.status} · ${fmtDateShort(r.version_date)} ${r.version_description ? '· ' + esc(r.version_description) : ''} ${r.prepared_by ? '· ' + esc(r.prepared_by) : ''}
+                    ${r.schema ? 'snapshot saved' : 'legacy — no snapshot'} · ${fmtDateShort(r.version_date)} ${r.version_description ? '· ' + esc(r.version_description) : ''} ${r.prepared_by ? '· ' + esc(r.prepared_by) : ''}
                   </span>
                 </div>
               </div>
@@ -838,44 +831,51 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           if (type === 'signatory') { block.name = ''; block.title = ''; }
           if (type === 'heading' || type === 'paragraph') block.text = '';
           if (type === 'table') { block.columns = [{ label: 'Item', type: 'text' }]; block.rows = []; }
-          currentRevision.content.blocks = currentRevision.content.blocks || [];
-          currentRevision.content.blocks.push(block);
+          workingSchema.blocks = workingSchema.blocks || [];
+          workingSchema.blocks.push(block);
           renderEditor(); return;
         }
-        if (action === 'remove-block') { currentRevision.content.blocks.splice(Number(btn.dataset.index), 1); renderEditor(); return; }
+        if (action === 'remove-block') { workingSchema.blocks.splice(Number(btn.dataset.index), 1); renderEditor(); return; }
+        if (action === 'move-block-up' || action === 'move-block-down') {
+          const i = Number(btn.dataset.index);
+          const j = action === 'move-block-up' ? i - 1 : i + 1;
+          const arr = workingSchema.blocks;
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+          renderEditor(); return;
+        }
 
         if (action === 'add-table-column') {
-          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const block = workingSchema.blocks[Number(btn.dataset.index)];
           block.columns.push({ label: 'Column', type: 'text' });
           block.rows.forEach(r => r.cells.push(''));
           renderEditor(); return;
         }
         if (action === 'remove-table-column') {
-          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const block = workingSchema.blocks[Number(btn.dataset.index)];
           const col = Number(btn.dataset.col);
           block.columns.splice(col, 1);
           block.rows.forEach(r => r.cells.splice(col, 1));
           renderEditor(); return;
         }
         if (action === 'add-table-row') {
-          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const block = workingSchema.blocks[Number(btn.dataset.index)];
           block.rows.push({ cells: block.columns.map(() => '') });
           renderEditor(); return;
         }
         if (action === 'remove-table-row') {
-          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const block = workingSchema.blocks[Number(btn.dataset.index)];
           block.rows.splice(Number(btn.dataset.row), 1);
           renderEditor(); return;
         }
         if (action === 'move-table-row-up' || action === 'move-table-row-down') {
-          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const block = workingSchema.blocks[Number(btn.dataset.index)];
           const i = Number(btn.dataset.row);
           const j = action === 'move-table-row-up' ? i - 1 : i + 1;
           [block.rows[i], block.rows[j]] = [block.rows[j], block.rows[i]];
           renderEditor(); return;
         }
         if (action === 'add-table-preset') {
-          const block = currentRevision.content.blocks[Number(btn.dataset.index)];
+          const block = workingSchema.blocks[Number(btn.dataset.index)];
           block.columns = [
             { label: 'Activity / Supplier / Sub-Contractor', type: 'text' },
             { label: 'Auditor', type: 'text' },
@@ -884,32 +884,26 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           block.rows = (block.rows || []).map(r => ({ cells: block.columns.map((c, i) => r.cells[i] ?? (c.type === 'check' ? false : '')) }));
           renderEditor(); return;
         }
-        if (action === 'move-block-up' || action === 'move-block-down') {
-          const i = Number(btn.dataset.index);
-          const j = action === 'move-block-up' ? i - 1 : i + 1;
-          const arr = currentRevision.content.blocks;
-          [arr[i], arr[j]] = [arr[j], arr[i]];
-          renderEditor(); return;
-        }
 
         if (action === 'add-field') {
           const type = btn.dataset.type;
-          const field = { id: newId(), type, label: ({
+          const defaultLabel = ({
             heading: 'New section', dynamiclist: 'Non-Compliance / Issues Identified',
-            passfail: 'New checklist item', yesno: 'New yes/no question', photo: 'Photo', signature: 'Signature',
-            checkbox: 'New checkbox', dropdown: 'New dropdown'
-          }[type] || 'New field'), required: false };
-          if (type === 'dropdown') field.options = [];
+            passfail: 'New checklist item', photo: 'Photo', signature: 'Signature',
+            checkbox: 'New checkbox', select: 'New dropdown'
+          }[type] || 'New field');
+          workingSchema.fields = workingSchema.fields || [];
+          const field = { name: uniqueFieldName(defaultLabel, workingSchema.fields), type, label: defaultLabel, required: false };
+          if (type === 'select') field.options = [];
           if (type === 'dynamiclist') { field.placeholder = 'Describe...'; field.addButtonLabel = '+ Add Issue'; }
-          currentRevision.content.fields = currentRevision.content.fields || [];
-          currentRevision.content.fields.push(field);
+          workingSchema.fields.push(field);
           renderEditor(); return;
         }
-        if (action === 'remove-field') { currentRevision.content.fields.splice(Number(btn.dataset.index), 1); renderEditor(); return; }
+        if (action === 'remove-field') { workingSchema.fields.splice(Number(btn.dataset.index), 1); renderEditor(); return; }
         if (action === 'move-field-up' || action === 'move-field-down') {
           const i = Number(btn.dataset.index);
           const j = action === 'move-field-up' ? i - 1 : i + 1;
-          const arr = currentRevision.content.fields;
+          const arr = workingSchema.fields;
           [arr[i], arr[j]] = [arr[j], arr[i]];
           renderEditor(); return;
         }
@@ -918,37 +912,39 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       container.addEventListener('input', (e) => {
         const metaTarget = e.target.closest('[data-meta]');
         if (metaTarget && currentDoc) { currentDoc[metaTarget.dataset.meta] = metaTarget.value; return; }
+        const schemaMetaTarget = e.target.closest('[data-schema-meta]');
+        if (schemaMetaTarget && workingSchema) { workingSchema[schemaMetaTarget.dataset.schemaMeta] = schemaMetaTarget.value; return; }
         const revMetaTarget = e.target.closest('[data-rev-meta]');
-        if (revMetaTarget && currentRevision) { currentRevision[revMetaTarget.dataset.revMeta] = revMetaTarget.value; return; }
+        if (revMetaTarget && revMeta) { revMeta[revMetaTarget.dataset.revMeta] = revMetaTarget.value; return; }
 
         const tableColLabel = e.target.closest('[data-table-col-label]');
-        if (tableColLabel && currentRevision) {
-          const block = currentRevision.content.blocks[Number(tableColLabel.dataset.index)];
+        if (tableColLabel && workingSchema) {
+          const block = workingSchema.blocks[Number(tableColLabel.dataset.index)];
           block.columns[Number(tableColLabel.dataset.col)].label = tableColLabel.value;
           return;
         }
         const tableCellText = e.target.closest('[data-table-cell][type="text"]');
-        if (tableCellText && currentRevision) {
-          const block = currentRevision.content.blocks[Number(tableCellText.dataset.index)];
+        if (tableCellText && workingSchema) {
+          const block = workingSchema.blocks[Number(tableCellText.dataset.index)];
           block.rows[Number(tableCellText.dataset.row)].cells[Number(tableCellText.dataset.col)] = tableCellText.value;
           return;
         }
 
         const blockTarget = e.target.closest('[data-block-prop]');
-        if (blockTarget && currentRevision) {
+        if (blockTarget && workingSchema) {
           const idx = Number(blockTarget.dataset.index);
           const prop = blockTarget.dataset.blockProp;
-          const block = currentRevision.content.blocks[idx];
+          const block = workingSchema.blocks[idx];
           if (!block) return;
           if (prop === 'items') block.items = blockTarget.value.split('\n').map(s => s.trim()).filter(Boolean);
           else block[prop] = blockTarget.value;
           return;
         }
         const fieldTarget = e.target.closest('[data-field-prop]');
-        if (fieldTarget && currentRevision) {
+        if (fieldTarget && workingSchema) {
           const idx = Number(fieldTarget.dataset.index);
           const prop = fieldTarget.dataset.fieldProp;
-          const field = currentRevision.content.fields[idx];
+          const field = workingSchema.fields[idx];
           if (!field) return;
           if (prop === 'options') field.options = fieldTarget.value.split(',').map(s => s.trim()).filter(Boolean);
           else field.label = fieldTarget.value;
@@ -957,21 +953,21 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
       container.addEventListener('change', (e) => {
         const tableColType = e.target.closest('[data-table-col-type]');
-        if (tableColType && currentRevision) {
-          const block = currentRevision.content.blocks[Number(tableColType.dataset.index)];
+        if (tableColType && workingSchema) {
+          const block = workingSchema.blocks[Number(tableColType.dataset.index)];
           block.columns[Number(tableColType.dataset.col)].type = tableColType.value;
           renderEditor(); return;
         }
         const tableCellCheck = e.target.closest('[data-table-cell][type="checkbox"]');
-        if (tableCellCheck && currentRevision) {
-          const block = currentRevision.content.blocks[Number(tableCellCheck.dataset.index)];
+        if (tableCellCheck && workingSchema) {
+          const block = workingSchema.blocks[Number(tableCellCheck.dataset.index)];
           block.rows[Number(tableCellCheck.dataset.row)].cells[Number(tableCellCheck.dataset.col)] = tableCellCheck.checked;
           return;
         }
         const fieldTarget = e.target.closest('[data-field-prop="required"]');
-        if (fieldTarget && currentRevision) {
+        if (fieldTarget && workingSchema) {
           const idx = Number(fieldTarget.dataset.index);
-          if (currentRevision.content.fields[idx]) currentRevision.content.fields[idx].required = fieldTarget.checked;
+          if (workingSchema.fields[idx]) workingSchema.fields[idx].required = fieldTarget.checked;
         }
       });
     }
@@ -991,7 +987,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         renderView();
       },
       destroy() {
-        root = null; currentDoc = null; currentRevision = null;
+        root = null; currentDoc = null; workingSchema = null; revMeta = null;
       }
     };
   }
