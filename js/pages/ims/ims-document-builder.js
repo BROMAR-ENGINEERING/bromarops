@@ -1,7 +1,13 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.03
+   Version: V2.05
+   V2.05: document numbers follow IMS-{SECTION}-{TYPE}-{NN}-{DESCRIPTION}
+   (version appended as -V01 on documents/exports), built from parts:
+   schema.doc_seq (number) + schema.doc_desc (optional short description,
+   defaults to the title); schema.doc_number holds the assembled name.
+   Live PDF now sits beside the field/content builder and follows scrolling.
+   V2.04: category filter chips + list grouped under category headings.
    V2.03: two-person review — the author(s) of a draft cannot publish it;
    "Submit for review" → someone who hasn't edited it approves & publishes
    (prepared by / reviewed by recorded automatically). Editable IMS asset
@@ -93,7 +99,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.03';
+  const VERSION = 'V2.05';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -104,6 +110,22 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     plan:      { code: 'PLN', label: 'Plan',      plural: 'Plans' }
   };
   const SECTION_CODES = { safety: 'SAF', quality: 'QUA', environment: 'ENV', other: 'OTH' };
+  // Document naming: IMS-{SECTION}-{TYPE}-{NN}-{DESCRIPTION}-V{rev}
+  // e.g. IMS-SAFE-FORM-18-HAZARD-REPORT-V01. Change codes here if needed.
+  const NAME_SECTION_CODES = { safety: 'SAFE', quality: 'QUAL', environment: 'ENVIRO', other: 'OTHER' };
+  const NAME_TYPE_CODES = { policy: 'POLICY', procedure: 'PROCEDURE', form: 'FORM', checklist: 'CHECKLIST', itc: 'ITC', plan: 'PLAN' };
+  function nameDesc(text) {
+    return String(text || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+  function namePrefix(sectionKey, docType) {
+    return `IMS-${NAME_SECTION_CODES[sectionKey] || 'OTHER'}-${NAME_TYPE_CODES[docType] || 'DOC'}-`;
+  }
+  function buildDocNumber(sectionKey, docType, seq, desc, title) {
+    const n = parseInt(seq, 10);
+    if (!(n > 0)) return null;
+    const d = nameDesc(desc) || nameDesc(title);
+    return `${namePrefix(sectionKey, docType)}${String(n).padStart(2, '0')}${d ? '-' + d : ''}`;
+  }
   const CONTENT_TYPES = ['policy', 'procedure', 'plan'];   // block-based, is_form=false
   const DIGITAL_TYPES = ['form', 'checklist', 'itc'];      // field-based, is_form=true
 
@@ -195,6 +217,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     let root = null;
     let view = 'list';           // 'list' | 'editor' | 'history'
     let activeType = 'policy';
+    let activeCategory = 'all';   // category filter for the list ('all' | name | '__none__')
     let documents = [];
     let currentDoc = null;        // the live ims_documents row
     let workingSchema = null;     // mutable copy of currentDoc.schema being edited
@@ -213,24 +236,37 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     function docNumberOf(d) {
       return String(d?.schema?.doc_number || d?.slug || '').toUpperCase();
     }
-    async function allDocIds() {
-      const { data, error } = await sb().from('ims_documents').select('id, slug, schema');
+    // Number already used by this section + type? Reads doc_seq, or parses older doc_numbers.
+    function seqOf(row, sectionKey, docType) {
+      const s = row.schema || {};
+      const rowType = s.doc_type || (row.is_form ? 'form' : 'policy');
+      if (row.section !== sectionKey || rowType !== docType) return null;
+      if (parseInt(s.doc_seq, 10) > 0) return parseInt(s.doc_seq, 10);
+      const m = new RegExp('^' + namePrefix(sectionKey, docType) + '(\\d+)').exec(String(s.doc_number || '').toUpperCase());
+      return m ? parseInt(m[1], 10) : null;
+    }
+    async function allDocRows() {
+      const { data, error } = await sb().from('ims_documents').select('id, slug, section, is_form, schema');
       return error ? [] : (data || []);
     }
-    async function suggestDocNumber(docType) {
-      const prefix = `BRO-${SECTION_CODES[section]}-${DOC_TYPES[docType].code}-`;
+    async function suggestSeq(docType) {
       let max = 0;
-      (await allDocIds()).forEach(row => {
-        [String(row.slug || '').toUpperCase(), String(row.schema?.doc_number || '').toUpperCase()].forEach(v => {
-          const m = new RegExp(`^${prefix}(\\d+)$`).exec(v);
-          if (m) max = Math.max(max, parseInt(m[1], 10));
-        });
-      });
-      return prefix + String(max + 1).padStart(3, '0');
+      (await allDocRows()).forEach(r => { const n = seqOf(r, section, docType); if (n) max = Math.max(max, n); });
+      return max + 1;
     }
-    async function docNumberTaken(num, exceptId) {
-      const n = String(num || '').trim().toUpperCase();
-      return (await allDocIds()).some(r => r.id !== exceptId && docNumberOf(r) === n);
+    async function seqTaken(docType, seq, exceptId) {
+      const n = parseInt(seq, 10);
+      return (await allDocRows()).some(r => r.id !== exceptId && seqOf(r, section, docType) === n);
+    }
+    // Keeps schema.doc_number in step with number / description / title / type.
+    function refreshDocNumber() {
+      if (!workingSchema) return;
+      const built = buildDocNumber(section, workingSchema.doc_type, workingSchema.doc_seq, workingSchema.doc_desc, currentDoc?.title);
+      if (built) workingSchema.doc_number = built;
+      const el = root && root.querySelector('#ims-docname-preview');
+      if (el) el.textContent = built
+        ? `${built}-V${String((currentDoc?.revision || 0) + (currentDoc?.is_active ? 0 : 1)).padStart(2, '0')}`
+        : 'Enter a number to generate the document name';
     }
 
     /* ── DATA ── */
@@ -308,11 +344,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }
 
     /* ── CRUD ── */
-    async function createDocument({ title, docType, category, description, docNumber }) {
-      const existing = await allDocIds();
+    async function createDocument({ title, docType, category, description, seq, shortDesc }) {
+      const docNumber = buildDocNumber(section, docType, seq, shortDesc, title);
+      const existing = await allDocRows();
       let slug = String(docNumber).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       if (!slug || existing.some(r => r.slug === slug)) slug = `${slug || 'doc'}-${Date.now().toString(36)}`;
-      const schema = { ...emptySchema(docType, category, description), doc_number: String(docNumber).toUpperCase() };
+      const schema = { ...emptySchema(docType, category, description), doc_seq: parseInt(seq, 10), doc_number: docNumber };
+      if (shortDesc) schema.doc_desc = shortDesc;
       const { data: docRow, error } = await sb().from('ims_documents').insert({
         slug, section, title, schema,
         revision: 0, is_active: false, is_form: DIGITAL_TYPES.includes(docType)
@@ -453,6 +491,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const dInfo = workingSchema._draft;
       revMeta = { version_date: dInfo?.version_date || todayISO(), version_description: dInfo?.version_description || '' };
       await currentUserName();          // warm the name cache
+      refreshDocNumber();
       snapshotBaseline();
       autoNamed = new Set();
       liveHistory = null;
@@ -611,7 +650,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     /* ── NEW DOCUMENT MODAL ── */
     async function showNewDocModal() {
       const categories = getCategories();
-      const suggested = await suggestDocNumber(activeType);
+      const suggested = await suggestSeq(activeType);
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
       overlay.innerHTML = `
@@ -619,14 +658,25 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           <div class="section-label" style="margin-top:0;">New ${esc(DOC_TYPES[activeType].label)}</div>
           <div style="display:flex;flex-direction:column;gap:0.9rem;">
             <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">IMS asset / document number *</label>
-              <input type="text" id="doc-modal-number" value="${esc(suggested)}"
-                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--accent);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;text-transform:uppercase;">
-              <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.25rem;">Suggested next number — change it to match your existing register if needed.</div>
-            </div>
-            <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Title *</label>
               <input type="text" id="doc-modal-title" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+            </div>
+            <div style="display:grid;grid-template-columns:90px 1fr;gap:0.75rem;">
+              <div>
+                <label style="font-size:0.8rem;color:var(--text-secondary);">Number *</label>
+                <input type="number" min="1" id="doc-modal-number" value="${esc(suggested)}"
+                  style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
+              </div>
+              <div>
+                <label style="font-size:0.8rem;color:var(--text-secondary);">Short name (optional)</label>
+                <input type="text" id="doc-modal-short" placeholder="Defaults to the title"
+                  style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              </div>
+            </div>
+            <div style="background:var(--bg-main);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.8rem;">
+              <div style="font-size:0.7rem;color:var(--text-secondary);">Document name</div>
+              <div id="doc-modal-preview" style="font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--accent);word-break:break-all;"></div>
+              <div style="font-size:0.68rem;color:var(--text-secondary);margin-top:0.2rem;">Next free number suggested — change it to match your existing register.</div>
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Category</label>
@@ -653,22 +703,31 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const catSelect = overlay.querySelector('#doc-modal-category');
       const newCatInput = overlay.querySelector('#doc-modal-new-category');
       if (!categories.length) { catSelect.value = '__new__'; newCatInput.style.display = 'block'; }
+      else if (categories.includes(activeCategory)) catSelect.value = activeCategory;
       catSelect.addEventListener('change', () => { newCatInput.style.display = catSelect.value === '__new__' ? 'block' : 'none'; });
 
       function close() { overlay.remove(); }
       overlay.querySelector('#doc-modal-cancel').addEventListener('click', close);
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      const preview = () => {
+        const built = buildDocNumber(section, activeType, overlay.querySelector('#doc-modal-number').value,
+          overlay.querySelector('#doc-modal-short').value, overlay.querySelector('#doc-modal-title').value);
+        overlay.querySelector('#doc-modal-preview').textContent = built ? `${built}-V01` : '—';
+      };
+      ['#doc-modal-number', '#doc-modal-short', '#doc-modal-title'].forEach(s => overlay.querySelector(s).addEventListener('input', preview));
+      preview();
 
       overlay.querySelector('#doc-modal-create').addEventListener('click', async () => {
         const title = overlay.querySelector('#doc-modal-title').value.trim();
         const category = catSelect.value === '__new__' ? newCatInput.value.trim() : catSelect.value;
         const description = overlay.querySelector('#doc-modal-description').value.trim();
-        const docNumber = overlay.querySelector('#doc-modal-number').value.trim().toUpperCase();
+        const seq = parseInt(overlay.querySelector('#doc-modal-number').value, 10);
+        const shortDesc = overlay.querySelector('#doc-modal-short').value.trim();
         if (!title) { alert('Title is required.'); return; }
-        if (!docNumber) { alert('Document number is required.'); return; }
-        if (await docNumberTaken(docNumber)) { alert(`${docNumber} is already used by another document.`); return; }
+        if (!(seq > 0)) { alert('Number is required.'); return; }
+        if (await seqTaken(activeType, seq)) { alert(`Number ${seq} is already used by another ${DOC_TYPES[activeType].label.toLowerCase()} in this section.`); return; }
         close();
-        const docRow = await createDocument({ title, docType: activeType, category, description, docNumber });
+        const docRow = await createDocument({ title, docType: activeType, category, description, seq, shortDesc });
         if (docRow) { await loadDocuments(); await openForEdit(docRow); }
       });
     }
@@ -852,45 +911,101 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       `;
     }
 
+    function docCardHTML(d) {
+      return `
+        <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:600;">${esc(d.title)} ${!d.schema?.doc_type ? `<span style="font-weight:400;font-size:0.75rem;color:var(--error);border:1px solid var(--error);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;" title="Created outside the builder — type guessed. Open it and set Type to fix.">Type not set</span>` : ''}</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.schema?.description || '')}</div>
+            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
+              ${esc(docNumberDisplay(d))}${!d.revision ? ' · never published' : ''}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+            ${statusBadge(d)}
+            <button class="btn-secondary" data-action="view-doc" data-id="${d.id}">View</button>
+            <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
+            ${docStatus(d) === 'archived' ? '' : (docStatus(d) === 'review' && !isEditorOf(d.schema))
+              ? `<button class="btn-primary" data-action="edit" data-id="${d.id}">Review</button>`
+              : `<button class="btn-primary" data-action="edit" data-id="${d.id}">Edit</button>`}
+            <button class="btn-secondary" data-action="archive" data-id="${d.id}">${docStatus(d) === 'archived' ? 'Restore' : 'Archive'}</button>
+          </div>
+        </div>`;
+    }
+
+    function categoryChipsHTML(ofType) {
+      const counts = new Map();
+      let none = 0;
+      ofType.forEach(d => {
+        const c = (d.schema?.category || '').trim();
+        if (c) counts.set(c, (counts.get(c) || 0) + 1); else none++;
+      });
+      if (!counts.size) return '';                       // nothing to filter by yet
+      const chip = (key, label, n) => {
+        const on = activeCategory === key;
+        return `<button data-action="filter-category" data-category="${esc(key)}" style="
+          font-family:'Outfit',sans-serif;padding:0.35rem 0.8rem;border-radius:999px;cursor:pointer;font-size:0.8rem;
+          border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
+          background:${on ? 'var(--accent)' : 'transparent'};
+          color:${on ? '#fff' : 'var(--text-secondary)'};font-weight:${on ? 600 : 500};">
+          ${esc(label)} <span style="opacity:0.75;">${n}</span></button>`;
+      };
+      const names = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b));
+      return `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1rem;">
+        ${chip('all', 'All', ofType.length)}
+        ${names.map(n => chip(n, n, counts.get(n))).join('')}
+        ${none ? chip('__none__', 'No category', none) : ''}
+      </div>`;
+    }
+
     function renderList() {
       if (documents === null) {
         root.innerHTML = `<div class="ims-empty-state">Couldn't load documents — check the console for details, then retry.</div>`;
         return;
       }
-      const filtered = documents.filter(d => effectiveDocType(d) === activeType);
+      const ofType = documents.filter(d => effectiveDocType(d) === activeType);
+      const catOf = d => (d.schema?.category || '').trim();
+      const knownCats = new Set(ofType.map(catOf).filter(Boolean));
+      if (activeCategory !== 'all' && activeCategory !== '__none__' && !knownCats.has(activeCategory)) activeCategory = 'all';
+
+      const shown = activeCategory === 'all' ? ofType
+        : activeCategory === '__none__' ? ofType.filter(d => !catOf(d))
+        : ofType.filter(d => catOf(d) === activeCategory);
+
+      let listHtml;
+      if (!ofType.length) {
+        listHtml = `<div class="ims-empty-state">No ${esc(DOC_TYPES[activeType].plural.toLowerCase())} yet. Click "New ${esc(DOC_TYPES[activeType].label)}" to build one.</div>`;
+      } else if (!shown.length) {
+        listHtml = `<div class="ims-empty-state">Nothing in this category.</div>`;
+      } else if (activeCategory === 'all' && knownCats.size) {
+        // Grouped under category headings, alphabetical, "No category" last
+        const groups = new Map();
+        shown.forEach(d => { const k = catOf(d) || '__none__'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); });
+        const keys = Array.from(groups.keys()).filter(k => k !== '__none__').sort((a, b) => a.localeCompare(b));
+        if (groups.has('__none__')) keys.push('__none__');
+        listHtml = keys.map(k => `
+          <div style="margin-bottom:1.25rem;">
+            <div style="display:flex;align-items:center;gap:0.6rem;margin:0 0 0.6rem;">
+              <span style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${k === '__none__' ? 'var(--text-secondary)' : 'var(--accent)'};">${esc(k === '__none__' ? 'No category' : k)}</span>
+              <span style="font-size:0.72rem;color:var(--text-secondary);">${groups.get(k).length}</span>
+              <div style="flex:1;border-top:1px solid var(--border);"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.75rem;">${groups.get(k).map(docCardHTML).join('')}</div>
+          </div>`).join('');
+      } else {
+        listHtml = `<div style="display:flex;flex-direction:column;gap:0.75rem;">${shown.map(docCardHTML).join('')}</div>`;
+      }
+
       root.innerHTML = `
         <div class="ims-doc-layout" style="display:flex;gap:1.5rem;align-items:flex-start;">
           ${typeRailHTML()}
           <div style="flex:1;min-width:0;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.9rem;gap:0.75rem;flex-wrap:wrap;">
               <div class="section-label" style="margin:0;">${esc(DOC_TYPES[activeType].plural)}</div>
               <button class="btn-primary" data-action="new-doc">+ New ${esc(DOC_TYPES[activeType].label)}</button>
             </div>
-            ${!filtered.length
-              ? `<div class="ims-empty-state">No ${esc(DOC_TYPES[activeType].plural.toLowerCase())} yet. Click "New ${esc(DOC_TYPES[activeType].label)}" to build one.</div>`
-              : `<div style="display:flex;flex-direction:column;gap:0.75rem;">
-                  ${filtered.map(d => `
-                    <div class="card" style="padding:1rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
-                      <div>
-                        <div style="font-weight:600;">${esc(d.title)} ${d.schema?.category ? `<span style="font-weight:400;font-size:0.75rem;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;">${esc(d.schema.category)}</span>` : ''} ${!d.schema?.doc_type ? `<span style="font-weight:400;font-size:0.75rem;color:var(--error);border:1px solid var(--error);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;" title="Created outside the builder — type guessed from is_form. Open and set Type to fix.">Uncategorized</span>` : ''}</div>
-                        <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.schema?.description || '')}</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
-                          ${esc(docNumberDisplay(d))}${!d.revision ? ' · never published' : ''}
-                        </div>
-                      </div>
-                      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-                        ${statusBadge(d)}
-                        <button class="btn-secondary" data-action="view-doc" data-id="${d.id}">View</button>
-                        <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
-                        ${docStatus(d) === 'archived' ? '' : (docStatus(d) === 'review' && !isEditorOf(d.schema))
-                          ? `<button class="btn-primary" data-action="edit" data-id="${d.id}">Review</button>`
-                          : `<button class="btn-primary" data-action="edit" data-id="${d.id}">Edit</button>`}
-                        <button class="btn-secondary" data-action="archive" data-id="${d.id}">${docStatus(d) === 'archived' ? 'Restore' : 'Archive'}</button>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>`
-            }
+            ${categoryChipsHTML(ofType)}
+            ${listHtml}
           </div>
         </div>
       `;
@@ -908,10 +1023,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
             </div>
             <div>
-              <label style="font-size:0.8rem;color:var(--text-secondary);">IMS asset / document number</label>
-              <input type="text" value="${esc(String(s.doc_number || d.slug || '').toUpperCase())}" data-schema-meta="doc_number"
-                style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;text-transform:uppercase;">
-              <div style="font-size:0.68rem;color:var(--text-secondary);margin-top:0.25rem;">System ID (used by Hub links, doesn't change): <span style="font-family:'JetBrains Mono',monospace;">${esc(d.slug || '')}</span></div>
+              <label style="font-size:0.8rem;color:var(--text-secondary);">Document number</label>
+              <div style="display:grid;grid-template-columns:80px 1fr;gap:0.5rem;margin-top:0.3rem;">
+                <input type="number" min="1" value="${esc(s.doc_seq || '')}" data-schema-meta="doc_seq" placeholder="No."
+                  style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);font-family:'JetBrains Mono',monospace;">
+                <input type="text" value="${esc(s.doc_desc || '')}" data-schema-meta="doc_desc" placeholder="Short name (defaults to title)"
+                  style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);">
+              </div>
+              <div id="ims-docname-preview" style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--accent);margin-top:0.35rem;word-break:break-all;"></div>
+              ${!s.doc_seq && s.doc_number ? `<div style="font-size:0.68rem;color:var(--error);margin-top:0.2rem;">Old number ${esc(s.doc_number)} — enter a number to switch to the new format.</div>` : ''}
+              <div style="font-size:0.68rem;color:var(--text-secondary);margin-top:0.2rem;">System ID (used by Hub links, doesn't change): <span style="font-family:'JetBrains Mono',monospace;">${esc(d.slug || '')}</span></div>
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Type${!d.schema?.doc_type ? ' <span style="color:var(--error);">(set this — was uncategorized)</span>' : ''}</label>
@@ -921,8 +1042,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Category</label>
-              <input type="text" value="${esc(s.category || '')}" data-schema-meta="category"
+              <input type="text" value="${esc(s.category || '')}" data-schema-meta="category" list="ims-cat-list-${section}" placeholder="Pick or type a new one"
                 style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-main);color:var(--text-primary);margin-top:0.3rem;">
+              <datalist id="ims-cat-list-${section}">${Array.from(new Set((documents || []).filter(x => effectiveDocType(x) === s.doc_type).map(x => (x.schema?.category || '').trim()).filter(Boolean))).sort().map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
             </div>
             <div>
               <label style="font-size:0.8rem;color:var(--text-secondary);">Description</label>
@@ -1302,23 +1424,51 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
     function renderEditor() {
       const isDigital = DIGITAL_TYPES.includes(workingSchema.doc_type);
-      const editorHtml = editorHeaderHTML() + metaCardHTML() + revisionPanelHTML() + (isDigital ? renderFieldsEditor() : renderContentEditor());
-      if (!livePdf) { root.innerHTML = editorHtml; return; }
-      root.innerHTML = `
-        <style>
-          @media (max-width: 760px) {
-            .ims-live-split { grid-template-columns: 1fr !important; }
-            .ims-live-pane { position: static !important; height: 75vh !important; }
-          }
-        </style>
-        <div class="ims-live-split" style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,0.9fr);gap:1rem;align-items:start;">
-          <div style="min-width:0;">${editorHtml}</div>
-          <div class="ims-live-pane" style="position:sticky;top:calc(var(--header-height) + 1rem);height:calc(100vh - var(--header-height) - 2rem);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg-secondary);">
-            <div id="ims-live-status" style="font-size:0.75rem;color:var(--text-secondary);padding:0.45rem 0.75rem;border-bottom:1px solid var(--border);">Generating PDF…</div>
-            <iframe id="ims-live-frame" title="Live PDF preview" style="width:100%;height:calc(100% - 2.1rem);border:0;background:#fff;" ${liveUrl ? `src="${liveUrl}#view=FitH"` : ''}></iframe>
-          </div>
-        </div>`;
-      scheduleLivePdf();
+      const top = editorHeaderHTML() + metaCardHTML() + revisionPanelHTML();
+      const builder = isDigital ? renderFieldsEditor() : renderContentEditor();
+      if (!livePdf) {
+        root.innerHTML = top + builder;
+      } else {
+        root.innerHTML = top + `
+          <style>
+            @media (max-width: 760px) {
+              .ims-live-split { grid-template-columns: 1fr !important; }
+              .ims-live-pane { height: 75vh !important; transform: none !important; }
+            }
+          </style>
+          <div class="ims-live-split" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem;align-items:stretch;">
+            <div style="min-width:0;">${builder}</div>
+            <div class="ims-live-col" style="min-width:0;position:relative;">
+              <div class="ims-live-pane" style="height:calc(100vh - var(--header-height) - 2.5rem);min-height:420px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg-secondary);will-change:transform;">
+                <div id="ims-live-status" style="font-size:0.75rem;color:var(--text-secondary);padding:0.45rem 0.75rem;border-bottom:1px solid var(--border);">Generating PDF…</div>
+                <iframe id="ims-live-frame" title="Live PDF preview" style="width:100%;height:calc(100% - 2.1rem);border:0;background:#fff;" ${liveUrl ? `src="${liveUrl}#view=FitH"` : ''}></iframe>
+              </div>
+            </div>
+          </div>`;
+        positionLivePane();
+        scheduleLivePdf();
+      }
+      refreshDocNumber();
+    }
+
+    // Keeps the live PDF in view beside the builder while scrolling. (CSS sticky
+    // doesn't work here because the page content area clips overflow.)
+    let paneFrame = null;
+    function positionLivePane() {
+      if (paneFrame) return;
+      paneFrame = requestAnimationFrame(() => {
+        paneFrame = null;
+        if (!root || !livePdf || view !== 'editor') return;
+        const col = root.querySelector('.ims-live-col');
+        const pane = root.querySelector('.ims-live-pane');
+        if (!col || !pane) return;
+        if (window.innerWidth <= 760) { pane.style.transform = ''; return; }
+        const headerH = (document.querySelector('.header')?.getBoundingClientRect().height || 60) + 12;
+        const colTop = col.getBoundingClientRect().top;
+        const maxShift = Math.max(0, col.offsetHeight - pane.offsetHeight);
+        const shift = Math.min(maxShift, Math.max(0, headerH - colTop));
+        pane.style.transform = shift ? `translateY(${shift}px)` : '';
+      });
     }
 
     /* ── RENDER: HISTORY ── */
@@ -1369,13 +1519,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       listenerAbort = new AbortController();
       const opts = { signal: listenerAbort.signal };
       const on = (type, fn) => container.addEventListener(type, fn, opts);
+      window.addEventListener('scroll', positionLivePane, { passive: true, signal: listenerAbort.signal });
+      window.addEventListener('resize', positionLivePane, { passive: true, signal: listenerAbort.signal });
 
       on('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const action = btn.dataset.action;
 
-        if (action === 'switch-type') { activeType = btn.dataset.type; renderView(); return; }
+        if (action === 'switch-type') { activeType = btn.dataset.type; activeCategory = 'all'; renderView(); return; }
+        if (action === 'filter-category') { activeCategory = btn.dataset.category; renderView(); return; }
         if (action === 'new-doc') { await showNewDocModal(); return; }
         if (action === 'view-doc') {
           const doc = documents.find(d => d.id === btn.dataset.id);
@@ -1513,9 +1666,15 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       on('input', (e) => {
         scheduleLivePdf();
         const metaTarget = e.target.closest('[data-meta]');
-        if (metaTarget && currentDoc) { currentDoc[metaTarget.dataset.meta] = metaTarget.value; return; }
+        if (metaTarget && currentDoc) { currentDoc[metaTarget.dataset.meta] = metaTarget.value; if (metaTarget.dataset.meta === 'title') refreshDocNumber(); return; }
         const schemaMetaTarget = e.target.closest('[data-schema-meta]');
-        if (schemaMetaTarget && workingSchema) { workingSchema[schemaMetaTarget.dataset.schemaMeta] = schemaMetaTarget.value; return; }
+        if (schemaMetaTarget && workingSchema) {
+          const key = schemaMetaTarget.dataset.schemaMeta;
+          if (key === 'doc_seq') return;                       // validated on 'change'
+          if (key === 'doc_desc') { const v = schemaMetaTarget.value.trim(); if (v) workingSchema.doc_desc = v; else delete workingSchema.doc_desc; refreshDocNumber(); return; }
+          workingSchema[key] = schemaMetaTarget.value;
+          return;
+        }
         const revMetaTarget = e.target.closest('[data-rev-meta]');
         if (revMetaTarget && revMeta) { revMeta[revMetaTarget.dataset.revMeta] = revMetaTarget.value; return; }
 
@@ -1600,6 +1759,11 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           workingSchema.doc_type = docTypeSelect.value;
           if (DIGITAL_TYPES.includes(workingSchema.doc_type) && !workingSchema.fields) workingSchema.fields = [];
           if (CONTENT_TYPES.includes(workingSchema.doc_type) && !workingSchema.blocks) workingSchema.blocks = [];
+          if (workingSchema.doc_seq && await seqTaken(workingSchema.doc_type, workingSchema.doc_seq, currentDoc.id)) {
+            alert(`Number ${workingSchema.doc_seq} is already used by another ${DOC_TYPES[workingSchema.doc_type].label.toLowerCase()} in this section — pick a new number.`);
+            delete workingSchema.doc_seq;
+          }
+          refreshDocNumber();
           renderEditor(); return;
         }
         const tableColType = e.target.closest('[data-table-col-type]');
@@ -1626,13 +1790,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           f.name = nn;
           renderEditor(); return;
         }
-        const numInput = e.target.closest('[data-schema-meta="doc_number"]');
-        if (numInput && workingSchema) {
-          const n = String(numInput.value || '').trim().toUpperCase();
-          if (!n) { alert('Document number cannot be empty.'); numInput.value = workingSchema.doc_number || currentDoc.slug.toUpperCase(); workingSchema.doc_number = numInput.value; return; }
-          if (await docNumberTaken(n, currentDoc.id)) { alert(`${n} is already used by another document.`); numInput.focus(); return; }
-          workingSchema.doc_number = n;
-          renderEditor(); return;
+        const seqInput = e.target.closest('[data-schema-meta="doc_seq"]');
+        if (seqInput && workingSchema) {
+          const n = parseInt(seqInput.value, 10);
+          if (!(n > 0)) { alert('Enter a number of 1 or more.'); seqInput.value = workingSchema.doc_seq || ''; return; }
+          if (await seqTaken(workingSchema.doc_type, n, currentDoc.id)) {
+            alert(`Number ${n} is already used by another ${(DOC_TYPES[workingSchema.doc_type]?.label || 'document').toLowerCase()} in this section.`);
+            seqInput.value = workingSchema.doc_seq || ''; return;
+          }
+          workingSchema.doc_seq = n;
+          refreshDocNumber(); scheduleLivePdf(); return;
         }
         const typeSel = e.target.closest('[data-field-prop="type"]');
         if (typeSel && workingSchema) {
