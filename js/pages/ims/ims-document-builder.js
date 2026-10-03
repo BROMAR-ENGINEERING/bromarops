@@ -452,6 +452,74 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       });
     }
 
+    /* ── PREVIEW (read-only — never flips is_active, unlike Edit) ── */
+    function renderBlocksPreviewHTML(blocks) {
+      if (!blocks || !blocks.length) return `<div class="ims-empty-state">No content yet.</div>`;
+      return blocks.map(b => {
+        if (b.type === 'heading') return `<div style="font-weight:700;font-size:1.05rem;margin:1.1rem 0 0.5rem;">${esc(b.text || '')}</div>`;
+        if (b.type === 'paragraph') return `<p style="margin-bottom:0.75rem;color:var(--text-primary);line-height:1.6;">${esc(b.text || '')}</p>`;
+        if (b.type === 'bullets') return `<ul style="margin:0 0 0.75rem 1.2rem;color:var(--text-primary);">${(b.items || []).map(i => `<li style="margin-bottom:0.25rem;">${esc(i)}</li>`).join('')}</ul>`;
+        if (b.type === 'signatory') return `<div style="margin-top:1rem;"><strong>${esc(b.name || '')}</strong><div style="font-size:0.85rem;color:var(--text-secondary);">${esc(b.title || '')}</div></div>`;
+        if (b.type === 'table') {
+          const cols = b.columns || [], rows = b.rows || [];
+          return `<div style="overflow-x:auto;margin-bottom:1rem;"><table style="border-collapse:collapse;width:100%;">
+            <thead><tr>${cols.map(c => `<th style="border:1px solid var(--border);padding:0.4rem;background:var(--bg-main);font-size:0.78rem;">${esc(c.label)}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map(r => `<tr>${r.cells.map((cell, ci) => `<td style="border:1px solid var(--border);padding:0.4rem;text-align:${cols[ci]?.type === 'check' ? 'center' : 'left'};font-size:0.82rem;">${cols[ci]?.type === 'check' ? (cell ? '✓' : '') : esc(cell || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table></div>`;
+        }
+        return '';
+      }).join('');
+    }
+
+    async function showPreviewModal(doc, schemaOverride) {
+      const schema = schemaOverride || doc.schema || {};
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+      overlay.innerHTML = `
+        <div class="card" style="max-width:720px;width:100%;max-height:85vh;overflow-y:auto;padding:1.5rem;animation:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+            <div class="section-label" style="margin:0;">Preview — ${esc(doc.title)}</div>
+            <div style="display:flex;gap:0.5rem;">
+              <button class="btn-secondary" id="preview-pdf-btn">View PDF</button>
+              <button class="btn-secondary" id="preview-close">Close</button>
+            </div>
+          </div>
+          <div id="preview-body"></div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const body = overlay.querySelector('#preview-body');
+
+      if (schema.fields) {
+        if (window.BromarFormKit?.render) {
+          window.BromarFormKit.render(body, schema, { readOnly: true });
+        } else {
+          body.innerHTML = `<div class="ims-empty-state">form-kit isn't loaded here — can't render the live Hub view. Use "View PDF" instead.</div>`;
+        }
+      } else {
+        body.innerHTML = renderBlocksPreviewHTML(schema.blocks);
+      }
+
+      function close() { overlay.remove(); }
+      overlay.querySelector('#preview-close').addEventListener('click', close);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+      overlay.querySelector('#preview-pdf-btn').addEventListener('click', async () => {
+        if (!window.BromarIMSReportKit) { alert('PDF engine not loaded.'); return; }
+        const history = await loadHistory(doc.id);
+        const revisionMeta = { revision: doc.revision || 0, version_date: history[0]?.version_date || todayISO() };
+        try {
+          const pdf = CONTENT_TYPES.includes(schema.doc_type)
+            ? await window.BromarIMSReportKit.generatePolicyPDF({ doc, revisionMeta, schema, historyRows: history })
+            : await window.BromarIMSReportKit.generateFormPDF({ doc, revisionMeta, schema, historyRows: history });
+          const blobUrl = pdf.output('bloburl');
+          window.open(blobUrl, '_blank');
+        } catch (e) {
+          alert('Could not generate PDF preview: ' + e.message + ' (if your browser blocked a popup, allow it and try again)');
+        }
+      });
+    }
+
     /* ── RENDER: LIST ── */
     function statusBadge(d) {
       const map = {
@@ -517,8 +585,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
                       </div>
                       <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
                         ${statusBadge(d)}
+                        <button class="btn-secondary" data-action="view-doc" data-id="${d.id}">View</button>
                         <button class="btn-secondary" data-action="history" data-id="${d.id}">History</button>
-                        <button class="btn-primary" data-action="edit" data-id="${d.id}">${docStatus(d) === 'archived' ? 'View' : 'Edit'}</button>
+                        ${docStatus(d) !== 'archived' ? `<button class="btn-primary" data-action="edit" data-id="${d.id}">Edit</button>` : ''}
                         <button class="btn-secondary" data-action="archive" data-id="${d.id}">${docStatus(d) === 'archived' ? 'Restore' : 'Archive'}</button>
                       </div>
                     </div>
@@ -598,6 +667,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             </div>
           </div>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button class="btn-secondary" data-action="preview-doc">Preview</button>
             <button class="btn-secondary" data-action="export-pdf">Export PDF</button>
             <button class="btn-secondary" data-action="discard-draft" style="color:var(--error);">${d.revision ? 'Discard changes' : 'Delete'}</button>
             <button class="btn-secondary" data-action="save-draft">Save draft</button>
@@ -817,6 +887,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
         if (action === 'switch-type') { activeType = btn.dataset.type; renderView(); return; }
         if (action === 'new-doc') { await showNewDocModal(); return; }
+        if (action === 'view-doc') {
+          const doc = documents.find(d => d.id === btn.dataset.id);
+          if (doc) await showPreviewModal(doc);
+          return;
+        }
+        if (action === 'preview-doc') { await showPreviewModal(currentDoc, workingSchema); return; }
         if (action === 'edit') {
           const doc = documents.find(d => d.id === btn.dataset.id);
           if (doc) await openForEdit(doc);
