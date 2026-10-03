@@ -1,12 +1,17 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.02
+   Version: V1.03
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.03: cover restyled (DOCUMENT NAME line, REC number, black-header
+   revision table with REVIEWED BY). Layout controls: 'spacer' and
+   'pagebreak' blocks; per-field f.pdf = { spaceBefore, pageBreakBefore,
+   fullWidth } on form fields (form-kit ignores the pdf key).
 
    V1.02: form body rebuilt — type-aware paper layout (paired short
    inputs, ruled textareas, drawn tick-boxes for options, pass/fail rows,
@@ -31,9 +36,10 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.02';
+  const VERSION = 'V1.03';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
+  const LICENCE = 'REC. 30340';
   const ORANGE = [234, 88, 12];
   const BLACK = [26, 26, 30];
   const GREY = [99, 99, 105];
@@ -112,85 +118,105 @@ window.BromarIMSReportKit = (() => {
   function fmtDateLong(d) {
     const dt = (d instanceof Date) ? d : new Date(d + 'T00:00:00');
     if (isNaN(dt)) return '';
-    return dt.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
+    return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
   }
   function padRev(n) { return String(n).padStart(2, '0'); }
 
   function docTitleUpper(doc) { return (doc.title || '').toUpperCase(); }
 
-  /* ── COVER PAGE ── */
+  /* ── COVER PAGE ──
+     Matches Bromar's current cover style: large centred logo, orange title
+     between rules, DOCUMENT NAME line, company block with REC number,
+     black-header revision table with Reviewed By, ISO badge. */
   function drawCoverPage(pdf, doc, revision, historyRows) {
     const pageW = pdf.internal.pageSize.getWidth();
     const marginX = 20;
-    let y = 20;
+    let y = 16;
 
     if (logoDataUrl) {
-      const w = 80, h = 18.8;
-      pdf.addImage(logoDataUrl, 'PNG', marginX, y, w, h);
-      y += h + 10;
+      let w = 150, h = 35;
+      try {
+        const pr = pdf.getImageProperties(logoDataUrl);
+        h = w * pr.height / pr.width;
+        if (h > 42) { h = 42; w = h * pr.width / pr.height; }
+      } catch (e) { /* keep defaults */ }
+      pdf.addImage(logoDataUrl, 'PNG', (pageW - w) / 2, y, w, h);
+      y += h + 14;
     } else {
-      y += 20;
+      y += 46;
     }
 
     pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.4);
     pdf.line(marginX, y, pageW - marginX, y);
-    y += 10;
+    y += 11;
 
     pdf.setTextColor(...ORANGE);
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(22);
-    const titleLines = pdf.splitTextToSize(docTitleUpper(doc), pageW - marginX * 2);
-    titleLines.forEach(line => {
-      pdf.text(line, pageW / 2, y, { align: 'center' });
-      y += 9;
-    });
-    y += 2;
-
+    pdf.setFontSize(20);
+    const titleLines = pdf.splitTextToSize(docTitleUpper(doc), pageW - marginX * 2 - 10);
+    titleLines.forEach(line => { pdf.text(line, pageW / 2, y, { align: 'center' }); y += 8.5; });
+    y -= 3;
     pdf.line(marginX, y, pageW - marginX, y);
     y += 10;
+
+    // DOCUMENT NAME: BRO-SAF-FRM-015-V03
+    const docName = `${(doc.slug || '').toUpperCase()}-V${padRev(revision.revision || 0)}`;
+    pdf.setFontSize(9);
+    const lbl = 'DOCUMENT NAME:  ';
+    pdf.setFont('helvetica', 'bold');
+    const lw = pdf.getTextWidth(lbl);
+    pdf.setFont('helvetica', 'normal');
+    const vw = pdf.getTextWidth(docName);
+    const sx = pageW / 2 - (lw + vw) / 2;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(...ORANGE);
+    pdf.text(lbl, sx, y);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(...GREY);
+    pdf.text(docName, sx + lw, y);
+    y += 11;
 
     pdf.setTextColor(...BLACK);
     pdf.setFontSize(11);
     pdf.text('Integrated Management System', pageW / 2, y, { align: 'center' });
     y += 9;
-
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(11);
     pdf.text(fmtDateLong(revision.version_date || new Date()), pageW / 2, y, { align: 'center' });
     y += 6;
-
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.text(COMPANY_NAME, pageW / 2, y, { align: 'center' });
-    y += 6;
+    y += 5.5;
     pdf.text(COMPANY_ADDRESS, pageW / 2, y, { align: 'center' });
-    y += 10;
+    y += 5.5;
+    pdf.setFontSize(8.5);
+    pdf.text(LICENCE, pageW / 2, y, { align: 'center' });
+    y += 8;
 
-    const rows = (historyRows || []).map(r => [
-      padRev(r.revision),
-      fmtDate(r.version_date),
-      r.version_description || '',
-      r.prepared_by || ''
+    const rows = (historyRows || []).slice().sort((a, b) => a.revision - b.revision).map(r => [
+      padRev(r.revision), fmtDate(r.version_date), r.version_description || '', r.prepared_by || '', r.reviewed_by || ''
     ]);
+    while (rows.length < 6) rows.push(['', '', '', '', '']);
 
     if (pdf.autoTable) {
       pdf.autoTable({
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['VER', 'VERSION DATE', 'VERSION DESCRIPTION', 'PREPARED BY']],
+        head: [['VER', 'VERSION DATE', 'VERSION DESCRIPTION', 'PREPARED BY', 'REVIEWED BY']],
         body: rows,
         theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 2, textColor: BLACK, lineColor: [0, 0, 0], lineWidth: 0.2 },
-        headStyles: { fillColor: [255, 255, 255], textColor: BLACK, fontStyle: 'bold', halign: 'center' },
-        columnStyles: { 0: { halign: 'center', cellWidth: 16 }, 1: { halign: 'center', cellWidth: 32 } }
+        styles: { fontSize: 8.5, cellPadding: 1.6, textColor: BLACK, lineColor: [0, 0, 0], lineWidth: 0.25, halign: 'center', minCellHeight: 6 },
+        headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 13 }, 1: { cellWidth: 27 }, 3: { cellWidth: 36 }, 4: { cellWidth: 36 } }
       });
-      y = pdf.lastAutoTable.finalY + 15;
+      y = pdf.lastAutoTable.finalY + 14;
     } else {
-      y += rows.length * 6 + 15;
+      y += rows.length * 6 + 14;
     }
 
     if (badgeDataUrl) {
-      const bw = 32, bh = 32 * (287 / 233);
+      const bw = 30, bh = 30 * (287 / 233);
       pdf.addImage(badgeDataUrl, 'PNG', pageW / 2 - bw / 2, y, bw, bh);
     }
   }
@@ -247,17 +273,26 @@ window.BromarIMSReportKit = (() => {
     const marginX = 15;
     const maxW = pageW - marginX * 2;
     let y = startY;
+    let pageTop = startY;
 
     function newPageIfNeeded(needed) {
       if (y + needed > pageH - 18) {
         pdf.addPage();
-        y = drawContentHeader(pdf, doc, revisionMeta);
+        y = pageTop = drawContentHeader(pdf, doc, revisionMeta);
         return true;
       }
       return false;
     }
 
     (blocks || []).forEach(block => {
+      if (block.type === 'pagebreak') {
+        if (y > pageTop + 0.1) { pdf.addPage(); y = pageTop = drawContentHeader(pdf, doc, revisionMeta); }
+        return;
+      }
+      if (block.type === 'spacer') {
+        y += Number(block.height) || 8;
+        return;
+      }
       if (block.type === 'table') {
         const cols = block.columns || [];
         const rows = (block.rows || []).map((r, ri) => r.cells.map((cell, ci) =>
@@ -591,10 +626,21 @@ window.BromarIMSReportKit = (() => {
     const valOf = f => data[f.name ?? f.id];
     const fields = schema?.fields || [];
     let y = startY;
+    let pageTop = startY;
 
     function ensure(h) {
-      if (y + h > pageH - 20) { pdf.addPage(); y = drawContentHeader(pdf, doc, revisionMeta); }
+      if (y + h > pageH - 20) { pdf.addPage(); y = pageTop = drawContentHeader(pdf, doc, revisionMeta); }
     }
+    function applyLayout(f) {
+      const lay = f.pdf || {};
+      if (lay.pageBreakBefore) {
+        if (y > pageTop + 0.1) { pdf.addPage(); y = pageTop = drawContentHeader(pdf, doc, revisionMeta); }
+      } else if (lay.spaceBefore) {
+        y += Number(lay.spaceBefore) || 0;
+      }
+    }
+    const canPairWith = n => n && SHORT_TYPES.includes(n.type || 'text')
+      && !n.pdf?.fullWidth && !n.pdf?.pageBreakBefore && !n.pdf?.spaceBefore;
 
     if (schema?.description) {
       pdf.setFont('helvetica', 'italic');
@@ -616,6 +662,7 @@ window.BromarIMSReportKit = (() => {
     for (let i = 0; i < fields.length; i++) {
       const f = fields[i];
       const type = f.type || 'text';
+      applyLayout(f);
 
       if (type === 'heading') {
         const h = fieldBlock(m, f, 0, 0, contentW, null);
@@ -627,7 +674,7 @@ window.BromarIMSReportKit = (() => {
       }
 
       const next = fields[i + 1];
-      if (SHORT_TYPES.includes(type) && next && SHORT_TYPES.includes(next.type || 'text')) {
+      if (SHORT_TYPES.includes(type) && !f.pdf?.fullWidth && canPairWith(next)) {
         const cw = (contentW - COL_GAP) / 2;
         const h = Math.max(fieldBlock(m, f, 0, 0, cw, valOf(f)), fieldBlock(m, next, 0, 0, cw, valOf(next)));
         ensure(h);
