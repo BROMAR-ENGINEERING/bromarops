@@ -1,12 +1,15 @@
 /* ============================================================
    BROMAR OPS — IMS PLACEHOLDER SUB-TABS
    Path: js/pages/ims/ims-placeholders.js
-   Version: V1.01
+   Version: V1.02
 
    Registers "Coming soon" placeholders for planned sub-tabs that
-   don't have a real module yet. Forms/Policies/Procedures/ITC/SOP
-   removed in V1.01 — now covered by the shared "Documents" tab
-   (ims-document-builder.js).
+   don't have a real module yet.
+
+   V1.02: Hazard Reports + Incident Reports (Safety) merged into one
+   "Reports" placeholder, mirrored across Quality/Environment/Other —
+   real module will be a shared submissions viewer (submitted/completed
+   filter) registered once per section, not separate report-type tabs.
 
    When a real module is built for one of these, DELETE its entry
    below (and remove this file's script tag if the list becomes
@@ -31,20 +34,25 @@
 
   const PLANNED = {
     safety: [
-      ['incident-reports', 'Incident Reports'],
-      ['hazard-reports', 'Hazard Reports'],
+      ['approved-swms', 'Approved SWMS'],
+      ['unapproved-swms', 'Unapproved SWMS'],
+      ['swms-register', 'SWMS Register'],
+      ['reports', 'Reports'],
       ['safety-register', 'Register'],
       ['safety-revision-control', 'Revision Control']
     ],
     quality: [
+      ['reports', 'Reports'],
       ['quality-register', 'Register'],
       ['quality-revision-control', 'Revision Control']
     ],
     environment: [
+      ['reports', 'Reports'],
       ['environmental-register', 'Register'],
       ['environmental-revision-control', 'Revision Control']
     ],
     other: [
+      ['reports', 'Reports'],
       ['plans', 'Plans']
     ],
     'bromar-hub': [
