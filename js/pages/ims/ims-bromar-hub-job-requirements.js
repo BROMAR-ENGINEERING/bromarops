@@ -1,12 +1,12 @@
 /* BROMAR OPS — Job Type Requirements
    Path: js/pages/ims/ims-bromar-hub-job-requirements.js
-   Version: V1.00
+   Version: V1.01
    Section: bromar-hub
    Manage job types + custom requirement prompts per job type.
    Tables: job_types, job_type_requirements */
 
 (function () {
-  const VERSION = 'V1.00';
+  const VERSION = 'V1.01';
 
   async function sb() {
     if (window.supabaseClient) return window.supabaseClient;
@@ -457,7 +457,7 @@
 
   window.BromarIMS.registerSubTab('bromar-hub', {
     id: 'job-requirements',
-    label: 'Job Type Requirements',
+    label: 'Jobsheets',
     version: VERSION,
     render,
     destroy
