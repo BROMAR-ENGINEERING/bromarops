@@ -1,22 +1,27 @@
 /* ============================================================
    BROMAR OPS — IMS PLACEHOLDER SUB-TABS
    Path: js/pages/ims/ims-placeholders.js
-   Version: V1.04
+   Version: V1.05
 
    Registers "Coming soon" placeholders for planned sub-tabs that
-   don't have a real module yet.
+   don't have a real module yet. "Documents" is NOT registered here —
+   it comes from ims-document-builder.js. "Exports" (Audit) comes from
+   ims-audit.js.
 
-   V1.04: "Approved SWMS" renamed "SWMS Templates" (stacked menu: SWMS
-   Templates / Unapproved SWMS / SWMS Register).
-   V1.03: Approved SWMS / Unapproved SWMS / SWMS Register merged into
-   ONE "SWMS" tab with a left-side stacked category menu. Placeholders
-   now set `order` so the tab bar is consistent across sections:
-   Documents (50) → SWMS (60) → Reports (70) → Register (80) → Revision Control (90)
+   Target layout (order numbers in brackets, default 50):
+     Safety      → Documents (50) / Submissions (60) / SWMS (70)
+     Quality     → Documents (50) / Submissions (60)
+     Environment → Documents (50) / Submissions (60)
+     Other       → Documents (50) / Submissions (60)
+     Audit       → Exports (50)   / Register (60)
+     Bromar Hub  → Jobsheets (40) / Job Types (50) / Quality Allocation (60)
+
+   V1.05: "Reports" renamed "Submissions". Register / Revision Control /
+   Plans removed from sections. Audit Register + Bromar Hub Jobsheets added.
 
    When a real module is built for one of these, DELETE its entry
-   below (and remove this file's script tag if nothing is left) so
-   there's no duplicate tab.
-   Must load AFTER ims.js, BEFORE any real sub-tab modules.
+   below so there's no duplicate tab.
+   Must load AFTER ims.js.
    ============================================================ */
 
 (function () {
@@ -68,7 +73,7 @@
     return {
       id: 'swms',
       label: 'SWMS',
-      order: 60,
+      order: 70,
       render(container) {
         paint(container);
         container.addEventListener('click', (e) => {
@@ -84,26 +89,23 @@
 
   const PLANNED = {
     safety: [
-      swmsPlaceholder(),
-      placeholder('reports', 'Reports', 70),
-      placeholder('safety-register', 'Register', 80),
-      placeholder('safety-revision-control', 'Revision Control', 90)
+      placeholder('submissions', 'Submissions', 60),
+      swmsPlaceholder()
     ],
     quality: [
-      placeholder('reports', 'Reports', 70),
-      placeholder('quality-register', 'Register', 80),
-      placeholder('quality-revision-control', 'Revision Control', 90)
+      placeholder('submissions', 'Submissions', 60)
     ],
     environment: [
-      placeholder('reports', 'Reports', 70),
-      placeholder('environmental-register', 'Register', 80),
-      placeholder('environmental-revision-control', 'Revision Control', 90)
+      placeholder('submissions', 'Submissions', 60)
     ],
     other: [
-      placeholder('reports', 'Reports', 70),
-      placeholder('plans', 'Plans', 75)
+      placeholder('submissions', 'Submissions', 60)
+    ],
+    audit: [
+      placeholder('register', 'Register', 60)
     ],
     'bromar-hub': [
+      placeholder('jobsheets', 'Jobsheets', 40),
       placeholder('job-types', 'Job Types', 50),
       placeholder('quality-allocation', 'Quality Allocation', 60)
     ]
