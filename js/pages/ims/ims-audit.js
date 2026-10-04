@@ -1,7 +1,8 @@
 /* ============================================================
    BROMAR OPS — IMS · AUDIT (Exports)
    Path: js/pages/ims/ims-audit.js
-   Version: V1.01
+   Version: V1.02
+   V1.02: registration independent of script order (waits for ims.js), order 10.
    V1.01: exported document numbers use the IMS naming order
    (IMS-SAFE-FORM-15-V01-INCIDENT-REPORT) via BromarIMSReportKit.formatDocName.
 
@@ -28,14 +29,9 @@
    Must load AFTER js/pages/ims/ims-report-kit.js.
    ============================================================ */
 
-window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], other: [] } };
-window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (section, subtab) {
-  if (!window.BromarIMS.subtabs[section]) window.BromarIMS.subtabs[section] = [];
-  window.BromarIMS.subtabs[section].push(subtab);
-};
 
 (() => {
-  const VERSION = 'V1.01';
+  const VERSION = 'V1.02';
 
   const SECTIONS = [
     { key: 'safety', label: 'Safety' },
@@ -364,9 +360,10 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     }, { signal: abort.signal });
   }
 
-  window.BromarIMS.registerSubTab('audit', {
+  const TAB = {
     id: 'exports',
     label: 'Exports',
+    order: 10,
     version: VERSION,
     async render(container) {
       root = container;
@@ -379,5 +376,18 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (abort) { abort.abort(); abort = null; }
       root = null;
     }
-  });
+  };
+
+  // Register whatever the script order (see ims-document-builder.js); never twice.
+  function ensureRegistered() {
+    const ims = window.BromarIMS;
+    if (!ims || typeof ims.registerSubTab !== 'function') return;
+    const list = ims.subtabs && ims.subtabs.audit;
+    if (Array.isArray(list) && list.some(t => t === TAB || (t && t.id === 'exports'))) return;
+    ims.registerSubTab('audit', TAB);
+  }
+  ensureRegistered();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureRegistered);
+  else setTimeout(ensureRegistered, 0);
+  document.addEventListener('bromar-auth-ready', ensureRegistered);
 })();
