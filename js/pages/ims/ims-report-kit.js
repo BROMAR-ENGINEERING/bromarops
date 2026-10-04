@@ -1,12 +1,15 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.07
+   Version: V1.08
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.08: footer shows the document name bottom-left (dark grey) and the
+   page number in black; all tick boxes print as circles.
 
    V1.07: document names put the version before the description
    (IMS-SAFE-FORM-15-V01-INCIDENT-REPORT); exposes formatDocName().
@@ -51,13 +54,14 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.07';
+  const VERSION = 'V1.08';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const LICENCE = 'REC. 30340';
   const ORANGE = [234, 88, 12];
   const BLACK = [26, 26, 30];
   const GREY = [99, 99, 105];
+  const FOOTER_GREY = [70, 70, 76];   // dark grey for the footer document name
 
   const LOGO_PATH = 'assets/logo/bromar-logo-colour.png'; // always colour logo on PDFs, regardless of app theme
   const BADGE_PATH = 'assets/logo/ims-iso-badge.png';
@@ -280,16 +284,41 @@ window.BromarIMSReportKit = (() => {
     return y + 8; // content start Y
   }
 
-  function drawFooter(pdf, doc, pageNum) {
+  function drawFooter(pdf, doc, pageNum, rev) {
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const y = pageH - 12;
     pdf.setDrawColor(0, 0, 0);
     pdf.line(12, y - 4, pageW - 12, y - 4);
-    pdf.setTextColor(...ORANGE);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8.5);
-    pdf.text(`${docTitleUpper(doc)}  |  ${pageNum}`, pageW - 12, y, { align: 'right' });
+
+    // right: TITLE (orange) | page number (black)
+    const num = String(pageNum);
+    const numW = pdf.getTextWidth(num);
+    const sep = '  |  ';
+    const sepW = pdf.getTextWidth(sep);
+    const title = docTitleUpper(doc);
+    const titleW = pdf.getTextWidth(title);
+    const right = pageW - 12;
+    pdf.setTextColor(...BLACK);
+    pdf.text(num, right, y, { align: 'right' });
+    pdf.setTextColor(...GREY);
+    pdf.text(sep, right - numW, y, { align: 'right' });
+    pdf.setTextColor(...ORANGE);
+    pdf.text(title, right - numW - sepW, y, { align: 'right' });
+
+    // left: document name (dark grey), trimmed so it never runs into the title
+    const name = (doc && (doc.doc_code || doc.doc_number || doc.slug)) ? formatDocName(doc, rev || 0) : '';
+    if (name) {
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(...FOOTER_GREY);
+      const maxW = (right - numW - sepW - titleW) - 12 - 6;
+      let txt = name;
+      while (txt.length > 4 && pdf.getTextWidth(txt) > maxW) txt = txt.slice(0, -2);
+      if (txt !== name) txt = txt.slice(0, -1) + '…';
+      if (maxW > 20) pdf.text(txt, 12, y);
+    }
   }
 
   /* ── POLICY / PROCEDURE BODY ── */
@@ -489,13 +518,9 @@ window.BromarIMSReportKit = (() => {
 
       p.setDrawColor(...BOX);
       p.setLineWidth(0.3);
-      if (shape === 'circle') {
-        p.circle(cx + S / 2, cy + S / 2, S / 2, 'S');
-        if (selected.has(o.value)) { p.setFillColor(...BLACK); p.circle(cx + S / 2, cy + S / 2, S / 2 - 0.9, 'F'); }
-      } else {
-        p.rect(cx, cy, S, S, 'S');
-        if (selected.has(o.value)) checkMark(p, cx, cy, S);
-      }
+      // All choices print as circles (single and multi choice alike); selected = filled dot
+      p.circle(cx + S / 2, cy + S / 2, S / 2, 'S');
+      if (selected.has(o.value)) { p.setFillColor(...BLACK); p.circle(cx + S / 2, cy + S / 2, S / 2 - 0.9, 'F'); }
       p.setTextColor(...BLACK);
       lines.forEach((ln, i) => p.text(ln, cx + S + 2, cy + S - 0.6 + i * LINE));
 
@@ -526,8 +551,8 @@ window.BromarIMSReportKit = (() => {
       const S = 3.6;
       p.setDrawColor(...BOX);
       p.setLineWidth(0.3);
-      p.rect(x, y + 0.4, S, S, 'S');
-      if (v === true || v === 'true') checkMark(p, x, y + 0.4, S);
+      p.circle(x + S / 2, y + 0.4 + S / 2, S / 2, 'S');
+      if (v === true || v === 'true') { p.setFillColor(...BLACK); p.circle(x + S / 2, y + 0.4 + S / 2, S / 2 - 0.9, 'F'); }
       p.setFont('helvetica', 'normal');
       p.setFontSize(9.5);
       p.setTextColor(...BLACK);
@@ -759,7 +784,7 @@ window.BromarIMSReportKit = (() => {
     const endPage = pdf.internal.getNumberOfPages();
     for (let p = coverPage + 1; p <= endPage; p++) {
       pdf.setPage(p);
-      drawFooter(pdf, doc, p - coverPage);
+      drawFooter(pdf, doc, p - coverPage, revisionMeta?.revision);
     }
     pdf.setPage(endPage);
     return { coverPage, endPage };
