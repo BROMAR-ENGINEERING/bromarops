@@ -1,12 +1,15 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.06
+   Version: V1.07
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.07: document names put the version before the description
+   (IMS-SAFE-FORM-15-V01-INCIDENT-REPORT); exposes formatDocName().
 
    V1.06: generateAuditPack() — one PDF with audit cover, clickable document
    register (page refs + bookmarks) and every document. Shared renderer
@@ -36,6 +39,7 @@
      .generatePolicyPDF({ doc, revisionMeta, schema, historyRows })
      .generateFormPDF({ doc, revisionMeta, schema, historyRows, submission })
      .generateAuditPack({ entries, scopeLabel, generatedBy, onProgress })
+     .formatDocName(doc, schema, revision)
      .download(pdfDoc, filename)
 
    REQUIRED ASSET (upload once):
@@ -47,7 +51,7 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.06';
+  const VERSION = 'V1.07';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const LICENCE = 'REC. 30340';
@@ -135,6 +139,17 @@ window.BromarIMSReportKit = (() => {
 
   function docTitleUpper(doc) { return (doc.title || '').toUpperCase(); }
 
+  // IMS-SAFE-FORM-15-V01-INCIDENT-REPORT (version before description). Falls back to
+  // older numbers / the slug with the version appended for un-renumbered documents.
+  function formatDocName(doc, rev) {
+    const v = rev ? `-V${padRev(rev)}` : '';
+    if (doc?.doc_code) return `${doc.doc_code}${v}${doc.doc_desc_code ? '-' + doc.doc_desc_code : ''}`;
+    return `${String(doc?.doc_number || doc?.slug || '').toUpperCase()}${v}`;
+  }
+  function withNameParts(doc, schema) {
+    return { ...doc, doc_number: schema?.doc_number || doc?.doc_number, doc_code: schema?.doc_code || doc?.doc_code, doc_desc_code: schema?.doc_desc_code || doc?.doc_desc_code };
+  }
+
   /* ── COVER PAGE ──
      Matches Bromar's current cover style: large centred logo, orange title
      between rules, DOCUMENT NAME line, company block with REC number,
@@ -172,7 +187,7 @@ window.BromarIMSReportKit = (() => {
     y += 10;
 
     // DOCUMENT NAME: BRO-SAF-FRM-015-V03
-    const docName = `${String(doc.doc_number || doc.slug || '').toUpperCase()}-V${padRev(revision.revision || 0)}`;
+    const docName = formatDocName(doc, revision.revision || 0);
     pdf.setFontSize(9);
     const lbl = 'DOCUMENT NAME:  ';
     pdf.setFont('helvetica', 'bold');
@@ -733,7 +748,7 @@ window.BromarIMSReportKit = (() => {
   // Renders one complete document (cover + body + footers) into an existing PDF.
   // Page numbers in footers restart at 1 for each document. Returns its page range.
   function renderDocumentInto(pdf, { doc: rawDoc, revisionMeta, schema, historyRows, submission }, onNewPage) {
-    const doc = { ...rawDoc, doc_number: schema?.doc_number || rawDoc?.doc_number };
+    const doc = withNameParts(rawDoc, schema);
     if (onNewPage) pdf.addPage();
     const coverPage = pdf.internal.getNumberOfPages();
     drawCoverPage(pdf, doc, revisionMeta, historyRows);
@@ -813,7 +828,7 @@ window.BromarIMSReportKit = (() => {
       margin: { left: marginX, right: marginX, top: 26, bottom: 18 },
       head: [['No.', 'Document number', 'Title', 'Section', 'Type', 'Category', 'Rev', 'Date', 'Prepared by', 'Reviewed by', 'Page']],
       body: entries.map((e, i) => [
-        i + 1, String(e.schema?.doc_number || e.doc.slug || '').toUpperCase(), e.doc.title || '',
+        i + 1, formatDocName(withNameParts(e.doc, e.schema), e.revisionMeta?.revision || 0), e.doc.title || '',
         e.meta?.section || '', e.meta?.type || '', e.meta?.category || '',
         padRev(e.revisionMeta?.revision || 0), fmtDate(e.revisionMeta?.version_date),
         e.meta?.prepared_by || '', e.meta?.reviewed_by || '', ''
@@ -821,7 +836,7 @@ window.BromarIMSReportKit = (() => {
       theme: 'grid',
       styles: { fontSize: 7, cellPadding: 1.4, textColor: BLACK, lineColor: [0, 0, 0], lineWidth: 0.2, valign: 'middle' },
       headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
-      columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 27 }, 6: { cellWidth: 8, halign: 'center' }, 7: { cellWidth: 16, halign: 'center' }, 10: { cellWidth: 10, halign: 'center' } },
+      columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 38 }, 6: { cellWidth: 8, halign: 'center' }, 7: { cellWidth: 16, halign: 'center' }, 10: { cellWidth: 10, halign: 'center' } },
       didDrawPage: regHeader,
       didDrawCell: (data) => {
         if (data.section === 'body' && data.column.index === 10) {
@@ -856,7 +871,7 @@ window.BromarIMSReportKit = (() => {
     try {
       if (pdf.outline) {
         const reg = pdf.outline.add(null, 'Document register', { pageNumber: registerStart });
-        entries.forEach((e, i) => pdf.outline.add(null, `${String(e.schema?.doc_number || e.doc.slug || '').toUpperCase()} — ${e.doc.title}`, { pageNumber: starts[i] }));
+        entries.forEach((e, i) => pdf.outline.add(null, `${formatDocName(withNameParts(e.doc, e.schema), e.revisionMeta?.revision || 0)} — ${e.doc.title}`, { pageNumber: starts[i] }));
         void reg;
       }
     } catch (e) { /* bookmarks optional */ }
@@ -868,5 +883,5 @@ window.BromarIMSReportKit = (() => {
     pdf.save(filename.endsWith('.pdf') ? filename : filename + '.pdf');
   }
 
-  return { generatePolicyPDF, generateFormPDF, generateAuditPack, download, version: VERSION };
+  return { generatePolicyPDF, generateFormPDF, generateAuditPack, formatDocName: (doc, schema, rev) => formatDocName(withNameParts(doc, schema), rev), download, version: VERSION };
 })();
