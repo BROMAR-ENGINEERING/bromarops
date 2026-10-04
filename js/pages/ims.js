@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.09
+   Version: V1.10
    Tabs: Overview (default) / Safety / Quality / Environment / Other / Audit / Bromar Hub
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
@@ -11,6 +11,10 @@
 
    OPTIONAL order (number, default 50): sub-tabs sort by order, then by
    registration sequence. Lower = further left.
+
+   OPTIONAL claims (array of ids/labels): sub-tabs this sub-tab renders
+   INSIDE itself (e.g. a stacked menu). Claimed sub-tabs are hidden from
+   the sub-tab bar for that section.
 
    OPTIONAL search(query) on a registered sub-tab: return an array of
    { title, label } matches to appear in the Overview search results.
@@ -26,7 +30,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.09';
+  const VERSION = 'V1.10';
 
   const SECTIONS = [
     { id: 'overview',    label: 'Overview',    desc: '' },
@@ -53,7 +57,11 @@ window.BromarPages.ims = (() => {
   let rootEl = null;
 
   function getSubs(section) {
-    return (window.BromarIMS.subtabs[section] || [])
+    const all = window.BromarIMS.subtabs[section] || [];
+    const claimed = new Set();
+    all.forEach(s => (s.claims || []).forEach(c => claimed.add(String(c).toLowerCase())));
+    return all
+      .filter(s => !claimed.has(String(s.id).toLowerCase()) && !claimed.has(String(s.label).toLowerCase()))
       .map((s, i) => ({ s, i }))
       .sort((a, b) => ((a.s.order ?? 50) - (b.s.order ?? 50)) || (a.i - b.i))
       .map(x => x.s);
@@ -70,7 +78,8 @@ window.BromarPages.ims = (() => {
   function subTabsHTML() {
     const subs = getSubs(activeSection);
     if (!subs.length) return '';
-    const activeSub = activeSubBySection[activeSection] || subs[0].id;
+    const stored = activeSubBySection[activeSection];
+    const activeSub = subs.some(s => s.id === stored) ? stored : subs[0].id;
     activeSubBySection[activeSection] = activeSub;
     return `
       <div class="ims-subtabs">
