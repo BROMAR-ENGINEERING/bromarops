@@ -1,13 +1,16 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.07
+   Version: V1.08
    Tabs: Overview (default) / Safety / Quality / Environment / Bromar Hub / Other / Audit
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy(), search(query)? })
    sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub' | 'other' | 'audit'
    Sub-tab files must load AFTER ims.js in index.html.
+
+   OPTIONAL order (number, default 50): sub-tabs sort by order, then by
+   registration sequence. Lower = further left.
 
    OPTIONAL search(query) on a registered sub-tab: return an array of
    { title, label } matches to appear in the Overview search results.
@@ -23,7 +26,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.07';
+  const VERSION = 'V1.08';
 
   const SECTIONS = [
     { id: 'overview',    label: 'Overview',    desc: '' },
@@ -49,6 +52,13 @@ window.BromarPages.ims = (() => {
   let currentSub = null;
   let rootEl = null;
 
+  function getSubs(section) {
+    return (window.BromarIMS.subtabs[section] || [])
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => ((a.s.order ?? 50) - (b.s.order ?? 50)) || (a.i - b.i))
+      .map(x => x.s);
+  }
+
   function sectionTabsHTML() {
     return SECTIONS.map(s => `
       <button class="ims-tab ${s.id === activeSection ? 'active' : ''}" data-section="${s.id}">
@@ -58,7 +68,7 @@ window.BromarPages.ims = (() => {
   }
 
   function subTabsHTML() {
-    const subs = window.BromarIMS.subtabs[activeSection] || [];
+    const subs = getSubs(activeSection);
     if (!subs.length) return '';
     const activeSub = activeSubBySection[activeSection] || subs[0].id;
     activeSubBySection[activeSection] = activeSub;
@@ -112,7 +122,7 @@ window.BromarPages.ims = (() => {
     const results = [];
     SEARCHABLE_SECTIONS.forEach(section => {
       const sectionLabel = SECTIONS.find(s => s.id === section)?.label || section;
-      (window.BromarIMS.subtabs[section] || []).forEach(sub => {
+      getSubs(section).forEach(sub => {
         if (sub.label.toLowerCase().includes(q)) {
           results.push({ section, sectionLabel, subtabId: sub.id, label: sub.label, match: sub.label });
         }
@@ -141,7 +151,7 @@ window.BromarPages.ims = (() => {
   }
 
   function renderBody(container) {
-    const subs = window.BromarIMS.subtabs[activeSection] || [];
+    const subs = getSubs(activeSection);
     const body = container.querySelector('#ims-body');
     if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn('[ims]', e); } }
     currentSub = null;
