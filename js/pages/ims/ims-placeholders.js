@@ -1,11 +1,13 @@
 /* ============================================================
    BROMAR OPS — IMS PLACEHOLDER SUB-TABS
    Path: js/pages/ims/ims-placeholders.js
-   Version: V1.03
+   Version: V1.04
 
    Registers "Coming soon" placeholders for planned sub-tabs that
    don't have a real module yet.
 
+   V1.04: "Approved SWMS" renamed "SWMS Templates" (stacked menu: SWMS
+   Templates / Unapproved SWMS / SWMS Register).
    V1.03: Approved SWMS / Unapproved SWMS / SWMS Register merged into
    ONE "SWMS" tab with a left-side stacked category menu. Placeholders
    now set `order` so the tab bar is consistent across sections:
@@ -35,11 +37,11 @@
 
   function swmsPlaceholder() {
     const CATS = [
-      ['approved', 'Approved SWMS'],
+      ['templates', 'SWMS Templates'],
       ['unapproved', 'Unapproved SWMS'],
       ['register', 'SWMS Register']
     ];
-    let active = 'approved';
+    let active = 'templates';
 
     function paint(root) {
       const activeLabel = CATS.find(c => c[0] === active)[1];
