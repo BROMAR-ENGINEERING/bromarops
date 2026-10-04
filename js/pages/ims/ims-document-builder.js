@@ -1,7 +1,9 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.07
+   Version: V2.08
+   V2.08: data-entry pop-ups (new document, previous revision) no longer close
+   when a click/paste/selection ends on the dark background.
    V2.07: naming order matches the old register — IMS-SAFE-FORM-15-V01-
    INCIDENT-REPORT (version before description). Stored as
    schema.doc_code ("IMS-SAFE-FORM-15") + schema.doc_desc_code
@@ -107,7 +109,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.07';
+  const VERSION = 'V2.08';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -207,6 +209,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
   async function confirmDialog(opts) {
     if (window.BromarUtils?.confirmDialog) return window.BromarUtils.confirmDialog(opts);
     return confirm(opts.message || 'Are you sure?');
+  }
+  // Closes a modal on a backdrop click only when the press also STARTED on the backdrop,
+  // so a text selection that ends outside the box doesn't close it.
+  function closeOnBackdrop(overlay, close) {
+    let downOnBackdrop = false;
+    overlay.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === overlay; });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay && downOnBackdrop) close();
+      downOnBackdrop = false;
+    });
   }
   function todayISO() { return new Date().toISOString().slice(0, 10); }
   function fmtDateShort(d) {
@@ -773,7 +785,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
       function close() { overlay.remove(); }
       overlay.querySelector('#doc-modal-cancel').addEventListener('click', close);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      // Data-entry modal: no click-outside-to-close (selecting/pasting text could end on the backdrop and lose input).
       const preview = () => {
         const parts = buildDocParts(section, activeType, overlay.querySelector('#doc-modal-number').value,
           overlay.querySelector('#doc-modal-short').value, overlay.querySelector('#doc-modal-title').value);
@@ -845,7 +857,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       document.body.appendChild(overlay);
       function close() { overlay.remove(); }
       overlay.querySelector('#legacy-cancel').addEventListener('click', close);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      // Data-entry modal: no click-outside-to-close (selecting/pasting text could end on the backdrop and lose input).
 
       async function submit(again) {
         const values = {
@@ -920,7 +932,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
       function close() { overlay.remove(); }
       overlay.querySelector('#preview-close').addEventListener('click', close);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      closeOnBackdrop(overlay, close);
 
       overlay.querySelector('#preview-pdf-btn').addEventListener('click', async () => {
         if (!window.BromarIMSReportKit) { alert('PDF engine not loaded.'); return; }
