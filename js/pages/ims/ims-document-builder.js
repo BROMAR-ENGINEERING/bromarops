@@ -1,7 +1,11 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.05
+   Version: V2.06
+   V2.06: version numbers come from the revision history, not the
+   ims_documents.revision column — a new document (SQL or builder) with no
+   recorded revisions starts at V01. A live document with no history gets
+   its current content recorded as a revision before it's first edited.
    V2.05: document numbers follow IMS-{SECTION}-{TYPE}-{NN}-{DESCRIPTION}
    (version appended as -V01 on documents/exports), built from parts:
    schema.doc_seq (number) + schema.doc_desc (optional short description,
@@ -99,7 +103,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.05';
+  const VERSION = 'V2.06';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -234,7 +238,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
     /* ── SLUG GENERATION (doubles as "document number") ── */
     function docNumberOf(d) {
-      return String(d?.schema?.doc_number || d?.slug || '').toUpperCase();
+      const s = d?.schema || {};
+      return String(s.doc_number || buildDocNumber(d?.section, effectiveDocType(d), s.doc_seq, s.doc_desc, d?.title) || d?.slug || '').toUpperCase();
     }
     // Number already used by this section + type? Reads doc_seq, or parses older doc_numbers.
     function seqOf(row, sectionKey, docType) {
@@ -265,16 +270,34 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       if (built) workingSchema.doc_number = built;
       const el = root && root.querySelector('#ims-docname-preview');
       if (el) el.textContent = built
-        ? `${built}-V${String((currentDoc?.revision || 0) + (currentDoc?.is_active ? 0 : 1)).padStart(2, '0')}`
+        ? `${built}-V${String(currentDoc?.is_active ? editorCurrentRevNo() : nextRevNo()).padStart(2, '0')}`
         : 'Enter a number to generate the document name';
     }
 
     /* ── DATA ── */
+    let revNos = new Map();   // document_id → highest recorded revision number
     async function loadDocuments() {
       const { data, error } = await sb().from('ims_documents')
         .select('*').eq('section', section).order('created_at', { ascending: false });
       if (error) { console.error(error); documents = null; return; }
       documents = data || [];
+      revNos = new Map();
+      const { data: rv, error: rErr } = await sb().from('ims_document_revisions').select('document_id, revision');
+      if (rErr) console.warn('[ims-doc-builder] revision numbers:', rErr);
+      (rv || []).forEach(r => revNos.set(r.document_id, Math.max(revNos.get(r.document_id) || 0, r.revision || 0)));
+    }
+    // Current version of a document: highest recorded revision. A live document with
+    // no history (e.g. published via SQL) falls back to its revision column.
+    function currentRevNo(d) {
+      const n = revNos.get(d.id) || 0;
+      return n || (d.is_active ? (d.revision || 1) : 0);
+    }
+    // Version the open draft will become when published.
+    function nextRevNo() {
+      return editorHistory.reduce((m, r) => Math.max(m, r.revision || 0), 0) + 1;
+    }
+    function editorCurrentRevNo() {
+      return editorHistory.reduce((m, r) => Math.max(m, r.revision || 0), 0);
     }
     async function loadHistory(documentId) {
       const { data, error } = await sb().from('ims_document_revisions')
@@ -447,7 +470,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const reviewer = await currentUserName();
       const prepared = preparedNames();
       const cleanSchema = stripDraft(workingSchema);
-      const newRevision = (currentDoc.revision || 0) + 1;
+      const newRevision = nextRevNo();
       const { data: docRow, error: e1 } = await sb().from('ims_documents').update({
         title: currentDoc.title, schema: cleanSchema, revision: newRevision, is_active: true
       }).eq('id', currentDoc.id).select().maybeSingle();
@@ -479,6 +502,22 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
           okLabel: 'Edit'
         });
         if (!ok) return;
+        const existing = await loadHistory(doc.id);
+        if (!existing.some(r => r.schema)) {
+          // Live with no snapshot (e.g. published via SQL): record the live version first,
+          // so this edit becomes the next version and the history stays intact.
+          const liveRev = doc.revision || existing.reduce((m, r) => Math.max(m, r.revision || 0), 0) || 1;
+          const match = existing.find(r => r.revision === liveRev);
+          if (match) {
+            await sb().from('ims_document_revisions').update({ schema: stripDraft(doc.schema) }).eq('id', match.id);
+          } else {
+            await insertRevisionRow({
+              document_id: doc.id, revision: liveRev, schema: stripDraft(doc.schema),
+              version_date: String(doc.created_at || '').slice(0, 10) || todayISO(),
+              version_description: 'Published before revision tracking', prepared_by: '', reviewed_by: null
+            });
+          }
+        }
         const { data, error } = await sb().from('ims_documents')
           .update({ is_active: false }).eq('id', doc.id).select().maybeSingle();
         if (error || !data) { alert('Could not start editing: ' + (error?.message || 'unknown error')); return; }
@@ -595,7 +634,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     // number, pending row added to the cover's revision table).
     async function buildPendingPDF(history) {
       const kit = window.BromarIMSReportKit;
-      const nextRev = (currentDoc.revision || 0) + 1;
+      const nextRev = nextRevNo();
       const revisionMeta = { revision: nextRev, version_date: revMeta.version_date || todayISO() };
       const historyRows = (history || []).filter(r => r.revision !== nextRev).concat([{
         revision: nextRev, version_date: revisionMeta.version_date,
@@ -860,7 +899,8 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       overlay.querySelector('#preview-pdf-btn').addEventListener('click', async () => {
         if (!window.BromarIMSReportKit) { alert('PDF engine not loaded.'); return; }
         const history = await loadHistory(doc.id);
-        const revisionMeta = { revision: doc.revision || 0, version_date: history[0]?.version_date || todayISO() };
+        const recorded = history.reduce((m, r) => Math.max(m, r.revision || 0), 0);
+        const revisionMeta = { revision: recorded || (doc.is_active ? (doc.revision || 1) : 1), version_date: history[0]?.version_date || todayISO() };
         try {
           const pdf = CONTENT_TYPES.includes(schema.doc_type)
             ? await window.BromarIMSReportKit.generatePolicyPDF({ doc, revisionMeta, schema, historyRows: history })
@@ -884,7 +924,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const s = map[docStatus(d)];
       return `<span style="font-size:0.75rem;font-weight:600;color:${s.color};border:1px solid ${s.color};border-radius:999px;padding:0.15rem 0.6rem;">${s.label}</span>`;
     }
-    function docNumberDisplay(d) { return `${docNumberOf(d)}-V${String(d.revision || 0).padStart(2, '0')}`; }
+    function docNumberDisplay(d) { const n = currentRevNo(d); return n ? `${docNumberOf(d)}-V${String(n).padStart(2, '0')}` : `${docNumberOf(d)} · new (first version will be V01)`; }
 
     function typeRailHTML() {
       return `
@@ -918,7 +958,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <div style="font-weight:600;">${esc(d.title)} ${!d.schema?.doc_type ? `<span style="font-weight:400;font-size:0.75rem;color:var(--error);border:1px solid var(--error);border-radius:999px;padding:0.1rem 0.55rem;margin-left:0.4rem;" title="Created outside the builder — type guessed. Open it and set Type to fix.">Type not set</span>` : ''}</div>
             <div style="font-size:0.85rem;color:var(--text-secondary);">${esc(d.schema?.description || '')}</div>
             <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.3rem;font-family:'JetBrains Mono',monospace;">
-              ${esc(docNumberDisplay(d))}${!d.revision ? ' · never published' : ''}
+              ${esc(docNumberDisplay(d))}
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
@@ -1072,14 +1112,14 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
               <div style="padding:0.6rem;border:1px dashed var(--border);border-radius:8px;margin-top:0.3rem;font-size:0.9rem;color:var(--text-secondary);">The person who approves & publishes</div>
             </div>
           </div>
-          <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-secondary);">These details become revision ${String((currentDoc.revision || 0) + 1).padStart(2, '0')} when you publish.</div>
+          <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-secondary);">These details become revision ${String(nextRevNo()).padStart(2, '0')} when you publish.</div>
         </div>
       `;
     }
 
     function revisionPanelHTML() {
       const rows = editorHistory.slice().sort((a, b) => a.revision - b.revision);
-      const nextRev = (currentDoc.revision || 0) + 1;
+      const nextRev = nextRevNo();
       const td = 'padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);vertical-align:middle;';
       const pad = n => String(n).padStart(2, '0');
       const smallBtn = 'padding:0.2rem 0.5rem;font-size:0.72rem;';
@@ -1156,7 +1196,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <button class="btn-secondary" data-action="back" style="margin-bottom:0.6rem;">← Back to list</button>
             <div class="section-label" style="margin:0;">${esc(d.title)}</div>
             <div style="font-size:0.8rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">
-              ${esc(String(workingSchema.doc_number || d.slug || '').toUpperCase())}-V${String(d.revision || 0).padStart(2, '0')} — ${statusText}
+              ${esc(String(workingSchema.doc_number || d.slug || '').toUpperCase())}${editorCurrentRevNo() ? '-V' + String(editorCurrentRevNo()).padStart(2, '0') : ''} — ${statusText}${d.is_active ? '' : ` · will publish as V${String(nextRevNo()).padStart(2, '0')}`}
             </div>
           </div>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
