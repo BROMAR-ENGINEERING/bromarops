@@ -1,7 +1,9 @@
 /* ============================================================
    BROMAR OPS — IMS · AUDIT (Exports)
    Path: js/pages/ims/ims-audit.js
-   Version: V1.00
+   Version: V1.01
+   V1.01: exported document numbers use the IMS naming order
+   (IMS-SAFE-FORM-15-V01-INCIDENT-REPORT) via BromarIMSReportKit.formatDocName.
 
    Registers an "Exports" sub-tab into the IMS "audit" section:
      window.BromarIMS.registerSubTab('audit', {...})
@@ -33,7 +35,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V1.00';
+  const VERSION = 'V1.01';
 
   const SECTIONS = [
     { key: 'safety', label: 'Safety' },
@@ -74,6 +76,12 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
   function typeOf(d, schema) { return (schema || d.schema)?.doc_type || d.schema?.doc_type || (d.is_form ? 'form' : 'policy'); }
   function typeLabel(k) { return TYPES.find(t => t.key === k)?.label || k || ''; }
   function docNumber(d, schema) { return String((schema || d.schema)?.doc_number || d.schema?.doc_number || d.slug || '').toUpperCase(); }
+  // Full name with version, e.g. IMS-SAFE-FORM-15-V01-INCIDENT-REPORT
+  function fullName(d, schema, rev) {
+    const kit = window.BromarIMSReportKit;
+    if (kit?.formatDocName) return kit.formatDocName(d, schema || d.schema, rev);
+    return `${docNumber(d, schema)}${rev ? '-V' + pad2(rev) : ''}`;
+  }
 
   async function currentUserName() {
     const auth = window.BromarAuth;
@@ -159,7 +167,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
         const cur = currentPublished(d);
         const row = cur?.row || null;
         return {
-          'Document number': docNumber(d, cur?.schema),
+          'Document number': cur ? fullName(d, cur.schema, row?.revision ?? d.revision) : docNumber(d),
           'Title': d.title || '',
           'Section': sectionLabel(d.section),
           'Type': typeLabel(typeOf(d, cur?.schema)),
@@ -183,7 +191,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       .map(x => ({ ...x, k: sortKey(x.d) }))
       .sort((a, b) => bySortKey(a, b) || a.r.revision - b.r.revision)
       .map(({ r, d }) => ({
-        'Document number': docNumber(d),
+        'Document number': fullName(d, null, r.revision),
         'Title': d.title || '',
         'Section': sectionLabel(d.section),
         'Revision': pad2(r.revision),
