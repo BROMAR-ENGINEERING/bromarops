@@ -1,12 +1,18 @@
 /* ============================================================
    BROMAR OPS — IMS · REPORT KIT
    Path: js/pages/ims/ims-report-kit.js
-   Version: V1.08
+   Version: V1.10
    Standalone PDF template engine for the IMS document builder.
    Separate from js/bromar-report-kit.js (general job/site reports) —
    this one reproduces the specific Bromar IMS document template:
    cover page (logo, title banner, revision table, ISO badge) +
    running content-page header/footer.
+
+   V1.10: ISO / Global-Mark badge in the top-right of the content-page header.
+
+   V1.09: page numbers "n of N" (cover counts as page 1); larger header logo;
+   header shows "VERSION 03 (23/06/2026)" left and the document type right
+   (e.g. SAFETY FORM, QUALITY POLICY).
 
    V1.08: footer shows the document name bottom-left (dark grey) and the
    page number in black; all tick boxes print as circles.
@@ -54,7 +60,7 @@
 
 window.BromarIMSReportKit = (() => {
 
-  const VERSION = 'V1.08';
+  const VERSION = 'V1.10';
   const COMPANY_NAME = 'BROMAR ELECTRICAL SERVICES (AUST)';
   const COMPANY_ADDRESS = '2/98-108 Western Avenue, Westmeadows Victoria 3049';
   const LICENCE = 'REC. 30340';
@@ -151,7 +157,15 @@ window.BromarIMSReportKit = (() => {
     return `${String(doc?.doc_number || doc?.slug || '').toUpperCase()}${v}`;
   }
   function withNameParts(doc, schema) {
-    return { ...doc, doc_number: schema?.doc_number || doc?.doc_number, doc_code: schema?.doc_code || doc?.doc_code, doc_desc_code: schema?.doc_desc_code || doc?.doc_desc_code };
+    return { ...doc, doc_number: schema?.doc_number || doc?.doc_number, doc_code: schema?.doc_code || doc?.doc_code,
+      doc_desc_code: schema?.doc_desc_code || doc?.doc_desc_code, doc_type: schema?.doc_type || doc?.doc_type || doc?.schema?.doc_type };
+  }
+  const HEADER_SECTION_LABELS = { safety: 'Safety', quality: 'Quality', environment: 'Environmental', other: '' };
+  const HEADER_TYPE_LABELS = { policy: 'Policy', procedure: 'Procedure', form: 'Form', checklist: 'Checklist', itc: 'ITC', plan: 'Plan' };
+  // e.g. "SAFETY FORM", "QUALITY POLICY", "ENVIRONMENTAL PROCEDURE"
+  function docTypeLabel(doc) {
+    const t = doc?.doc_type || (doc?.is_form ? 'form' : 'policy');
+    return [HEADER_SECTION_LABELS[doc?.section], HEADER_TYPE_LABELS[t] || ''].filter(Boolean).join(' ').toUpperCase();
   }
 
   /* ── COVER PAGE ──
@@ -256,7 +270,23 @@ window.BromarIMSReportKit = (() => {
     const pageW = pdf.internal.pageSize.getWidth();
     let y = 12;
 
-    if (logoDataUrl) pdf.addImage(logoDataUrl, 'PNG', 12, y - 4, 22, 5.2);
+    // Logo: ~9mm tall, real aspect ratio, vertically centred on the 3 header lines
+    let logoRight = 12;
+    if (logoDataUrl) {
+      let h = 9, w = 38;
+      try { const pr = pdf.getImageProperties(logoDataUrl); w = h * pr.width / pr.height; if (w > 42) { w = 42; h = w * pr.height / pr.width; } } catch (e) { /* defaults */ }
+      pdf.addImage(logoDataUrl, 'PNG', 12, 12.5 - h / 2 + 2, w, h);
+      logoRight = 12 + w;
+    }
+    // ISO / Global-Mark badge top-right, mirroring the logo
+    let badgeLeft = pageW - 12;
+    if (badgeDataUrl) {
+      const bh = 15, bw = bh * (233 / 287);
+      badgeLeft = pageW - 12 - bw;
+      pdf.addImage(badgeDataUrl, 'PNG', badgeLeft, 14.5 - bh / 2, bw, bh);
+    }
+    const sideReserve = Math.max(logoRight - 12, (pageW - 12) - badgeLeft) + 16;
+    const maxCentreW = pageW - 2 * sideReserve;
 
     pdf.setTextColor(...BLACK);
     pdf.setFont('helvetica', 'bold');
@@ -267,6 +297,9 @@ window.BromarIMSReportKit = (() => {
     pdf.text('Integrated Management System', pageW / 2, y, { align: 'center' });
     y += 5;
     pdf.setTextColor(...ORANGE);
+    let tSize = 9;
+    pdf.setFontSize(tSize);
+    while (tSize > 6.5 && pdf.getTextWidth(docTitleUpper(doc)) > maxCentreW) { tSize -= 0.5; pdf.setFontSize(tSize); }
     pdf.text(docTitleUpper(doc), pageW / 2, y, { align: 'center' });
     y += 4;
 
@@ -276,15 +309,16 @@ window.BromarIMSReportKit = (() => {
 
     pdf.setTextColor(...BLACK);
     pdf.setFontSize(8.5);
-    pdf.text(`VER ${padRev(revision.revision)}`, 12, y);
-    pdf.text(`DATE: ${fmtDate(revision.version_date)}`, pageW - 12, y, { align: 'right' });
+    const date = fmtDate(revision.version_date);
+    pdf.text(`VERSION ${padRev(revision.revision)}${date ? ` (${date})` : ''}`, 12, y);
+    pdf.text(docTypeLabel(doc), pageW - 12, y, { align: 'right' });
     y += 3;
     pdf.line(12, y, pageW - 12, y);
 
     return y + 8; // content start Y
   }
 
-  function drawFooter(pdf, doc, pageNum, rev) {
+  function drawFooter(pdf, doc, pageNum, rev, totalPages) {
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const y = pageH - 12;
@@ -294,7 +328,7 @@ window.BromarIMSReportKit = (() => {
     pdf.setFontSize(8.5);
 
     // right: TITLE (orange) | page number (black)
-    const num = String(pageNum);
+    const num = totalPages ? `${pageNum} of ${totalPages}` : String(pageNum);
     const numW = pdf.getTextWidth(num);
     const sep = '  |  ';
     const sepW = pdf.getTextWidth(sep);
@@ -782,9 +816,10 @@ window.BromarIMSReportKit = (() => {
     if (Array.isArray(schema?.fields)) drawFormBody(pdf, doc, revisionMeta, schema, startY, submission);
     else drawPolicyBody(pdf, doc, revisionMeta, schema?.blocks, startY);
     const endPage = pdf.internal.getNumberOfPages();
+    const total = endPage - coverPage + 1;                  // cover counts as page 1 (no footer on it)
     for (let p = coverPage + 1; p <= endPage; p++) {
       pdf.setPage(p);
-      drawFooter(pdf, doc, p - coverPage, revisionMeta?.revision);
+      drawFooter(pdf, doc, p - coverPage + 1, revisionMeta?.revision, total);
     }
     pdf.setPage(endPage);
     return { coverPage, endPage };
@@ -891,7 +926,7 @@ window.BromarIMSReportKit = (() => {
     });
     for (let p = registerStart; p <= registerEnd; p++) {
       pdf.setPage(p);
-      drawFooter(pdf, { title: 'IMS Audit Pack — Document Register' }, p - registerStart + 1);
+      drawFooter(pdf, { title: 'IMS Audit Pack — Document Register' }, p - registerStart + 1, 0, registerEnd - registerStart + 1);
     }
     try {
       if (pdf.outline) {
