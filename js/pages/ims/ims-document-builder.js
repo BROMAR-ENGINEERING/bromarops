@@ -1,7 +1,11 @@
 /* ============================================================
    BROMAR OPS — IMS · DOCUMENT BUILDER (shared)
    Path: js/pages/ims/ims-document-builder.js
-   Version: V2.06
+   Version: V2.07
+   V2.07: naming order matches the old register — IMS-SAFE-FORM-15-V01-
+   INCIDENT-REPORT (version before description). Stored as
+   schema.doc_code ("IMS-SAFE-FORM-15") + schema.doc_desc_code
+   ("INCIDENT-REPORT"); schema.doc_number keeps the version-less name.
    V2.06: version numbers come from the revision history, not the
    ims_documents.revision column — a new document (SQL or builder) with no
    recorded revisions starts at V01. A live document with no history gets
@@ -103,7 +107,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 };
 
 (() => {
-  const VERSION = 'V2.06';
+  const VERSION = 'V2.07';
 
   const DOC_TYPES = {
     policy:    { code: 'POL', label: 'Policy',    plural: 'Policies' },
@@ -124,11 +128,18 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
   function namePrefix(sectionKey, docType) {
     return `IMS-${NAME_SECTION_CODES[sectionKey] || 'OTHER'}-${NAME_TYPE_CODES[docType] || 'DOC'}-`;
   }
-  function buildDocNumber(sectionKey, docType, seq, desc, title) {
+  // Name = {code}-V{rev}-{desc}, e.g. IMS-SAFE-FORM-15-V01-INCIDENT-REPORT
+  function buildDocParts(sectionKey, docType, seq, desc, title) {
     const n = parseInt(seq, 10);
     if (!(n > 0)) return null;
-    const d = nameDesc(desc) || nameDesc(title);
-    return `${namePrefix(sectionKey, docType)}${String(n).padStart(2, '0')}${d ? '-' + d : ''}`;
+    return { code: `${namePrefix(sectionKey, docType)}${String(n).padStart(2, '0')}`, desc: nameDesc(desc) || nameDesc(title) };
+  }
+  function composeName(parts, rev) {
+    return `${parts.code}${rev ? '-V' + String(rev).padStart(2, '0') : ''}${parts.desc ? '-' + parts.desc : ''}`;
+  }
+  function buildDocNumber(sectionKey, docType, seq, desc, title) {   // version-less
+    const p = buildDocParts(sectionKey, docType, seq, desc, title);
+    return p ? composeName(p, 0) : null;
   }
   const CONTENT_TYPES = ['policy', 'procedure', 'plan'];   // block-based, is_form=false
   const DIGITAL_TYPES = ['form', 'checklist', 'itc'];      // field-based, is_form=true
@@ -237,6 +248,15 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     let baseline = '';              // JSON of title + content at last load/save (to detect real edits)
 
     /* ── SLUG GENERATION (doubles as "document number") ── */
+    // Name parts for any document: stored parts, else built from number, else legacy number/slug.
+    function nameParts(d, schemaOverride) {
+      const s = schemaOverride || d?.schema || {};
+      if (s.doc_code) return { code: s.doc_code, desc: s.doc_desc_code || '' };
+      const built = buildDocParts(d?.section, s.doc_type || effectiveDocType(d), s.doc_seq, s.doc_desc, d?.title);
+      if (built) return built;
+      return { code: String(s.doc_number || d?.slug || '').toUpperCase(), desc: '' };
+    }
+    function formatName(d, rev, schemaOverride) { return composeName(nameParts(d, schemaOverride), rev); }
     function docNumberOf(d) {
       const s = d?.schema || {};
       return String(s.doc_number || buildDocNumber(d?.section, effectiveDocType(d), s.doc_seq, s.doc_desc, d?.title) || d?.slug || '').toUpperCase();
@@ -266,11 +286,15 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
     // Keeps schema.doc_number in step with number / description / title / type.
     function refreshDocNumber() {
       if (!workingSchema) return;
-      const built = buildDocNumber(section, workingSchema.doc_type, workingSchema.doc_seq, workingSchema.doc_desc, currentDoc?.title);
-      if (built) workingSchema.doc_number = built;
+      const parts = buildDocParts(section, workingSchema.doc_type, workingSchema.doc_seq, workingSchema.doc_desc, currentDoc?.title);
+      if (parts) {
+        workingSchema.doc_code = parts.code;
+        if (parts.desc) workingSchema.doc_desc_code = parts.desc; else delete workingSchema.doc_desc_code;
+        workingSchema.doc_number = composeName(parts, 0);
+      }
       const el = root && root.querySelector('#ims-docname-preview');
-      if (el) el.textContent = built
-        ? `${built}-V${String(currentDoc?.is_active ? editorCurrentRevNo() : nextRevNo()).padStart(2, '0')}`
+      if (el) el.textContent = parts
+        ? composeName(parts, currentDoc?.is_active ? editorCurrentRevNo() : nextRevNo())
         : 'Enter a number to generate the document name';
     }
 
@@ -368,11 +392,13 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 
     /* ── CRUD ── */
     async function createDocument({ title, docType, category, description, seq, shortDesc }) {
-      const docNumber = buildDocNumber(section, docType, seq, shortDesc, title);
+      const parts = buildDocParts(section, docType, seq, shortDesc, title);
+      const docNumber = parts ? composeName(parts, 0) : null;
       const existing = await allDocRows();
       let slug = String(docNumber).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       if (!slug || existing.some(r => r.slug === slug)) slug = `${slug || 'doc'}-${Date.now().toString(36)}`;
-      const schema = { ...emptySchema(docType, category, description), doc_seq: parseInt(seq, 10), doc_number: docNumber };
+      const schema = { ...emptySchema(docType, category, description), doc_seq: parseInt(seq, 10), doc_number: docNumber, doc_code: parts?.code };
+      if (parts?.desc) schema.doc_desc_code = parts.desc;
       if (shortDesc) schema.doc_desc = shortDesc;
       const { data: docRow, error } = await sb().from('ims_documents').insert({
         slug, section, title, schema,
@@ -680,7 +706,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const history = await loadHistory(currentDoc.id);
       try {
         const { pdf, nextRev } = await buildPendingPDF(history);
-        window.BromarIMSReportKit.download(pdf, `${(workingSchema.doc_number || currentDoc.slug || 'document').toUpperCase()}-V${String(nextRev).padStart(2, '0')}-DRAFT`);
+        window.BromarIMSReportKit.download(pdf, `${formatName(currentDoc, nextRev, workingSchema)}-DRAFT`);
       } catch (e) {
         alert('PDF export failed: ' + e.message);
       }
@@ -749,9 +775,9 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       overlay.querySelector('#doc-modal-cancel').addEventListener('click', close);
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
       const preview = () => {
-        const built = buildDocNumber(section, activeType, overlay.querySelector('#doc-modal-number').value,
+        const parts = buildDocParts(section, activeType, overlay.querySelector('#doc-modal-number').value,
           overlay.querySelector('#doc-modal-short').value, overlay.querySelector('#doc-modal-title').value);
-        overlay.querySelector('#doc-modal-preview').textContent = built ? `${built}-V01` : '—';
+        overlay.querySelector('#doc-modal-preview').textContent = parts ? composeName(parts, 1) : '—';
       };
       ['#doc-modal-number', '#doc-modal-short', '#doc-modal-title'].forEach(s => overlay.querySelector(s).addEventListener('input', preview));
       preview();
@@ -924,7 +950,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
       const s = map[docStatus(d)];
       return `<span style="font-size:0.75rem;font-weight:600;color:${s.color};border:1px solid ${s.color};border-radius:999px;padding:0.15rem 0.6rem;">${s.label}</span>`;
     }
-    function docNumberDisplay(d) { const n = currentRevNo(d); return n ? `${docNumberOf(d)}-V${String(n).padStart(2, '0')}` : `${docNumberOf(d)} · new (first version will be V01)`; }
+    function docNumberDisplay(d) { const n = currentRevNo(d); return n ? formatName(d, n) : `${formatName(d, 1)} · not yet published`; }
 
     function typeRailHTML() {
       return `
@@ -1196,7 +1222,7 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
             <button class="btn-secondary" data-action="back" style="margin-bottom:0.6rem;">← Back to list</button>
             <div class="section-label" style="margin:0;">${esc(d.title)}</div>
             <div style="font-size:0.8rem;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;">
-              ${esc(String(workingSchema.doc_number || d.slug || '').toUpperCase())}${editorCurrentRevNo() ? '-V' + String(editorCurrentRevNo()).padStart(2, '0') : ''} — ${statusText}${d.is_active ? '' : ` · will publish as V${String(nextRevNo()).padStart(2, '0')}`}
+              ${esc(formatName(d, editorCurrentRevNo(), workingSchema))} — ${statusText}${d.is_active ? '' : ` · will publish as V${String(nextRevNo()).padStart(2, '0')}`}
             </div>
           </div>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
