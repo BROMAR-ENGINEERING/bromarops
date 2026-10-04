@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — MAIN SHELL
-  V1.26
+  V1.27
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -42,13 +42,14 @@
   <script src="js/bromar-report-kit.js"></script>
   <script src="js/bromar-form-kit.js"></script>
 
-  <!-- IMS-specific shared sub-modules -->
+  <!-- IMS shared kits (no sub-tab registration — safe to load before ims.js) -->
   <script src="js/pages/ims/ims-report-kit.js"></script>
   <script src="js/pages/ims/ims-audit.js"></script>
-  <script src="js/pages/ims/ims-document-builder.js"></script>
 
   <!-- ══════════════════════════════════════════════════════════════
        Page modules — each guarded with onerror.
+       IMS sub-tab modules (…/ims/*) MUST come after ims.js, since they
+       register onto BromarIMS.registerSubTab which ims.js defines.
        ══════════════════════════════════════════════════════════════ -->
   <script>
     (function loadPages() {
@@ -60,6 +61,7 @@
         'js/pages/timesheets.js',
         'js/pages/employees.js',
         'js/pages/ims.js',
+        'js/pages/ims/ims-document-builder.js',
         'js/pages/ims/ims-bromar-hub-job-requirements.js',
         'js/pages/ims/ims-placeholders.js',
         'js/pages/ims/ims-safety-approved-swms.js',
