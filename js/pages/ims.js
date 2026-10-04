@@ -1,8 +1,8 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.08
-   Tabs: Overview (default) / Safety / Quality / Environment / Bromar Hub / Other / Audit
+   Version: V1.09
+   Tabs: Overview (default) / Safety / Quality / Environment / Other / Audit / Bromar Hub
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy(), search(query)? })
@@ -26,16 +26,16 @@ window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (s
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.08';
+  const VERSION = 'V1.09';
 
   const SECTIONS = [
     { id: 'overview',    label: 'Overview',    desc: '' },
     { id: 'safety',      label: 'Safety',      desc: 'SWMS, Incidents, Hazards' },
     { id: 'quality',     label: 'Quality',     desc: 'ITC, Testing, Policies' },
     { id: 'environment', label: 'Environment', desc: 'Policies, Procedures' },
-    { id: 'bromar-hub',  label: 'Bromar Hub',  desc: 'Job Types, Customisation' },
     { id: 'other',       label: 'Other',       desc: 'Forms, Policies, Plans' },
-    { id: 'audit',       label: 'Audit',       desc: 'Exports, Registers' }
+    { id: 'audit',       label: 'Audit',       desc: 'Exports, Registers' },
+    { id: 'bromar-hub',  label: 'Bromar Hub',  desc: 'Job Types, Customisation' }
   ];
 
   const SEARCHABLE_SECTIONS = ['safety', 'quality', 'environment', 'other', 'audit'];
