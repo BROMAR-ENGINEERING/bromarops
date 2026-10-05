@@ -1,20 +1,23 @@
 /* ============================================================
    File:    js/pages/ims/ims-bromar-hub-jobsheets.js
    BROMAR OPS — IMS › BROMAR HUB › JOBSHEETS
-   Version: V1.00
+   Version: V1.01
+   V1.01: Takes over the 'job-types' sub-tab id (replaces the coming-soon
+          placeholder), relabelled "Jobsheets", order 55.
 
    Custom fields per job type, shown on the daily jobsheet.
    Tables:  job_types        (read only)
             job_type_fields  (read / write — soft delete via active=false)
-   Registers: window.BromarIMS.registerSubTab('bromar-hub', { id:'jobsheets', ... })
+   Registers: window.BromarIMS.registerSubTab('bromar-hub', { id:'job-types', label:'Jobsheets', order:55 })
    ============================================================ */
 
 (function () {
   'use strict';
 
-  const SUBTAB_VERSION = 'V1.00';
+  const SUBTAB_VERSION = 'V1.01';
   const SECTION = 'bromar-hub';
-  const SUBTAB_ID = 'jobsheets';
+  const SUBTAB_ORDER = 55;
+  const SUBTAB_ID = 'job-types';   // existing id — do not change
   const TABLE = 'job_type_fields';
 
   const FIELD_TYPES = [
@@ -687,7 +690,7 @@
   }
 
   /* ── REGISTRATION ── */
-  const def = { id: SUBTAB_ID, label: 'Jobsheets', version: SUBTAB_VERSION, render, destroy };
+  const def = { id: SUBTAB_ID, label: 'Jobsheets', order: SUBTAB_ORDER, version: SUBTAB_VERSION, render, destroy };
   window.BromarIMSJobsheets = def;
 
   function register() {
