@@ -1,7 +1,9 @@
 /* ============================================================
    File:    js/pages/ims/ims-bromar-hub-jobsheets.js
    BROMAR OPS — IMS › BROMAR HUB › JOBSHEETS
-   Version: V1.02
+   Version: V1.03
+   V1.03: Added Heading and Yes / No / N/A field types, grouped display under
+          headings, and bulk "Add questions" (many questions under one heading).
    V1.02: Added Photo request and IMS form (quality form) field types,
           quick-add buttons, grouped type picker.
    V1.01: Takes over the 'job-types' sub-tab id (replaces the coming-soon
@@ -16,23 +18,26 @@
 (function () {
   'use strict';
 
-  const SUBTAB_VERSION = 'V1.02';
+  const SUBTAB_VERSION = 'V1.03';
   const SECTION = 'bromar-hub';
   const SUBTAB_ORDER = 55;
   const SUBTAB_ID = 'job-types';   // existing id — do not change
   const TABLE = 'job_type_fields';
 
   const FIELD_TYPES = [
+    { v: 'heading',  l: 'Heading',         g: 'Layout' },
+    { v: 'yesno',    l: 'Yes / No / N/A',  g: 'Questions' },
+    { v: 'checkbox', l: 'Checkbox (confirm)', g: 'Questions' },
     { v: 'number',   l: 'Number',          g: 'Data entry' },
     { v: 'text',     l: 'Text',            g: 'Data entry' },
     { v: 'textarea', l: 'Long text',       g: 'Data entry' },
-    { v: 'checkbox', l: 'Checkbox',        g: 'Data entry' },
     { v: 'select',   l: 'Dropdown',        g: 'Data entry' },
     { v: 'date',     l: 'Date',            g: 'Data entry' },
     { v: 'photo',    l: 'Photo request',   g: 'Requests' },
     { v: 'file',     l: 'Document upload', g: 'Requests' },
     { v: 'form',     l: 'IMS form',        g: 'Requests' }
   ];
+  const BULK_TYPES = ['yesno', 'checkbox', 'text', 'textarea', 'number', 'date'];
   const SECTION_ORDER = ['quality', 'safety', 'environment', 'other'];
   const SECTION_LABEL = { quality: 'Quality', safety: 'Safety', environment: 'Environment', other: 'Other' };
 
@@ -98,9 +103,10 @@
     return s;
   }
 
-  function uniqueKey(base) {
+  function uniqueKey(base, extra) {
     if (!base) return '';
     const used = new Set(state.fields.map(f => f.field_key));
+    if (extra) extra.forEach(k => used.add(k));
     if (!used.has(base)) return base;
     let i = 2;
     while (used.has(`${base}_${i}`)) i++;
@@ -141,8 +147,12 @@
     };
   }
 
+  function emptyBulk(headingId) {
+    return { heading_mode: headingId ? String(headingId) : 'new', heading_label: '', field_type: 'yesno', include_na: true, lines: '', required: false };
+  }
+
   function emptyDraft(type) {
-    return { label: '', field_type: type || 'number', unit: '', options: '', form_slug: '', required: false, field_key: '' };
+    return { label: '', field_type: type || 'number', unit: '', options: '', form_slug: '', include_na: true, required: false, field_key: '' };
   }
 
   function flash(text, type) {
@@ -215,6 +225,13 @@
     .jsf-pv-file{border:1px dashed var(--border);border-radius:8px;padding:.7rem .8rem;font-size:.85rem;color:var(--text-secondary)}
     .jsf-loading{display:flex;justify-content:center;padding:3rem 0}
     .jsf-addbar{display:flex;gap:.5rem;flex-wrap:wrap}
+    .jsf-row.heading{background:var(--card-hover);border-color:var(--accent);margin-top:1rem}
+    .jsf-row.heading .jsf-row-label{font-size:1rem}
+    .jsf-row.child{margin-left:1.25rem}
+    @media(max-width:520px){.jsf-row.child{margin-left:.6rem}}
+    .jsf-pv-h{font-weight:600;font-size:1rem;padding:.5rem 0 .25rem;border-bottom:2px solid var(--accent);margin-top:.5rem}
+    .jsf-yn{display:flex;gap:.4rem;flex-wrap:wrap}
+    .jsf-yn span{padding:.4rem .9rem;border:1px solid var(--border);border-radius:999px;font-size:.85rem;color:var(--text-secondary);background:var(--bg-secondary)}
   </style>`;
 
   /* ── RENDER: TYPES PANEL ── */
@@ -268,6 +285,8 @@
   function fieldMeta(f) {
     const bits = [`<span>${esc(typeLabel(f.field_type))}</span>`];
     if (f.field_type === 'number' && f.unit) bits.push(`<span>Unit: ${esc(f.unit)}</span>`);
+    if (f.field_type === 'heading') return `<span>Heading</span><span class="jsf-key">${esc(f.field_key)}</span>`;
+    if (f.field_type === 'yesno') bits[0] = `<span>${f.options.includes('N/A') ? 'Yes / No / N/A' : 'Yes / No'}</span>`;
     if (f.field_type === 'select') bits.push(`<span>${f.options.length} option${f.options.length === 1 ? '' : 's'}</span>`);
     if (f.field_type === 'form') {
       const t = formTitle(f.options[0]);
@@ -284,8 +303,13 @@
       return `<div class="ims-empty-state">No fields yet. Add the first one to show it on this job type's jobsheet.</div>`;
     }
     const dis = state.busy || state.editing ? 'disabled' : '';
-    return list.map((f, i) => `
-      <div class="jsf-row">
+    let under = false;
+    return list.map((f, i) => {
+      const isH = f.field_type === 'heading';
+      if (isH) under = true;
+      const cls = isH ? 'jsf-row heading' : (under ? 'jsf-row child' : 'jsf-row');
+      return `
+      <div class="${cls}">
         <div class="jsf-row-main">
           <div class="jsf-row-label">${esc(f.label)}</div>
           <div class="jsf-meta">${fieldMeta(f)}</div>
@@ -294,9 +318,11 @@
           <button class="jsf-icon" data-act="up" data-id="${esc(f.id)}" aria-label="Move up" ${i === 0 ? 'disabled' : dis}>▲</button>
           <button class="jsf-icon" data-act="down" data-id="${esc(f.id)}" aria-label="Move down" ${i === list.length - 1 ? 'disabled' : dis}>▼</button>
           <button class="jsf-icon" data-act="edit" data-id="${esc(f.id)}" ${dis}>Edit</button>
+          ${isH ? `<button class="jsf-icon" data-act="add-bulk" data-id="${esc(f.id)}" ${dis}>+ Questions</button>` : ''}
           <button class="jsf-icon danger" data-act="remove" data-id="${esc(f.id)}" ${dis}>Remove</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   function removedHtml() {
@@ -342,7 +368,55 @@
           </div>`;
   }
 
+  function bulkEditorHtml() {
+    const d = state.draft;
+    const headings = activeFields().filter(f => f.field_type === 'heading');
+    const types = FIELD_TYPES.filter(t => BULK_TYPES.includes(t.v));
+    const count = d.lines.split(/\r?\n/).map(x => x.trim()).filter(Boolean).length;
+    return `
+      <div class="jsf-editor">
+        <div class="jsf-editor-title">Add questions</div>
+        <div class="jsf-form">
+          <div class="${d.heading_mode === 'new' ? '' : 'full'}">
+            <label class="jsf-lbl" for="jsf-hmode">Heading</label>
+            <select class="jsf-input" id="jsf-hmode" data-f="heading_mode">
+              <option value="new" ${d.heading_mode === 'new' ? 'selected' : ''}>New heading</option>
+              ${headings.map(h => `<option value="${esc(h.id)}" ${sameId(h.id, d.heading_mode) ? 'selected' : ''}>${esc(h.label)}</option>`).join('')}
+              <option value="none" ${d.heading_mode === 'none' ? 'selected' : ''}>No heading (add at the end)</option>
+            </select>
+          </div>
+          ${d.heading_mode === 'new' ? `
+          <div>
+            <label class="jsf-lbl" for="jsf-hlabel">Heading name</label>
+            <input class="jsf-input" id="jsf-hlabel" data-f="heading_label" maxlength="200" placeholder="e.g. Pre-start checks" value="${esc(d.heading_label)}">
+          </div>` : ''}
+          <div>
+            <label class="jsf-lbl" for="jsf-btype">Answer type</label>
+            <select class="jsf-input" id="jsf-btype" data-f="field_type">
+              ${types.map(t => `<option value="${t.v}" ${t.v === d.field_type ? 'selected' : ''}>${esc(t.l)}</option>`).join('')}
+            </select>
+          </div>
+          ${d.field_type === 'yesno' ? `
+          <div style="display:flex;align-items:flex-end">
+            <label class="jsf-check"><input type="checkbox" data-f="include_na" ${d.include_na ? 'checked' : ''}> Include N/A option</label>
+          </div>` : ''}
+          <div class="full">
+            <label class="jsf-lbl" for="jsf-lines">Questions (one per line)</label>
+            <textarea class="jsf-input" id="jsf-lines" data-f="lines" style="min-height:160px" placeholder="Area isolated and barricaded&#10;Switchboard labelled correctly&#10;RCDs tested and tagged">${esc(d.lines)}</textarea>
+          </div>
+          <div class="full">
+            <label class="jsf-check"><input type="checkbox" data-f="required" ${d.required ? 'checked' : ''}> All required</label>
+          </div>
+        </div>
+        <div class="jsf-btns">
+          <button class="btn-secondary jsf-sm" data-act="cancel" ${state.busy ? 'disabled' : ''}>Cancel</button>
+          <button class="btn-primary jsf-sm" data-act="save" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Saving…' : `Add <span data-r="bcount">${count || ''}</span> questions`}</button>
+        </div>
+      </div>`;
+  }
+
   function editorHtml() {
+    if (state.editing === 'bulk') return bulkEditorHtml();
     const d = state.draft;
     const isNew = state.editing === 'new';
     const key = isNew ? uniqueKey(slugify(d.label)) : d.field_key;
@@ -353,7 +427,7 @@
         <div class="jsf-form">
           <div class="full">
             <label class="jsf-lbl" for="jsf-label">Label</label>
-            <input class="jsf-input" id="jsf-label" data-f="label" maxlength="80" placeholder="e.g. Tags tested" value="${esc(d.label)}">
+            <input class="jsf-input" id="jsf-label" data-f="label" maxlength="200" placeholder="${d.field_type === 'heading' ? 'e.g. Pre-start checks' : 'e.g. Tags tested'}" value="${esc(d.label)}">
             <div class="jsf-hint">Key: <span class="jsf-key" data-r="key">${esc(key || '—')}</span> ${isNew ? '(generated from the label, fixed once added)' : '(fixed)'}</div>
           </div>
           <div>
@@ -379,9 +453,16 @@
           ${d.field_type === 'photo' ? `
           <div class="full jsf-hint">Workers are asked to take or attach photos using this label, e.g. "Photo of completed switchboard".</div>` : ''}
           ${d.field_type === 'form' ? formPickerHtml(d) : ''}
+          ${d.field_type === 'heading' ? `
+          <div class="full jsf-hint">Fields placed below this heading are grouped under it on the jobsheet.</div>` : ''}
+          ${d.field_type === 'yesno' ? `
+          <div class="full">
+            <label class="jsf-check"><input type="checkbox" data-f="include_na" ${d.include_na ? 'checked' : ''}> Include N/A option</label>
+          </div>` : ''}
+          ${d.field_type === 'heading' ? '' : `
           <div class="full">
             <label class="jsf-check"><input type="checkbox" data-f="required" ${d.required ? 'checked' : ''}> Required</label>
-          </div>
+          </div>`}
         </div>
         <div class="jsf-btns">
           <button class="btn-secondary jsf-sm" data-act="cancel" ${state.busy ? 'disabled' : ''}>Cancel</button>
@@ -409,6 +490,10 @@
           return `<div class="jsf-pv">${lbl}<input class="jsf-input" type="date" disabled></div>`;
         case 'file':
           return `<div class="jsf-pv full">${lbl}<div class="jsf-pv-file">Attach document: ${esc(f.label)}</div></div>`;
+        case 'heading':
+          return `<div class="jsf-pv full jsf-pv-h">${esc(f.label)}</div>`;
+        case 'yesno':
+          return `<div class="jsf-pv full">${lbl}<div class="jsf-yn"><span>Yes</span><span>No</span>${f.options.includes('N/A') ? '<span>N/A</span>' : ''}</div></div>`;
         case 'photo':
           return `<div class="jsf-pv full">${lbl}<div class="jsf-pv-file">Take or attach photos</div></div>`;
         case 'form':
@@ -434,7 +519,9 @@
           <div class="jsf-sub">${esc(t.category || 'Uncategorised')}</div>
         </div>
         ${state.editing || state.loadingFields ? '' : `<div class="jsf-addbar">
-          <button class="btn-primary jsf-sm" data-act="add" data-type="number" ${state.busy ? 'disabled' : ''}>Add field</button>
+          <button class="btn-primary jsf-sm" data-act="add" data-type="yesno" ${state.busy ? 'disabled' : ''}>Add field</button>
+          <button class="btn-secondary jsf-sm" data-act="add" data-type="heading" ${state.busy ? 'disabled' : ''}>Add heading</button>
+          <button class="btn-secondary jsf-sm" data-act="add-bulk" ${state.busy ? 'disabled' : ''}>Add questions</button>
           <button class="btn-secondary jsf-sm" data-act="add" data-type="photo" ${state.busy ? 'disabled' : ''}>Add photo request</button>
           <button class="btn-secondary jsf-sm" data-act="add" data-type="form" ${state.busy ? 'disabled' : ''}>Add form</button>
         </div>`}
@@ -520,6 +607,7 @@
 
   async function saveDraft() {
     if (state.busy) return;
+    if (state.editing === 'bulk') return saveBulk();
     const d = state.draft;
     const label = d.label.trim();
     const type = d.field_type;
@@ -533,6 +621,8 @@
       if (!d.form_slug) return flash('Select the form workers need to complete.', 'error');
       opts.push(d.form_slug);
     }
+    if (type === 'yesno') opts.push(...(d.include_na ? ['Yes', 'No', 'N/A'] : ['Yes', 'No']));
+    if (type === 'heading') d.required = false;
     const unit = type === 'number' ? (d.unit.trim() || null) : null;
 
     state.busy = true; state.msg = null; draw();
@@ -570,6 +660,62 @@
     } catch (e) {
       state.busy = false;
       flash(errMsg(e), 'error');
+    }
+  }
+
+  async function saveBulk() {
+    const d = state.draft;
+    const type = d.field_type;
+    const questions = [...new Set(d.lines.split(/\r?\n/).map(x => x.trim()).filter(Boolean))];
+    if (!questions.length) return flash('Enter at least one question, one per line.', 'error');
+    if (d.heading_mode === 'new' && !d.heading_label.trim()) return flash('Enter a name for the new heading.', 'error');
+
+    const opts = type === 'yesno' ? (d.include_na ? ['Yes', 'No', 'N/A'] : ['Yes', 'No']) : [];
+    const used = new Set();
+    const mk = (label, ftype, required, o) => {
+      const key = uniqueKey(slugify(label) || 'question', used);
+      used.add(key);
+      return { job_type_id: state.selectedId, field_key: key, label, field_type: ftype, unit: null, options: o, required, active: true };
+    };
+    const newRows = [];
+    if (d.heading_mode === 'new') newRows.push(mk(d.heading_label.trim(), 'heading', false, []));
+    questions.forEach(q => newRows.push(mk(q, type, !!d.required, opts)));
+
+    // Work out position: after the chosen heading's group, otherwise at the end
+    const list = activeFields();
+    let at = list.length;
+    if (d.heading_mode !== 'new' && d.heading_mode !== 'none') {
+      const hi = list.findIndex(f => sameId(f.id, d.heading_mode));
+      if (hi >= 0) {
+        at = list.findIndex((f, i) => i > hi && f.field_type === 'heading');
+        if (at < 0) at = list.length;
+      }
+    }
+    const ordered = [...list.slice(0, at), ...newRows.map(r => ({ __new: r })), ...list.slice(at)];
+    const changes = [];
+    ordered.forEach((item, idx) => {
+      const s = (idx + 1) * 10;
+      if (item.__new) item.__new.sort_order = s;
+      else if (item.sort_order !== s) changes.push({ id: item.id, sort_order: s });
+    });
+
+    state.busy = true; state.msg = null; draw();
+    try {
+      const sb = await getClient();
+      const ins = await sb.from(TABLE).insert(newRows).select();
+      checkWrite(ins.data, ins.error);
+      const results = await Promise.all(changes.map(c =>
+        sb.from(TABLE).update({ sort_order: c.sort_order }).eq('id', c.id).select()
+      ));
+      results.forEach(r => checkWrite(r.data, r.error));
+      state.editing = null; state.draft = null;
+      state.busy = false;
+      await loadFields();
+      flash(`${questions.length} question${questions.length === 1 ? '' : 's'} added.`, 'ok');
+    } catch (e) {
+      state.busy = false;
+      flash(errMsg(e), 'error');
+      loadFields();
     }
   }
 
@@ -658,11 +804,16 @@
         draw();
         root.querySelector('[data-f="label"]')?.focus();
         break;
+      case 'add-bulk':
+        state.editing = 'bulk'; state.draft = emptyBulk(id); state.msg = null;
+        draw();
+        root.querySelector(id ? '[data-f="lines"]' : '[data-f="heading_label"]')?.focus();
+        break;
       case 'edit': {
         const f = state.fields.find(x => sameId(x.id, id));
         if (!f) return;
         state.editing = f.id;
-        state.draft = { label: f.label || '', field_type: f.field_type || 'text', unit: f.unit || '', options: f.field_type === 'select' ? f.options.join('\n') : '', form_slug: f.field_type === 'form' ? (f.options[0] || '') : '', required: f.required, field_key: f.field_key };
+        state.draft = { label: f.label || '', field_type: f.field_type || 'text', unit: f.unit || '', options: f.field_type === 'select' ? f.options.join('\n') : '', form_slug: f.field_type === 'form' ? (f.options[0] || '') : '', include_na: f.field_type === 'yesno' ? (!f.options.length || f.options.includes('N/A')) : true, required: f.required, field_key: f.field_key };
         state.msg = null;
         draw();
         root.querySelector('[data-f="label"]')?.focus();
@@ -689,6 +840,14 @@
     if (el.dataset.r === 'search') { state.filter = el.value; applyFilter(); return; }
     const f = el.dataset.f;
     if (!f || !state.draft || el.type === 'checkbox') return;
+    if (f === 'lines' || f === 'heading_label') {
+      state.draft[f] = el.value;
+      if (f === 'lines') {
+        const c = root.querySelector('[data-r="bcount"]');
+        if (c) c.textContent = el.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean).length || '';
+      }
+      return;
+    }
     if (f === 'label' || f === 'unit' || f === 'options') {
       state.draft[f] = el.value;
       if (f === 'label' && state.editing === 'new') {
@@ -703,6 +862,13 @@
     const f = el.dataset.f;
     if (!f || !state.draft) return;
     if (f === 'required') { state.draft.required = el.checked; return; }
+    if (f === 'include_na') { state.draft.include_na = el.checked; return; }
+    if (f === 'heading_mode') {
+      state.draft.heading_mode = el.value;
+      draw();
+      root.querySelector('[data-f="heading_mode"]')?.focus();
+      return;
+    }
     if (f === 'form_slug') {
       state.draft.form_slug = el.value;
       const t = formTitle(el.value);
