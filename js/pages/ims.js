@@ -1,13 +1,17 @@
 /* ============================================================
    BROMAR OPS — IMS PAGE
    Path: js/pages/ims.js
-   Version: V1.10
+   Version: V1.11
    Tabs: Overview (default) / Safety / Quality / Environment / Other / Audit / Bromar Hub
 
    SUB-TAB PLUGIN SYSTEM (for independent chats to build into):
    window.BromarIMS.registerSubTab(sectionId, { id, label, render(container), destroy(), search(query)? })
    sectionId = 'safety' | 'quality' | 'environment' | 'bromar-hub' | 'other' | 'audit'
    Sub-tab files must load AFTER ims.js in index.html.
+
+   Late registration (after the page has rendered) is supported — the
+   sub-tab bar refreshes automatically. Re-registering the same id in a
+   section replaces the earlier entry.
 
    OPTIONAL order (number, default 50): sub-tabs sort by order, then by
    registration sequence. Lower = further left.
@@ -21,16 +25,39 @@
    If omitted, the sub-tab is still matched by its own label/title.
    ============================================================ */
 
-window.BromarIMS = window.BromarIMS || { subtabs: { safety: [], quality: [], environment: [], 'bromar-hub': [], other: [], audit: [] } };
-window.BromarIMS.registerSubTab = window.BromarIMS.registerSubTab || function (section, subtab) {
-  if (!window.BromarIMS.subtabs[section]) window.BromarIMS.subtabs[section] = [];
-  window.BromarIMS.subtabs[section].push(subtab);
-};
+/* ── REGISTRY ──
+   Never replaces an existing window.BromarIMS: anything a stub already
+   queued in BromarIMS.subtabs is kept. registerSubTab is always this
+   version so late registrations refresh the tab bar.
+   Same id registered twice in one section → later one replaces earlier
+   (e.g. a real module overrides its placeholder). */
+(function () {
+  const R = window.BromarIMS = window.BromarIMS || {};
+  if (!R.subtabs || typeof R.subtabs !== 'object') R.subtabs = {};
+  ['safety', 'quality', 'environment', 'other', 'audit', 'bromar-hub'].forEach(k => {
+    if (!Array.isArray(R.subtabs[k])) R.subtabs[k] = [];
+  });
+  R.registerSubTab = function (section, subtab) {
+    if (!subtab || !subtab.id) { console.warn('[ims] registerSubTab: sub-tab needs an id', section, subtab); return; }
+    if (!Array.isArray(R.subtabs[section])) R.subtabs[section] = [];
+    const list = R.subtabs[section];
+    const idx = list.findIndex(s => s.id === subtab.id);
+    if (idx !== -1) {
+      console.info(`[ims] ${section}/${subtab.id} re-registered — replacing earlier entry`);
+      list[idx] = subtab;
+    } else {
+      list.push(subtab);
+    }
+    if (typeof R._onRegister === 'function') {
+      try { R._onRegister(section); } catch (e) { console.warn('[ims] late-register refresh failed', e); }
+    }
+  };
+})();
 
 window.BromarPages = window.BromarPages || {};
 
 window.BromarPages.ims = (() => {
-  const VERSION = 'V1.10';
+  const VERSION = 'V1.11';
 
   const SECTIONS = [
     { id: 'overview',    label: 'Overview',    desc: '' },
@@ -205,11 +232,31 @@ window.BromarPages.ims = (() => {
     renderBody(container);
   }
 
+  let clickHandler = null;
+  let inputHandler = null;
+
+  function detachListeners() {
+    if (rootEl && clickHandler) rootEl.removeEventListener('click', clickHandler);
+    if (rootEl && inputHandler) rootEl.removeEventListener('input', inputHandler);
+    clickHandler = null;
+    inputHandler = null;
+  }
+
+  // Called by registerSubTab when a module registers after the page is on screen.
+  window.BromarIMS._onRegister = function (section) {
+    if (!rootEl || !rootEl.isConnected) return;
+    if (section !== activeSection || activeSection === 'overview') return;
+    const wrap = rootEl.querySelector('#ims-subtabs-wrap');
+    if (wrap) wrap.innerHTML = subTabsHTML();
+    if (!currentSub) renderBody(rootEl); // was showing the empty state
+  };
+
   function render(container) {
+    detachListeners();
     rootEl = container;
     renderShell(container);
 
-    container.addEventListener('click', (e) => {
+    clickHandler = (e) => {
       const resultBtn = e.target.closest('.ims-search-result');
       if (resultBtn) {
         goToSubTab(container, resultBtn.dataset.section, resultBtn.dataset.subtab);
@@ -228,16 +275,19 @@ window.BromarPages.ims = (() => {
           b.classList.toggle('active', b === subBtn));
         renderBody(container);
       }
-    });
-
-    container.addEventListener('input', (e) => {
+    };
+    inputHandler = (e) => {
       if (e.target.id === 'ims-search') performSearch(e.target.value, container);
-    });
+    };
+    container.addEventListener('click', clickHandler);
+    container.addEventListener('input', inputHandler);
   }
 
   function destroy() {
     if (currentSub?.destroy) { try { currentSub.destroy(); } catch (e) { console.warn('[ims]', e); } }
     currentSub = null;
+    detachListeners();
+    rootEl = null;
   }
 
   return { title: 'IMS', version: VERSION, render, destroy };
