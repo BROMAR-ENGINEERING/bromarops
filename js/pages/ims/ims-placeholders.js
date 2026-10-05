@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS PLACEHOLDER SUB-TABS
    Path: js/pages/ims/ims-placeholders.js
-   Version: V1.07
+   Version: V1.08
 
    Registers "Coming soon" placeholders for planned sub-tabs that
    don't have a real module yet, plus the SWMS master tab.
@@ -9,6 +9,7 @@
      Documents              → ims-document-builder.js   (all sections)
      Exports                → ims-audit.js               (audit)
      Job Type Requirements  → ims-bromar-hub-job-requirements.js
+     Jobsheets              → ims-bromar-hub-jobsheets.js (id 'job-types', order 55)
 
    Target layout (order numbers in brackets, default 50):
      Safety      → Documents (50) / Submissions (60) / SWMS (70)
@@ -16,8 +17,10 @@
      Environment → Documents (50) / Submissions (60)
      Other       → Documents (50) / Submissions (60)
      Audit       → Exports (50)   / Register (60)
-     Bromar Hub  → Job Type Requirements (50) / Job Types (55) / Quality Allocation (60)
+     Bromar Hub  → Job Type Requirements (50) / Jobsheets (55) / Quality Allocation (60)
 
+   V1.08: Removed Job Types placeholder — real module ims-bromar-hub-jobsheets.js
+          now registers id 'job-types', label 'Jobsheets'.
    V1.07: SWMS master tab (Safety, 3rd). Left stacked menu:
             SWMS Templates  → renders the existing "Approved SWMS" module
                               inside the panel (claimed, so its own
@@ -148,7 +151,6 @@
       placeholder('register', 'Register', 60)
     ],
     'bromar-hub': [
-      placeholder('job-types', 'Job Types', 55),
       placeholder('quality-allocation', 'Quality Allocation', 60)
     ]
   };
