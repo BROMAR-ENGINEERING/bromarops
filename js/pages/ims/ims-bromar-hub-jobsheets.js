@@ -1,7 +1,9 @@
 /* ============================================================
    File:    js/pages/ims/ims-bromar-hub-jobsheets.js
    BROMAR OPS — IMS › BROMAR HUB › JOBSHEETS
-   Version: V1.01
+   Version: V1.02
+   V1.02: Added Photo request and IMS form (quality form) field types,
+          quick-add buttons, grouped type picker.
    V1.01: Takes over the 'job-types' sub-tab id (replaces the coming-soon
           placeholder), relabelled "Jobsheets", order 55.
 
@@ -14,21 +16,25 @@
 (function () {
   'use strict';
 
-  const SUBTAB_VERSION = 'V1.01';
+  const SUBTAB_VERSION = 'V1.02';
   const SECTION = 'bromar-hub';
   const SUBTAB_ORDER = 55;
   const SUBTAB_ID = 'job-types';   // existing id — do not change
   const TABLE = 'job_type_fields';
 
   const FIELD_TYPES = [
-    { v: 'number',   l: 'Number' },
-    { v: 'text',     l: 'Text' },
-    { v: 'textarea', l: 'Long text' },
-    { v: 'checkbox', l: 'Checkbox' },
-    { v: 'select',   l: 'Dropdown' },
-    { v: 'date',     l: 'Date' },
-    { v: 'file',     l: 'Document upload' }
+    { v: 'number',   l: 'Number',          g: 'Data entry' },
+    { v: 'text',     l: 'Text',            g: 'Data entry' },
+    { v: 'textarea', l: 'Long text',       g: 'Data entry' },
+    { v: 'checkbox', l: 'Checkbox',        g: 'Data entry' },
+    { v: 'select',   l: 'Dropdown',        g: 'Data entry' },
+    { v: 'date',     l: 'Date',            g: 'Data entry' },
+    { v: 'photo',    l: 'Photo request',   g: 'Requests' },
+    { v: 'file',     l: 'Document upload', g: 'Requests' },
+    { v: 'form',     l: 'IMS form',        g: 'Requests' }
   ];
+  const SECTION_ORDER = ['quality', 'safety', 'environment', 'other'];
+  const SECTION_LABEL = { quality: 'Quality', safety: 'Safety', environment: 'Environment', other: 'Other' };
 
   let root = null;
   let state = null;
@@ -119,6 +125,8 @@
   const activeFields  = () => state.fields.filter(f => f.active).sort(byOrder);
   const removedFields = () => state.fields.filter(f => !f.active).sort(byOrder);
   const typeLabel = v => (FIELD_TYPES.find(t => t.v === v) || { l: v || 'Unknown' }).l;
+  const formBySlug = slug => state.forms.find(f => f.slug === slug);
+  const formTitle = slug => { const f = formBySlug(slug); return f ? f.title : ''; };
   const selectedType = () => state.jobTypes.find(t => sameId(t.id, state.selectedId));
   const maxSort = list => list.reduce((m, f) => Math.max(m, Number(f.sort_order) || 0), 0);
 
@@ -126,15 +134,15 @@
     return {
       loading: true, loadError: '',
       jobTypes: [], counts: {},
-      selectedId: null, fields: [], loadingFields: false,
+      selectedId: null, fields: [], loadingFields: false, forms: [],
       editing: null, draft: null,
       showRemoved: false, filter: '',
       busy: false, msg: null
     };
   }
 
-  function emptyDraft() {
-    return { label: '', field_type: 'number', unit: '', options: '', required: false, field_key: '' };
+  function emptyDraft(type) {
+    return { label: '', field_type: type || 'number', unit: '', options: '', form_slug: '', required: false, field_key: '' };
   }
 
   function flash(text, type) {
@@ -206,6 +214,7 @@
     .jsf-pv-unit span{font-size:.85rem;color:var(--text-secondary);white-space:nowrap}
     .jsf-pv-file{border:1px dashed var(--border);border-radius:8px;padding:.7rem .8rem;font-size:.85rem;color:var(--text-secondary)}
     .jsf-loading{display:flex;justify-content:center;padding:3rem 0}
+    .jsf-addbar{display:flex;gap:.5rem;flex-wrap:wrap}
   </style>`;
 
   /* ── RENDER: TYPES PANEL ── */
@@ -260,6 +269,10 @@
     const bits = [`<span>${esc(typeLabel(f.field_type))}</span>`];
     if (f.field_type === 'number' && f.unit) bits.push(`<span>Unit: ${esc(f.unit)}</span>`);
     if (f.field_type === 'select') bits.push(`<span>${f.options.length} option${f.options.length === 1 ? '' : 's'}</span>`);
+    if (f.field_type === 'form') {
+      const t = formTitle(f.options[0]);
+      bits.push(t ? `<span>Form: ${esc(t)}</span>` : `<span style="color:var(--error)">Form not found</span>`);
+    }
     if (f.required) bits.push(`<span class="jsf-req">Required</span>`);
     bits.push(`<span class="jsf-key">${esc(f.field_key)}</span>`);
     return bits.join('');
@@ -304,6 +317,31 @@
       </div>`).join('');
   }
 
+  function formPickerHtml(d) {
+    if (!state.forms.length) {
+      return `<div class="full jsf-msg error">No active IMS forms found. Publish a form in IMS first.</div>`;
+    }
+    const bySection = {};
+    state.forms.forEach(f => { const s = String(f.section || 'other').toLowerCase(); (bySection[s] = bySection[s] || []).push(f); });
+    const sections = Object.keys(bySection).sort((a, b) => {
+      const ia = SECTION_ORDER.indexOf(a), ib = SECTION_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    const missing = d.form_slug && !formBySlug(d.form_slug)
+      ? `<option value="${esc(d.form_slug)}" selected>${esc(d.form_slug)} (not found)</option>` : '';
+    return `
+          <div class="full">
+            <label class="jsf-lbl" for="jsf-form">Form to complete</label>
+            <select class="jsf-input" id="jsf-form" data-f="form_slug">
+              <option value="">Select a form…</option>${missing}
+              ${sections.map(s => `<optgroup label="${esc(SECTION_LABEL[s] || s)}">${
+                bySection[s].map(f => `<option value="${esc(f.slug)}" ${f.slug === d.form_slug ? 'selected' : ''}>${esc(f.title || f.slug)}</option>`).join('')
+              }</optgroup>`).join('')}
+            </select>
+            <div class="jsf-hint">Workers open and complete this form from the jobsheet. It always uses the latest published revision.</div>
+          </div>`;
+  }
+
   function editorHtml() {
     const d = state.draft;
     const isNew = state.editing === 'new';
@@ -321,7 +359,9 @@
           <div>
             <label class="jsf-lbl" for="jsf-type">Type</label>
             <select class="jsf-input" id="jsf-type" data-f="field_type">
-              ${types.map(t => `<option value="${esc(t.v)}" ${t.v === d.field_type ? 'selected' : ''}>${esc(t.l)}</option>`).join('')}
+              ${[...new Set(types.map(t => t.g || 'Other'))].map(g => `<optgroup label="${esc(g)}">${
+                types.filter(t => (t.g || 'Other') === g).map(t => `<option value="${esc(t.v)}" ${t.v === d.field_type ? 'selected' : ''}>${esc(t.l)}</option>`).join('')
+              }</optgroup>`).join('')}
             </select>
           </div>
           ${d.field_type === 'number' ? `
@@ -336,6 +376,9 @@
           </div>` : ''}
           ${d.field_type === 'file' ? `
           <div class="full jsf-hint">Workers are asked to attach a document using this label, e.g. "ITC required".</div>` : ''}
+          ${d.field_type === 'photo' ? `
+          <div class="full jsf-hint">Workers are asked to take or attach photos using this label, e.g. "Photo of completed switchboard".</div>` : ''}
+          ${d.field_type === 'form' ? formPickerHtml(d) : ''}
           <div class="full">
             <label class="jsf-check"><input type="checkbox" data-f="required" ${d.required ? 'checked' : ''}> Required</label>
           </div>
@@ -366,6 +409,10 @@
           return `<div class="jsf-pv">${lbl}<input class="jsf-input" type="date" disabled></div>`;
         case 'file':
           return `<div class="jsf-pv full">${lbl}<div class="jsf-pv-file">Attach document: ${esc(f.label)}</div></div>`;
+        case 'photo':
+          return `<div class="jsf-pv full">${lbl}<div class="jsf-pv-file">Take or attach photos</div></div>`;
+        case 'form':
+          return `<div class="jsf-pv full">${lbl}<div class="jsf-pv-file">Complete form: ${esc(formTitle(f.options[0]) || 'form not found')}</div></div>`;
         default:
           return `<div class="jsf-pv">${lbl}<input class="jsf-input" type="text" disabled></div>`;
       }
@@ -386,7 +433,11 @@
           <div class="jsf-title"><span class="jsf-code">${esc(t.code || '—')}</span>${esc(t.name || '')}</div>
           <div class="jsf-sub">${esc(t.category || 'Uncategorised')}</div>
         </div>
-        ${state.editing || state.loadingFields ? '' : `<button class="btn-primary jsf-sm" data-act="add" ${state.busy ? 'disabled' : ''}>Add field</button>`}
+        ${state.editing || state.loadingFields ? '' : `<div class="jsf-addbar">
+          <button class="btn-primary jsf-sm" data-act="add" data-type="number" ${state.busy ? 'disabled' : ''}>Add field</button>
+          <button class="btn-secondary jsf-sm" data-act="add" data-type="photo" ${state.busy ? 'disabled' : ''}>Add photo request</button>
+          <button class="btn-secondary jsf-sm" data-act="add" data-type="form" ${state.busy ? 'disabled' : ''}>Add form</button>
+        </div>`}
       </div>
       ${msg}${body}`;
   }
@@ -420,14 +471,16 @@
     state.loading = true; state.loadError = ''; draw();
     try {
       const sb = await getClient();
-      const [jt, cnt] = await Promise.all([
+      const [jt, cnt, fm] = await Promise.all([
         sb.from('job_types').select('id,category,code,name,sort_order,active').order('sort_order', { ascending: true }),
-        sb.from(TABLE).select('job_type_id').eq('active', true)
+        sb.from(TABLE).select('job_type_id').eq('active', true),
+        sb.from('ims_documents').select('slug,title,section,is_form,is_active').eq('is_form', true).order('title', { ascending: true })
       ]);
       if (tk !== token) return;
       if (jt.error) throw jt.error;
       state.jobTypes = (jt.data || []).filter(t => t.active !== false);
       state.counts = {};
+      state.forms = fm.error ? [] : (fm.data || []).filter(f => f.is_active !== false && f.slug);
       if (!cnt.error) (cnt.data || []).forEach(r => { state.counts[r.job_type_id] = (state.counts[r.job_type_id] || 0) + 1; });
       state.loading = false;
       draw();
@@ -476,6 +529,10 @@
       ? [...new Set(d.options.split(/\r?\n/).map(s => s.trim()).filter(Boolean))]
       : [];
     if (type === 'select' && !opts.length) return flash('Add at least one option for the dropdown.', 'error');
+    if (type === 'form') {
+      if (!d.form_slug) return flash('Select the form workers need to complete.', 'error');
+      opts.push(d.form_slug);
+    }
     const unit = type === 'number' ? (d.unit.trim() || null) : null;
 
     state.busy = true; state.msg = null; draw();
@@ -597,7 +654,7 @@
         });
         break;
       case 'add':
-        state.editing = 'new'; state.draft = emptyDraft(); state.msg = null;
+        state.editing = 'new'; state.draft = emptyDraft(btn.dataset.type); state.msg = null;
         draw();
         root.querySelector('[data-f="label"]')?.focus();
         break;
@@ -605,7 +662,7 @@
         const f = state.fields.find(x => sameId(x.id, id));
         if (!f) return;
         state.editing = f.id;
-        state.draft = { label: f.label || '', field_type: f.field_type || 'text', unit: f.unit || '', options: f.options.join('\n'), required: f.required, field_key: f.field_key };
+        state.draft = { label: f.label || '', field_type: f.field_type || 'text', unit: f.unit || '', options: f.field_type === 'select' ? f.options.join('\n') : '', form_slug: f.field_type === 'form' ? (f.options[0] || '') : '', required: f.required, field_key: f.field_key };
         state.msg = null;
         draw();
         root.querySelector('[data-f="label"]')?.focus();
@@ -646,6 +703,16 @@
     const f = el.dataset.f;
     if (!f || !state.draft) return;
     if (f === 'required') { state.draft.required = el.checked; return; }
+    if (f === 'form_slug') {
+      state.draft.form_slug = el.value;
+      const t = formTitle(el.value);
+      if (t && !state.draft.label.trim()) {
+        state.draft.label = t;
+        draw();
+        root.querySelector('[data-f="form_slug"]')?.focus();
+      }
+      return;
+    }
     if (f === 'field_type') {
       state.draft.field_type = el.value;
       draw();
