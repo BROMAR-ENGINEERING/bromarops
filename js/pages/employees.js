@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.12
+   V1.13
    Supabase tables: employees, employee_certs, cert_types,
                     employee_cert_history, employee_cert_images,
                     inductions, employee_skills
@@ -10,7 +10,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.12',
+  version: 'V1.13',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -369,26 +369,14 @@ window.BromarPages.employees = {
     }
 
     /* ── STATS ── */
-    async function renderStats() {
-      const pool = allEmployees.filter(e => e.is_active !== false);
-      /* fetch summary counts from employee_certs */
-      let exp = 0, expiring = 0, ok = 0;
-      await Promise.all(pool.map(async emp => {
-        const ecs = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=expiry_date`);
-        const s = empCertSummary(ecs);
-        if (s.expired > 0) exp++;
-        else if (s.expiring > 0) expiring++;
-        else ok++;
-      }));
+    function renderStats() {
+      const pool   = allEmployees.filter(e => e.is_active !== false);
       const former = allEmployees.filter(e => e.is_active === false).length;
       const el = document.getElementById('emp-stats');
       if (!el) return;
       el.innerHTML = `
         <span class="emp-stat-chip badge-ok">${pool.length} Active</span>
-        ${exp      ? `<span class="emp-stat-chip badge-expired">${exp} with expired certs</span>` : ''}
-        ${expiring ? `<span class="emp-stat-chip badge-expiring">${expiring} expiring soon</span>` : ''}
-        ${ok       ? `<span class="emp-stat-chip badge-ok">${ok} all clear</span>` : ''}
-        ${former   ? `<span class="emp-stat-chip badge-inactive">${former} former</span>` : ''}`;
+        ${former ? `<span class="emp-stat-chip badge-inactive">${former} former</span>` : ''}`;
     }
 
     /* ── GRID ── */
@@ -426,7 +414,7 @@ window.BromarPages.employees = {
           </div>`;
       }).join('');
 
-      /* load profile photos and cert badges async */
+      /* load profile photos async */
       grid.querySelectorAll('[data-avatar-url]').forEach(el => {
         imgExists(el.dataset.avatarUrl).then(exists => {
           if (!exists) return;
@@ -436,25 +424,26 @@ window.BromarPages.employees = {
           el.replaceWith(img);
         });
       });
-      list.filter(e => e.is_active !== false).forEach(emp => {
-        sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=expiry_date`).then(ecs => {
+      /* load cert badges — single bulk fetch */
+      sbFetch('employee_certs?select=employee_name,expiry_date').then(allCerts => {
+        list.filter(e => e.is_active !== false).forEach(emp => {
+          const ecs = allCerts.filter(ec => ec.employee_name === emp.full_name);
           const { expired, expiring } = empCertSummary(ecs);
           const el = document.getElementById(`badges-${emp.full_name.replace(/\s/g,'_')}`);
           if (!el) return;
           el.innerHTML = [
-            expired  > 0                       ? `<span class="emp-badge badge-expired">${expired} Expired</span>`   : '',
-            expiring > 0                       ? `<span class="emp-badge badge-expiring">${expiring} Expiring</span>` : '',
-            !expired && !expiring              ? `<span class="emp-badge badge-ok">All Clear</span>`                : '',
+            expired  > 0          ? `<span class="emp-badge badge-expired">${expired} Expired</span>`   : '',
+            expiring > 0          ? `<span class="emp-badge badge-expiring">${expiring} Expiring</span>` : '',
+            !expired && !expiring ? `<span class="emp-badge badge-ok">All Clear</span>`                 : '',
           ].join('');
-          /* apply filter */
           if (filterMode !== 'all') {
             const card = el.closest('.emp-card');
             if (!card) return;
             const show = (filterMode==='expired' && expired>0) || (filterMode==='expiring' && expiring>0 && !expired) || (filterMode==='valid' && !expired && !expiring);
             card.style.display = show ? '' : 'none';
           }
-        }).catch(() => {});
-      });
+        });
+      }).catch(() => {});
 
       grid.querySelectorAll('.emp-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -566,9 +555,14 @@ window.BromarPages.employees = {
     async function loadCerts(emp, overlay) {
       const tab = overlay.querySelector('#tab-certs');
       try {
-        const empCerts = await sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=*`);
+        const [empCerts, freshTypes] = await Promise.all([
+          sbFetch(`employee_certs?employee_name=eq.${encodeURIComponent(emp.full_name)}&select=*`),
+          sbFetch('cert_types?select=*&order=group_name.asc,sort_order.asc'),
+        ]);
+        /* always keep module-level certTypes in sync */
+        certTypes = freshTypes;
         renderCertsTab(emp, empCerts, tab, overlay);
-      } catch { tab.innerHTML = `<div class="emp-empty">Failed to load certifications.</div>`; }
+      } catch(err) { tab.innerHTML = `<div class="emp-empty">Failed to load certifications: ${err.message}</div>`; }
     }
 
     function renderCertsTab(emp, empCerts, tab, overlay) {
