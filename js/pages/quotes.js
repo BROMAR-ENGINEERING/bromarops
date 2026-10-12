@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.77
+   V1.78
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.77',
+  version: 'V1.78',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -20,6 +20,39 @@ window.BromarPages.quotes = {
     /* Resolve the Supabase client lazily — never capture it at
        render time, it may not exist yet. Waits briefly if needed. */
     function sb() { return window.supabaseClient || null; }
+    /* Who the logged-in user is, for review stamps. */
+    function currentUserName() {
+      const a = window.BromarAuth;
+      return (a && a.employee && a.employee() && a.employee().name)
+        || (a && a.user && a.user() && a.user().email)
+        || 'Unknown user';
+    }
+    /* Review state: '', 'in_review', 'approved', 'changes'. */
+    function reviewState(q) { return q.reviewStatus || ''; }
+    function needsReview(q) { return q.docType === 'quote'; }
+    function canPublish(q) { return !needsReview(q) || reviewState(q) === 'approved'; }
+    /* Banner shown in the editor reflecting review state. */
+    function reviewBanner(q) {
+      if (!needsReview(q)) return '';
+      const st = reviewState(q);
+      if (st === 'in_review') return `<div class="review-banner rb-review">In review${q.reviewRequestedBy ? ' — requested by ' + escape(q.reviewRequestedBy) : ''}. Approve or request changes using the buttons top-right.</div>`;
+      if (st === 'approved') return `<div class="review-banner rb-ok">Reviewed &amp; approved${q.reviewedBy ? ' by ' + escape(q.reviewedBy) : ''}. Ready to publish.</div>`;
+      if (st === 'changes') return `<div class="review-banner rb-changes"><strong>Changes requested${q.reviewedBy ? ' by ' + escape(q.reviewedBy) : ''}.</strong>${q.reviewNote ? ' ' + escape(q.reviewNote) : ''} Make your edits, then send for review again.</div>`;
+      return '';
+    }
+    /* Review buttons shown in the editor for an unpublished quote. */
+    function reviewButtons(q) {
+      if (!needsReview(q)) return '';
+      const st = reviewState(q);
+      if (st === 'in_review') {
+        return `<button class="btn-secondary" id="review-approve">Approve</button><button class="btn-secondary" id="review-changes">Request changes</button>`;
+      }
+      if (st === 'approved') {
+        return `<span class="review-chip review-ok" title="Approved by ${escape(q.reviewedBy || '')}">Reviewed ✓</span>`;
+      }
+      // draft or changes-requested
+      return `<button class="btn-secondary" id="review-send">Send for review</button>`;
+    }
     async function waitForSupabase(timeoutMs = 8000) {
       const started = Date.now();
       while (!window.supabaseClient) {
@@ -144,6 +177,11 @@ window.BromarPages.quotes = {
         acceptedJobNumber: r.accepted_job_number || '',
         acceptedAt: r.accepted_at || null,
         editedAfterPublish: !!r.edited_after_publish,
+        reviewStatus: r.review_status || '',
+        reviewRequestedBy: r.review_requested_by || '',
+        reviewedBy: r.reviewed_by || '',
+        reviewedAt: r.reviewed_at || null,
+        reviewNote: r.review_note || '',
         sections: typeof r.sections === 'string' ? JSON.parse(r.sections) : (r.sections || []),
         convertedToQuoteId: r.converted_to_quote_id || undefined,
         convertedToQuoteNumber: r.converted_to_quote_number || undefined,
@@ -179,6 +217,13 @@ window.BromarPages.quotes = {
           accepted_job_number: q.acceptedJobNumber || null,
           accepted_at: q.acceptedAt || null,
           edited_after_publish: !!q.editedAfterPublish
+        }),
+        ...(reviewColsMissing ? {} : {
+          review_status: q.reviewStatus || null,
+          review_requested_by: q.reviewRequestedBy || null,
+          reviewed_by: q.reviewedBy || null,
+          reviewed_at: q.reviewedAt || null,
+          review_note: q.reviewNote || null
         }),
         sections: q.sections || [],
         converted_to_quote_id: q.convertedToQuoteId || null,
@@ -266,6 +311,7 @@ window.BromarPages.quotes = {
        saves keep working; validity then lives only in memory. */
     let validDaysColumnMissing = false;
     let acceptColsMissing = false;
+    let reviewColsMissing = false;
 
     async function saveQuoteNow(q) {
       const supabase = sb();
@@ -283,6 +329,8 @@ window.BromarPages.quotes = {
           console.warn('valid_days column missing — saving without it. SQL: alter table quotes add column if not exists valid_days integer default 30;'); }
         if (!acceptColsMissing && /(accepted_job_number|accepted_at|edited_after_publish)/.test(msg)) { acceptColsMissing = true; retry = true;
           console.warn('accept columns missing — saving without them. SQL: alter table quotes add column if not exists accepted_job_number text; alter table quotes add column if not exists accepted_at timestamptz; alter table quotes add column if not exists edited_after_publish boolean default false;'); }
+        if (!reviewColsMissing && /(review_status|review_requested_by|reviewed_by|reviewed_at|review_note)/.test(msg)) { reviewColsMissing = true; retry = true;
+          console.warn('review columns missing — saving without them. SQL: alter table quotes add column if not exists review_status text; alter table quotes add column if not exists review_requested_by text; alter table quotes add column if not exists reviewed_by text; alter table quotes add column if not exists reviewed_at timestamptz; alter table quotes add column if not exists review_note text;'); }
         if (retry) {
           try {
             const { data, error } = await supabase.from('quotes').upsert(quoteToRow(q)).select();
@@ -873,6 +921,9 @@ window.BromarPages.quotes = {
               ${q.acceptedJobNumber ? `<span class="row-badge badge-job" title="Job number">JOB ${escape(q.acceptedJobNumber)}</span>` : ''}
               ${q.nickname ? `<span class="row-nick">${escape(q.nickname)}</span>` : ''}
               ${isEstimate ? '<span class="row-badge badge-est">Estimate</span>' : ''}
+              ${!isPublished && q.reviewStatus === 'in_review' ? '<span class="row-badge badge-review">In Review</span>' : ''}
+              ${!isPublished && q.reviewStatus === 'changes' ? '<span class="row-badge badge-changes">Changes</span>' : ''}
+              ${!isPublished && q.reviewStatus === 'approved' ? '<span class="row-badge badge-approved">Reviewed</span>' : ''}
               <span class="row-badge badge-${color}">${statusLabel(q)}</span>
               ${convertedBadge}
             </div>
@@ -1126,7 +1177,11 @@ window.BromarPages.quotes = {
           <div class="editor-actions">
             <span class="save-indicator" id="save-indicator">Saved</span>
             <button class="btn-secondary" id="preview-btn">Preview</button>
-            ${isPublished ? `<button class="btn-secondary" id="unpublish-btn">Unpublish</button><button class="btn-secondary" id="email-btn">Email</button>${q.docType === 'quote' && q.status !== 'converted' ? `<button class="btn-primary" id="approve-btn">${q.status === 'accepted' ? 'Job ' + escape(q.acceptedJobNumber || '') : 'Approve → Job'}</button>` : ''}` : `<button class="btn-primary" id="publish-btn">Publish</button>`}
+            ${isPublished
+              ? `<button class="btn-secondary" id="unpublish-btn">Unpublish</button><button class="btn-secondary" id="email-btn">Email</button>${q.docType === 'quote' && q.status !== 'converted' ? `<button class="btn-primary" id="approve-btn">${q.status === 'accepted' ? 'Job ' + escape(q.acceptedJobNumber || '') : 'Approve → Job'}</button>` : ''}`
+              : `${reviewButtons(q)}${canPublish(q)
+                  ? `<button class="btn-primary" id="publish-btn">Publish</button>`
+                  : `<button class="btn-primary" id="publish-btn" disabled title="Needs review approval before publishing">Publish</button>`}`}
           </div>
         </div>
         <div class="builder-layout">
@@ -1146,6 +1201,7 @@ window.BromarPages.quotes = {
             </div>
           </aside>
           <div class="card builder-main" id="builder-main">
+            ${reviewBanner(q)}
             ${renderActiveSection(q)}
           </div>
         </div>
@@ -1201,6 +1257,7 @@ window.BromarPages.quotes = {
       get('preview-btn').addEventListener('click', async () => { await flushSaves(); openPreview(q.id); });
       const pubBtn = get('publish-btn');
       if (pubBtn) pubBtn.addEventListener('click', async () => {
+        if (!canPublish(q)) { toast('This quote needs review approval before publishing. You can still Export the PDF.'); return; }
         const orphans = orphanCostings(q);
         const wantSummary = needsSummary(q);
         if (orphans.length || wantSummary) {
@@ -1220,6 +1277,24 @@ window.BromarPages.quotes = {
         q.publishedAt = todayISO();
         if (q.status === 'draft' || q.status === 'allocated') q.status = 'sent';
         await saveQuoteNow(q); toast(`${displayNumber(q)} published.`); renderEditor();
+      });
+      const sendRev = get('review-send');
+      if (sendRev) sendRev.addEventListener('click', async () => {
+        q.reviewStatus = 'in_review'; q.reviewRequestedBy = currentUserName(); q.reviewNote = '';
+        if (q.status === 'draft') q.status = 'allocated';
+        await saveQuoteNow(q); toast('Sent for review.'); renderEditor();
+      });
+      const revApprove = get('review-approve');
+      if (revApprove) revApprove.addEventListener('click', async () => {
+        q.reviewStatus = 'approved'; q.reviewedBy = currentUserName(); q.reviewedAt = new Date().toISOString(); q.reviewNote = '';
+        await saveQuoteNow(q); toast('Approved — ready to publish.'); renderEditor();
+      });
+      const revChanges = get('review-changes');
+      if (revChanges) revChanges.addEventListener('click', async () => {
+        const note = prompt('What changes are needed? (optional note back to the preparer)') || '';
+        q.reviewStatus = 'changes'; q.reviewedBy = currentUserName(); q.reviewedAt = new Date().toISOString(); q.reviewNote = note.trim();
+        if (q.status === 'allocated') q.status = 'draft';
+        await saveQuoteNow(q); toast('Changes requested.'); renderEditor();
       });
       const approveBtn = get('approve-btn');
       if (approveBtn) approveBtn.addEventListener('click', () => openAcceptDialog(q.id));
@@ -3367,6 +3442,9 @@ ${q.preparedBy || COMPANY.name}`;
         .quote-modal-sm { max-width: 460px; }
         .row-nick { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
         .row-badge { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .badge-review { background: rgba(234,88,12,0.15); color: var(--accent); }
+        .badge-changes { background: var(--error-bg); color: var(--error); }
+        .badge-approved { background: var(--success-bg); color: var(--success); }
         .badge-green { background: var(--success-bg); color: var(--success); }
         .badge-amber { background: #fef3c7; color: #92400e; }
         .badge-red   { background: var(--error-bg); color: var(--error); }
@@ -3396,6 +3474,14 @@ ${q.preparedBy || COMPANY.name}`;
         [data-theme="dark"] .pub-tag.pub-progress { background: rgba(220,38,38,0.15); color: #f87171; }
         [data-theme="dark"] .pub-tag.pub-est { background: #fff; color: #1a1a1e; }
         .editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .review-banner { padding: 0.7rem 0.95rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.88rem; border: 1px solid; }
+        .rb-review { background: rgba(234,88,12,0.08); border-color: rgba(234,88,12,0.35); color: var(--text-primary); }
+        .rb-ok { background: var(--success-bg); border-color: var(--success); color: var(--success); }
+        .rb-changes { background: var(--error-bg); border-color: var(--error); color: var(--text-primary); }
+        .review-chip { font-size: 0.8rem; font-weight: 700; padding: 0.4rem 0.7rem; border-radius: var(--radius-sm); }
+        .review-ok { background: var(--success-bg); color: var(--success); }
+        .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-primary:disabled:hover { transform: none; box-shadow: none; }
         .save-indicator { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); padding: 0.4rem 0.7rem; background: var(--card-hover); border-radius: 999px; transition: all 0.3s ease; opacity: 0.7; }
         .save-indicator.saving { color: var(--accent); opacity: 1; }
         .save-indicator.saved { color: var(--success); opacity: 1; }
