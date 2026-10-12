@@ -6,7 +6,7 @@
    ============================================================ */
 (function () {
   const PAGE_ID  = 'clients';
-  const VERSION  = 'V1.04';
+  const VERSION  = 'V1.05';
 
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
@@ -45,6 +45,7 @@
   const state = {
     clients: [],
     sites: [],
+    contacts: [],
     search: '',
     filter: 'all',          // all | active | inactive
     activeId: null,         // open client in panel
@@ -53,6 +54,7 @@
 
   let root = null;
   let onKey = null;
+  let pendingSiteId = null;   // site a contact modal is attached to
 
   /* ── HELPERS ── */
   const esc = v => (v == null ? '' : String(v).replace(/[&<>"']/g, c =>
@@ -61,6 +63,7 @@
   const nz  = v => { v = (v || '').trim(); return v === '' ? null : v; };
   const byId = id => document.getElementById(id);
   const sitesFor = cid => state.sites.filter(s => s.client_id === cid);
+  const contactsFor = sid => state.contacts.filter(c => c.site_id === sid);
 
   function toast(msg, kind = 'ok') {
     const t = byId('cl-toast');
@@ -102,6 +105,12 @@
       if (error) throw error;
       state.sites = data || [];
     } catch (e) { console.warn('sites load', e); state.sites = []; }
+
+    try {
+      const { data, error } = await sb.from('site_contacts').select('*').order('name', { ascending: true });
+      if (error) throw error;
+      state.contacts = data || [];
+    } catch (e) { console.warn('contacts load', e); state.contacts = []; }
 
     state.loading = false;
     renderBody();
@@ -245,6 +254,7 @@
         </div>
         ${sites.length ? sites.map(s => {
           const sAddr = [s.address, s.city, s.region, s.postcode].filter(Boolean).join(', ');
+          const cts = contactsFor(s.id);
           return `
             <div class="cl-site">
               <div class="cl-site-top">
@@ -254,11 +264,26 @@
                   <button class="cl-mini cl-danger" data-action="del-site" data-id="${s.id}">Delete</button>
                 </span>
               </div>
-              ${s.contact_name ? `<div class="cl-line">${esc(s.contact_name)}</div>` : ''}
-              ${s.phone ? `<div class="cl-line muted">${esc(s.phone)}</div>` : ''}
-              ${s.email ? `<div class="cl-line muted">${esc(s.email)}</div>` : ''}
               ${sAddr ? `<div class="cl-line muted">${esc(sAddr)}</div>` : ''}
               ${s.notes ? `<div class="cl-line muted">${esc(s.notes)}</div>` : ''}
+
+              <div class="cl-contacts-head">
+                <span>Contacts</span>
+                <button class="cl-mini" data-action="add-contact" data-site="${s.id}">+ Add</button>
+              </div>
+              ${cts.length ? cts.map(ct => `
+                <div class="cl-contact">
+                  <div class="cl-contact-main">
+                    <span class="cl-contact-name">${esc(ct.name)}${ct.is_primary ? ' <span class="cl-badge on">Primary</span>' : ''}</span>
+                    ${ct.role ? `<span class="cl-contact-role">${esc(ct.role)}</span>` : ''}
+                    ${ct.phone ? `<span class="cl-line muted">${esc(ct.phone)}</span>` : ''}
+                    ${ct.email ? `<span class="cl-line muted">${esc(ct.email)}</span>` : ''}
+                  </div>
+                  <span class="cl-contact-actions">
+                    <button class="cl-mini" data-action="edit-contact" data-id="${ct.id}" data-site="${s.id}">Edit</button>
+                    <button class="cl-mini cl-danger" data-action="del-contact" data-id="${ct.id}">Delete</button>
+                  </span>
+                </div>`).join('') : `<div class="cl-empty sm">No contacts yet.</div>`}
             </div>`;
         }).join('') : `<div class="cl-empty sm">No sites added yet.</div>`}
       </div>
@@ -390,18 +415,16 @@
         <div class="cl-modal-body">
           <div class="cl-form-grid">
             ${field('sf-name', 'Site name *', s.site_name, { wide: true })}
-            ${field('sf-contact', 'Contact name', s.contact_name)}
-            ${field('sf-phone', 'Phone', s.phone)}
-            ${field('sf-email', 'Email', s.email, { type: 'email' })}
-            ${field('sf-postcode', 'Postcode', s.postcode)}
             ${field('sf-address', 'Address', s.address, { wide: true })}
             ${field('sf-city', 'City', s.city)}
             ${field('sf-region', 'State / Region', s.region)}
+            ${field('sf-postcode', 'Postcode', s.postcode)}
             ${field('sf-notes', 'Notes', s.notes, { type: 'textarea', wide: true })}
             <label class="cl-check wide">
               <input id="sf-active" type="checkbox" ${(s.is_active ?? true) ? 'checked' : ''}>
               <span>Active site</span></label>
           </div>
+          <div class="cl-hint">Add people to this site from the Contacts list after saving.</div>
         </div>
         <div class="cl-modal-foot">
           <button class="btn-secondary" data-action="close-modal">Cancel</button>
@@ -417,9 +440,6 @@
     const payload = {
       client_id: state.activeId,
       site_name,
-      contact_name: nz(byId('sf-contact').value),
-      phone: nz(byId('sf-phone').value),
-      email: nz(byId('sf-email').value),
       address: nz(byId('sf-address').value),
       city: nz(byId('sf-city').value),
       region: nz(byId('sf-region').value),
@@ -452,6 +472,83 @@
     } catch (e) { console.warn(e); toast('Delete failed', 'err'); }
   }
 
+  function openContactModal(cid, siteId) {
+    const c = cid ? state.contacts.find(x => x.id === cid) : {};
+    pendingSiteId = siteId || c.site_id;
+    byId('cl-modal').innerHTML = `
+      <div class="cl-overlay show" data-action="close-modal"></div>
+      <div class="cl-modal">
+        <div class="cl-modal-head">
+          <span>${cid ? 'Edit Contact' : 'New Contact'}</span>
+          <button class="cl-x" data-action="close-modal" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="cl-modal-body">
+          <div class="cl-form-grid">
+            ${field('ct-name', 'Name *', c.name)}
+            ${field('ct-role', 'Role / position', c.role)}
+            ${field('ct-phone', 'Phone', c.phone)}
+            ${field('ct-email', 'Email', c.email, { type: 'email' })}
+            ${field('ct-notes', 'Notes', c.notes, { type: 'textarea', wide: true })}
+            <label class="cl-check wide">
+              <input id="ct-primary" type="checkbox" ${c.is_primary ? 'checked' : ''}>
+              <span>Primary contact for this site</span></label>
+          </div>
+        </div>
+        <div class="cl-modal-foot">
+          <button class="btn-secondary" data-action="close-modal">Cancel</button>
+          <button class="btn-primary" data-action="save-contact" data-id="${cid || ''}">Save</button>
+        </div>
+      </div>`;
+    setTimeout(() => byId('ct-name')?.focus(), 30);
+  }
+
+  async function saveContact(cid) {
+    const name = byId('ct-name').value.trim();
+    if (!name) { toast('Name is required', 'err'); return; }
+    const is_primary = byId('ct-primary').checked;
+    const payload = {
+      site_id: pendingSiteId,
+      name,
+      role: nz(byId('ct-role').value),
+      phone: nz(byId('ct-phone').value),
+      email: nz(byId('ct-email').value),
+      notes: nz(byId('ct-notes').value),
+      is_primary
+    };
+    const sb = db();
+    try {
+      let savedId = cid;
+      if (cid) {
+        const { error } = await sb.from('site_contacts').update(payload).eq('id', cid);
+        if (error) throw error;
+      } else {
+        const { data, error } = await sb.from('site_contacts').insert(payload).select().single();
+        if (error) throw error;
+        savedId = data.id;
+      }
+      // only one primary per site
+      if (is_primary && savedId) {
+        await sb.from('site_contacts').update({ is_primary: false })
+          .eq('site_id', pendingSiteId).neq('id', savedId);
+      }
+      closeModal();
+      toast('Contact saved');
+      await loadData();
+    } catch (e) { console.warn(e); toast('Save failed — is the site_contacts table set up?', 'err'); }
+  }
+
+  async function deleteContact(cid) {
+    if (!confirm('Delete this contact?')) return;
+    try {
+      const { error } = await db().from('site_contacts').delete().eq('id', cid);
+      if (error) throw error;
+      toast('Contact deleted');
+      await loadData();
+    } catch (e) { console.warn(e); toast('Delete failed', 'err'); }
+  }
+
   function closeModal() { const m = byId('cl-modal'); if (m) m.innerHTML = ''; }
 
   /* ── EVENTS ── */
@@ -460,6 +557,7 @@
     if (!el) return;
     const a = el.dataset.action;
     const id = el.dataset.id;
+    const site = el.dataset.site;
     switch (a) {
       case 'filter':
         state.filter = el.dataset.filter;
@@ -475,8 +573,12 @@
       case 'add-site':     openSiteModal(null); break;
       case 'edit-site':    openSiteModal(id); break;
       case 'del-site':     deleteSite(id); break;
+      case 'add-contact':  openContactModal(null, site); break;
+      case 'edit-contact': openContactModal(id, site); break;
+      case 'del-contact':  deleteContact(id); break;
       case 'save-client':  saveClient(id || null); break;
       case 'save-site':    saveSite(id || null); break;
+      case 'save-contact': saveContact(id || null); break;
       case 'close-modal':  closeModal(); break;
     }
   }
@@ -574,6 +676,17 @@
     .cl-mini:hover{color:var(--accent);border-color:var(--accent)}
     .cl-mini.cl-danger{color:var(--error)}
     .cl-mini.cl-danger:hover{border-color:var(--error);background:var(--error-bg)}
+
+    .cl-contacts-head{display:flex;justify-content:space-between;align-items:center;margin:.75rem 0 .5rem;
+      padding-top:.6rem;border-top:1px solid var(--border);font-size:.8rem;font-weight:600;color:var(--text-secondary)}
+    .cl-contact{display:flex;justify-content:space-between;align-items:flex-start;gap:.6rem;padding:.5rem 0;
+      border-bottom:1px solid var(--border)}
+    .cl-contact:last-child{border-bottom:none}
+    .cl-contact-main{display:flex;flex-direction:column;gap:1px;min-width:0}
+    .cl-contact-name{font-weight:600;font-size:.88rem}
+    .cl-contact-role{font-size:.78rem;color:var(--text-secondary)}
+    .cl-contact-actions{display:flex;gap:.35rem;flex-shrink:0}
+    .cl-hint{margin-top:.9rem;font-size:.8rem;color:var(--text-secondary);font-style:italic}
 
     .cl-modal-wrap:empty{display:none}
     .cl-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:81;width:640px;max-width:94vw;
