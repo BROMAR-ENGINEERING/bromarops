@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED STYLESHEET
-   V1.06
+   V1.08
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -146,6 +146,39 @@ input, select, textarea, button {
   font-weight: 600;
 }
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-label { flex: 1; min-width: 0; }
+
+/* ── NAV BADGES (red / yellow count pills on sidebar items) ── */
+.nav-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.nav-pill {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: 'Outfit', sans-serif;
+  line-height: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  animation: badge-pop 0.3s ease-out;
+}
+/* Fixed hues so white text stays legible in both themes
+   (var(--error) goes pale in dark mode, so it's not used here). */
+.nav-pill.red    { background: #dc2626; box-shadow: 0 2px 6px rgba(220, 38, 38, 0.35); }
+.nav-pill.yellow { background: #d97706; box-shadow: 0 2px 6px rgba(217, 119, 6, 0.30); }
+
+@keyframes badge-pop {
+  0%   { transform: scale(0); opacity: 0; }
+  70%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
 
 /* ── SIDEBAR USER ── */
 .sidebar-user {
@@ -350,7 +383,6 @@ input, select, textarea, button {
 }
 
 /* ── REVISION NUMBER ── */
-/* Pushed well in from the right edge so no scrollbar covers it. */
 .revision-number {
   position: fixed;
   bottom: calc(10px + env(safe-area-inset-bottom));
