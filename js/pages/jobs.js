@@ -1,13 +1,14 @@
 /* ============================================================
-   Jobs — V1.14 — 2026-09-08
+   Jobs — V1.15 — 2026-10-12
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (per-job rollup + PDF).
+   Job types are loaded live from the job_types table (no hardcoded list).
    Registers on window.BromarPages.jobs
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = {
   title: 'Jobs',
-  version: 'V1.14',
+  version: 'V1.15',
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
@@ -49,13 +50,8 @@ window.BromarPages.jobs = {
     }
 
     /* ── constants ── */
-    const JOB_TYPES = {
-      BM: { group: 'Maintenance',   types: ['Maintenance', 'Shift Coverage'] },
-      BS: { group: 'Service',       types: ['After-Hours Callout', 'Breakdown', 'Small Job'] },
-      BC: { group: 'Construction',  types: ['Temporary Wiring', 'General Construction', 'Test & Tag', 'RCD Testing'] },
-      BA: { group: 'Automation',    types: ['Programming', 'CAD Drawings'] },
-      BE: { group: 'Electrical',    types: ['General Electrical'] }
-    };
+    // Prefix dimension for the register's filter tiles (job_number_register.prefix check set).
+    // Group labels are derived live from job_types.category (fallback to the code itself).
     const PREFIX_ORDER = ['BM', 'BS', 'BC', 'BA', 'BE'];
     const STATUSES = ['active', 'completed', 'on_hold', 'cancelled'];
     const STATUS_META = {
@@ -71,8 +67,10 @@ window.BromarPages.jobs = {
     let editing = null;
     let activePrefix = '';
     let activeTab = 'register';
-    let ovJob = null;            // selected job object for overview (null = none)
-    let ovData = null;           // last-loaded overview data (for PDF)
+    let ovJob = null;
+    let ovData = null;
+    let JOB_TYPES_CACHE = null;   // rows from job_types (active only)
+    const prefixGroups = {};      // code -> category (for register tile labels)
     const docListeners = [];
     const addDocListener = (type, fn) => { document.addEventListener(type, fn); docListeners.push([type, fn]); };
     this._docListeners = docListeners;
@@ -95,7 +93,40 @@ window.BromarPages.jobs = {
       if (v === 'this_month') return thisMonth();
       if (v === 'last_month') return lastMonth();
       if (v === 'all') return ['', ''];
-      return null; // custom
+      return null;
+    }
+
+    /* ── job types (live lookup) ── */
+    async function fetchJobTypes() {
+      if (JOB_TYPES_CACHE) return JOB_TYPES_CACHE;
+      const { data, error } = await sb.from('job_types')
+        .select('id, category, code, name, sort_order, active')
+        .order('code', { ascending: true }).order('sort_order', { ascending: true });
+      if (error) throw error;
+      const rows = (data || []).filter(r => r.active !== false);
+      rows.forEach(r => { if (r.code && !prefixGroups[r.code]) prefixGroups[r.code] = r.category || r.code; });
+      JOB_TYPES_CACHE = rows;
+      return rows;
+    }
+    function buildJobTypeOptgroups(rows) {
+      const groups = {}, order = [];
+      rows.forEach(r => { const key = r.category || 'Other'; if (!groups[key]) { groups[key] = []; order.push(key); } groups[key].push(r); });
+      return order.map(cat => {
+        const items = groups[cat]; const code = items[0]?.code || '';
+        return `<optgroup label="${esc(cat)}${code ? ' — ' + esc(code) : ''}">${items.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`;
+      }).join('');
+    }
+    async function populateEditJobType(selectEl, job) {
+      const cur = job.job_type || '';
+      try {
+        const rows = (await fetchJobTypes()).filter(r => !job.prefix || r.code === job.prefix);
+        const names = rows.map(r => r.name);
+        let opts = `<option value="">Not set</option>` + rows.map(r => `<option value="${esc(r.name)}" ${r.name === cur ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+        if (cur && !names.includes(cur)) opts += `<option value="${esc(cur)}" selected>${esc(cur)} — stored</option>`;
+        selectEl.innerHTML = opts;
+      } catch (err) {
+        selectEl.innerHTML = `<option value="${esc(cur)}" selected>${esc(cur || 'Not set')}</option>`;
+      }
     }
 
     /* ── shell ── */
@@ -166,7 +197,7 @@ window.BromarPages.jobs = {
         .jf input, .jf select, .jf textarea { width:100%; font-family:'Outfit',sans-serif; font-size:0.9rem; padding:0.65rem 0.8rem;
           border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary); }
         .jf textarea { resize:vertical; min-height:70px; }
-        .jf input:disabled { opacity:0.6; cursor:not-allowed; }
+        .jf input:disabled, .jf select:disabled { opacity:0.6; cursor:not-allowed; }
         .jf-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
         .jf-meta { font-size:0.75rem; color:var(--text-secondary); margin-top:0.25rem; }
         .drawer-actions { display:flex; gap:0.75rem; margin-top:1.5rem; padding-top:1.25rem; border-top:1px solid var(--border); }
@@ -428,10 +459,10 @@ window.BromarPages.jobs = {
       const tile = (code, grp, cnt, active, all) =>
         `<div class="prefix-tile ${active ? 'active' : ''}" data-prefix="${code}">
           <div class="code"${all ? ' style="color:var(--text-primary)"' : ''}>${code || 'ALL'}</div>
-          <div class="grp">${grp}</div><div class="cnt">${cnt}</div></div>`;
+          <div class="grp">${esc(grp)}</div><div class="cnt">${cnt}</div></div>`;
       $('prefixTiles').innerHTML =
         tile('', 'All', jobs.length, activePrefix === '', true) +
-        PREFIX_ORDER.map(p => tile(p, JOB_TYPES[p].group, counts[p], activePrefix === p, false)).join('');
+        PREFIX_ORDER.map(p => tile(p, prefixGroups[p] || p, counts[p], activePrefix === p, false)).join('');
     }
     function renderList() {
       if (!$('jobsList')) return;
@@ -477,19 +508,14 @@ window.BromarPages.jobs = {
     /* ══════════════ JOB OVERVIEW TAB (per job) ══════════════ */
     function renderOverview() {
       const body = $('jobsTabContent');
-      if (!ovJob) {
-        body.innerHTML = `<div class="jobs-empty">Choose a job (top right) to see its overview.</div>`;
-      } else {
-        loadJobOverview();
-      }
+      if (!ovJob) body.innerHTML = `<div class="jobs-empty">Choose a job (top right) to see its overview.</div>`;
+      else loadJobOverview();
     }
-
     function periodLabel() {
       const f = $('ovFrom').value, t = $('ovTo').value;
       if (!f && !t) return 'All time';
       return `${fmtDate(f)} – ${fmtDate(t)}`;
     }
-
     async function loadJobOverview() {
       const body = $('jobsTabContent'); if (!ovJob) { renderOverview(); return; }
       const from = $('ovFrom').value, to = $('ovTo').value;
@@ -690,10 +716,6 @@ window.BromarPages.jobs = {
       let curSiteId = job.site_id || null;
 
       $('drawerTitle').textContent = job.job_number;
-      const typeOpts = (JOB_TYPES[job.prefix]?.types || []);
-      const typeSelect = typeOpts.length
-        ? `<select id="ed_job_type">${['', ...typeOpts].map(t => `<option value="${esc(t)}" ${t === (job.job_type || '') ? 'selected' : ''}>${t || 'Not set'}</option>`).join('')}${(job.job_type && !typeOpts.includes(job.job_type)) ? `<option value="${esc(job.job_type)}" selected>${esc(job.job_type)}</option>` : ''}</select>`
-        : `<input type="text" id="ed_job_type" value="${esc(job.job_type || '')}">`;
       const linked = !!(job.client_id || job.site_id);
 
       $('drawerBody').innerHTML = `
@@ -715,7 +737,8 @@ window.BromarPages.jobs = {
           <div class="jf"><label>Site Address</label><input type="text" id="ed_site_address" value="${esc(job.site_address || '')}"></div>
         </div>
         <div class="jf-row">
-          <div class="jf"><label>Job Type</label>${typeSelect}</div>
+          <div class="jf"><label>Job Type</label>
+            <select id="ed_job_type"><option value="${esc(job.job_type || '')}" selected>${esc(job.job_type || 'Not set')}</option></select></div>
           <div class="jf"><label>Work Type</label><input type="text" id="ed_work_type" value="${esc(job.work_type || '')}"></div>
         </div>
         <div class="jf-row">
@@ -731,6 +754,8 @@ window.BromarPages.jobs = {
           <button class="btn-secondary" id="ed_cancel">Cancel</button>
           <button class="btn-primary" id="ed_save">Save Changes</button>
         </div>`;
+
+      populateEditJobType($('ed_job_type'), job);
 
       const chip = $('ed_link_chip');
       const setChip = (txt) => { chip.className = 'link-chip ok'; chip.textContent = txt; };
@@ -808,9 +833,6 @@ window.BromarPages.jobs = {
 
     /* ══════════════ NEW JOB ══════════════ */
     function openNewJob() {
-      const optgroups = Object.entries(JOB_TYPES).map(([prefix, g]) =>
-        `<optgroup label="${g.group} — ${prefix}">${g.types.map(t => `<option value="${prefix}|${esc(t)}">${esc(t)}</option>`).join('')}</optgroup>`).join('');
-
       $('drawerTitle').textContent = 'New Job';
       $('drawerBody').innerHTML = `
         <div class="nj-mode">
@@ -825,7 +847,7 @@ window.BromarPages.jobs = {
         <div class="jt-notice" id="nj_quote_selected"></div>
         <div class="jf-row">
           <div class="jf"><label>Job Type <span style="color:var(--accent)">*</span></label>
-            <select id="nj_type"><option value="">Select job type…</option>${optgroups}</select></div>
+            <select id="nj_type" disabled><option value="">Loading job types…</option></select></div>
           <div class="jf"><label>Job Number</label><input type="text" id="nj_preview" disabled placeholder="Select type first…"></div>
         </div>
         <div class="jf ac-wrap" id="nj_search_wrap">
@@ -849,9 +871,25 @@ window.BromarPages.jobs = {
 
       let sel = { clientId: null, clientName: '', siteId: null, siteName: '', siteAddress: '' };
       let prefix = '', jobLabel = '', quoteData = null;
+      const njTypeCache = {};
       const refreshCreateBtn = () => { $('nj_create').disabled = !(prefix && (sel.clientId || sel.siteId)); };
       const pickClient = (dd) => { sel = { clientId: dd.id, clientName: dd.name, siteId: null, siteName: '', siteAddress: '' }; loadSites(dd.id); showSelected(); };
       const pickSite = (dd) => { sel = { clientId: dd.clientId || null, clientName: dd.clientName || '', siteId: dd.id, siteName: dd.name, siteAddress: dd.address || '' }; $('nj_site_wrap').style.display = 'none'; showSelected(); };
+
+      // live job-type dropdown
+      (async () => {
+        const selEl = $('nj_type');
+        try {
+          const rows = await fetchJobTypes();
+          rows.forEach(r => njTypeCache[r.id] = r);
+          selEl.innerHTML = `<option value="">Select job type…</option>` + buildJobTypeOptgroups(rows);
+          selEl.disabled = false;
+        } catch (err) {
+          selEl.innerHTML = `<option value="">⚠ Could not load job types</option>`;
+          selEl.disabled = true;
+          toast('Could not load job types: ' + err.message, 6000);
+        }
+      })();
 
       $('drawerBody').querySelectorAll('.nj-mode-btn').forEach(b => b.addEventListener('click', function () {
         $('drawerBody').querySelectorAll('.nj-mode-btn').forEach(x => x.classList.remove('active'));
@@ -904,9 +942,10 @@ window.BromarPages.jobs = {
       }
 
       $('nj_type').addEventListener('change', async function () {
+        const row = njTypeCache[this.value];
         const preview = $('nj_preview');
-        if (!this.value) { prefix = ''; jobLabel = ''; preview.value = ''; refreshCreateBtn(); return; }
-        [prefix, jobLabel] = this.value.split('|');
+        if (!row) { prefix = ''; jobLabel = ''; preview.value = ''; refreshCreateBtn(); return; }
+        prefix = row.code; jobLabel = row.name;
         preview.value = 'Loading…';
         try {
           const { data, error } = await sb.from('job_number_counters').select('last_sequence').eq('prefix', prefix).single();
@@ -1039,8 +1078,14 @@ window.BromarPages.jobs = {
     /* ── boot ── */
     (async () => {
       $('jobsTabContent').innerHTML = `<div class="jobs-empty">Loading jobs…</div>`;
-      try { await loadJobs(); initOverviewControls(); showTab('register'); }
-      catch (err) { $('jobsTabContent').innerHTML = `<div class="jobs-empty">Could not load jobs: ${esc(err.message)}</div>`; }
+      try {
+        await loadJobs();
+        try { await fetchJobTypes(); } catch (e) { /* tiles fall back to raw code labels */ }
+        initOverviewControls();
+        showTab('register');
+      } catch (err) {
+        $('jobsTabContent').innerHTML = `<div class="jobs-empty">Could not load jobs: ${esc(err.message)}</div>`;
+      }
     })();
   },
 
