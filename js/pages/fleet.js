@@ -1,11 +1,11 @@
 /* ============================================================
    BROMAR OPS — FLEET MANAGEMENT
    File: js/pages/fleet.js
-   Version: V1.14
+   Version: V1.15
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.14';
+  const PAGE_VERSION = 'V1.15';
 
   /* ── SUPABASE ── */
   const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -488,5 +488,13 @@ window.BromarPages.fleet = (() => {
 
   function destroy(){selectedVehicle=null;activeTab='details';filterStatus='active';searchTerm='';audits=[];fuelTxns=[];costEntries=[];expandedAuditId=null;auditChecks={};faultMap={};lastAuditMap={};parsedUpload=null;document.getElementById('fleet-page-styles')?.remove();root=null;}
 
-  return{title:'Fleet Management',version:PAGE_VERSION,render,destroy,getBadgeCount:()=>{try{return getAttention().total;}catch{return 0;}}};
+  async function badge(){
+    try{
+      if(!vehicles.length){await ensureClient();await Promise.all([loadVehicles(),loadFaultMap()]);}
+      const a=getAttention();
+      return{red:a.overdue+a.repairs,yellow:a.approaching+a.auditDue};
+    }catch{return{red:0,yellow:0};}
+  }
+
+  return{title:'Fleet Management',version:PAGE_VERSION,render,destroy,badge};
 })();
