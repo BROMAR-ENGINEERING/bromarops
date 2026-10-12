@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — CLIENT PORTAL USER MANAGEMENT
-   V1.00 — js/pages/compliance.js
+   V1.02 — js/pages/compliance.js
    Manages client access requests, user accounts, sections.
    Uses window.supabaseClient (Ops auth.js).
    All writes via /.netlify/functions/client-user-admin.
@@ -8,14 +8,14 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.compliance = {
-  version: 'V1.01',
+  version: 'V1.02',
 
   _requests: [],
   _users: [],
   _isAdmin: false,
   _sessionToken: null,
   _view: 'requests', // requests | users
-  _FN: '/.netlify/functions/client-user-admin',
+  _FN: 'https://bromarhub.netlify.app/.netlify/functions/client-user-admin',
   _SECTIONS: [
     { key: 'emergency_lighting', label: 'Emergency Lighting' },
     { key: 'rcd_testing', label: 'RCD Testing' },
