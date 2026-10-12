@@ -2,13 +2,13 @@
    BROMAR OPS — CLIENT PORTAL USER MANAGEMENT
    V1.00 — js/pages/compliance.js
    Manages client access requests, user accounts, sections.
-   Uses window.sb (authenticated Supabase client from auth.js).
+   Uses window.supabaseClient (Ops auth.js).
    All writes via /.netlify/functions/client-user-admin.
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.compliance = {
-  version: 'V1.00',
+  version: 'V1.01',
 
   _requests: [],
   _users: [],
@@ -24,12 +24,12 @@ window.BromarAdmin.compliance = {
 
   async render(container) {
     /* Session guard */
-    if (!window.sb) {
+    if (!window.supabaseClient) {
       container.innerHTML = this._card('Client Portal', '<div class="admin-placeholder"><p>Sign in to manage client logins.</p></div>');
       return;
     }
 
-    const { data: { session } } = await window.sb.auth.getSession();
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) {
       container.innerHTML = this._card('Client Portal', '<div class="admin-placeholder"><p>Sign in to manage client logins.</p></div>');
       return;
@@ -37,7 +37,7 @@ window.BromarAdmin.compliance = {
     this._sessionToken = session.access_token;
 
     /* Admin guard */
-    const { data: emp } = await window.sb.from('employees').select('role').eq('email', session.user.email).maybeSingle();
+    const { data: emp } = await window.supabaseClient.from('employees').select('role').eq('email', session.user.email).maybeSingle();
     this._isAdmin = emp && emp.role === 'admin';
     if (!this._isAdmin) {
       container.innerHTML = this._card('Client Portal', '<div class="admin-placeholder"><p>Admin access required to manage client portal users.</p></div>');
@@ -56,8 +56,8 @@ window.BromarAdmin.compliance = {
 
   async _loadData() {
     const [reqRes, usrRes] = await Promise.all([
-      window.sb.from('client_access_requests').select('*').order('created_at', { ascending: false }),
-      window.sb.from('client_users').select('*').order('created_at', { ascending: false }),
+      window.supabaseClient.from('client_access_requests').select('*').order('created_at', { ascending: false }),
+      window.supabaseClient.from('client_users').select('*').order('created_at', { ascending: false }),
     ]);
     this._requests = reqRes.data || [];
     this._users = usrRes.data || [];
