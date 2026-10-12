@@ -1,6 +1,6 @@
 <!--
   BROMAR OPS — MAIN SHELL
-  V1.28
+  V1.30
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -48,8 +48,11 @@
 
   <!-- ══════════════════════════════════════════════════════════════
        Page modules — each guarded with onerror.
-       IMS sub-tab modules (…/ims/*) MUST come after ims.js, since they
-       register onto BromarIMS.registerSubTab which ims.js defines.
+       • IMS sub-tab modules (…/ims/*) load after ims.js (they register
+         onto BromarIMS.registerSubTab which ims.js defines).
+       • Admin sub-modules (testtag, compliance) load BEFORE admin.js
+         (they register onto window.BromarAdmin / own globals that
+         admin.js's tiles call).
        ══════════════════════════════════════════════════════════════ -->
   <script>
     (function loadPages() {
@@ -71,8 +74,10 @@
         'js/pages/clients.js',
         'js/pages/tasks.js',
         'js/pages/materials.js',
-        'js/pages/admin.js',
+        // Admin sub-modules — must load before admin.js
         'js/pages/testtag.js',
+        'js/pages/compliance.js',
+        'js/pages/admin.js',
         'js/pages/_components.js'
       ];
       files.forEach((src) => {
