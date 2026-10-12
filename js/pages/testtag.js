@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.31  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.32  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.31',
+  version: 'V1.32',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -35,6 +35,33 @@ window.BromarAdmin.testtag = {
   _ttRegisterError: null,
   _ttFlashTimer: null,
   _TT_TABLE: 'test_tag_reports',
+  _TT_BUCKET: 'test-tag-reports',
+
+  /* Upload a generated PDF to Supabase Storage, keyed by cert so a
+     re-done report REPLACES the stored copy (upsert). Returns the
+     storage object path, or null on failure (never blocks the download). */
+  async _ttUploadPdf(effCert, blob) {
+    if (!effCert || !blob) return null;
+    const safe = String(effCert).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+    const path = safe + '.pdf';
+    try {
+      const res = await fetch(this._SB_URL + '/storage/v1/object/' + this._TT_BUCKET + '/' + encodeURIComponent(path), {
+        method: 'POST',
+        headers: {
+          apikey: this._SB_KEY,
+          Authorization: 'Bearer ' + this._SB_KEY,
+          'Content-Type': 'application/pdf',
+          'x-upsert': 'true'            // replace existing file for this cert
+        },
+        body: blob
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return path;
+    } catch (err) {
+      console.error('PDF upload error:', err);
+      return null;
+    }
+  },
   _ttORG: {
     name: 'JJTJ Pty Ltd T/A Bromar Electrical Services (Aust)',
     short: 'Bromar Electrical Services',
@@ -691,7 +718,7 @@ window.BromarAdmin.testtag = {
   },
 
   /* ── Register: write the current report to Supabase (upsert by cert_no) ── */
-  async _ttSaveToRegister(showNote) {
+  async _ttSaveToRegister(showNote, pdfPath) {
     if (!this._ttModel) return;
     const f = this._ttReadForm();
     if (!f.cert) { if (showNote) this._ttFlash('Add a certificate number first.', 'error'); return; }
@@ -722,6 +749,9 @@ window.BromarAdmin.testtag = {
       report_data: { head: this._ttModel.head, stats: this._ttModel.stats, assets, form: f, scope: this._ttScope },
       updated_at: new Date().toISOString(),
     };
+    /* Only set pdf_path when we just uploaded one, so a plain
+       "Save to Register" (no PDF) doesn't wipe an existing stored copy. */
+    if (pdfPath) payload.pdf_path = pdfPath;
     const headers = { ...this._sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' };
     try {
       const res = await fetch(this._SB_URL + '/rest/v1/' + this._TT_TABLE + '?on_conflict=cert_no', {
@@ -1508,8 +1538,14 @@ window.BromarAdmin.testtag = {
       RK.drawFooter(doc, { title: footerTitle, ref: effCert, pageNo: p });
     }
 
-    doc.save(this._ttFileBase(f, effCert) + '_Site_Equipment_Test_Report.pdf');
-    await this._ttSaveToRegister(true);
+    const fileName = this._ttFileBase(f, effCert) + '_Site_Equipment_Test_Report.pdf';
+    doc.save(fileName);
+    /* Upload a copy to storage (keyed by cert -> re-doing replaces it),
+       then record its path on the register row. Download already happened,
+       so an upload failure never blocks the user. */
+    let pdfPath = null;
+    try { pdfPath = await this._ttUploadPdf(effCert, doc.output('blob')); } catch (e) { /* non-blocking */ }
+    await this._ttSaveToRegister(true, pdfPath);
   },
 
   /* ── Styles ── */
