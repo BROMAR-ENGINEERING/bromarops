@@ -1,23 +1,24 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
-   V1.19
-   Renders sidebar + header + footer once.
-   Pages register via window.BromarPages[id] = { title, render, destroy?, version }
-   Waits for `bromar-auth-ready` before initialising.
-   Wraps every page render() in try/catch → error card on failure.
-   On page load, resets to #dashboard (previous hash discarded).
-   Sidebar shows [user icon] [full name] [green online dot].
-   Revision indicator (bottom-right) shows the page's version only (e.g. V1.00).
+   Path: js/core.js
+   V1.22
+   NAV BADGES:
+     A page may expose EITHER of:
+       badge()         → async, returns { red, yellow } counts
+       getBadgeCount() → async, returns a single number (shown red)
+     Core calls them on startup, after each navigation, every 60s,
+     and whenever BromarOps.refreshNavBadges() is called.
+     A count of 0 hides that pill. badge() takes precedence.
    ============================================================ */
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.19';
+  const APP_VERSION = 'V1.22';
+  const BADGE_POLL_MS = 60_000;
 
   function renderVersion(pageVersion) {
     const coreEl = document.getElementById('core-version');
     if (coreEl) coreEl.textContent = APP_VERSION;
-
     const pageEl = document.getElementById('app-version');
     if (!pageEl) return;
     pageEl.textContent = pageVersion || '';
@@ -30,9 +31,7 @@ const BromarOps = (() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(THEME_KEY, theme);
   }
-  function toggleTheme() {
-    applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
-  }
+  function toggleTheme() { applyTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
 
   /* ── ICONS ── */
   const ICON_HOME  = '<svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>';
@@ -68,7 +67,8 @@ const BromarOps = (() => {
     const items = NAV_ITEMS.map(i => `
       <a href="#${i.id}" data-page="${i.id}" class="nav-item">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="${i.icon}"/></svg>
-        <span>${i.label}</span>
+        <span class="nav-label">${i.label}</span>
+        <span class="nav-badges" id="nav-badges-${i.id}" data-badges="${i.id}"></span>
       </a>
     `).join('');
 
@@ -127,6 +127,48 @@ const BromarOps = (() => {
     }
   }
 
+  /* ── NAV BADGE SYSTEM ── */
+  function clampCount(n) {
+    n = Number(n) || 0;
+    if (n <= 0) return 0;
+    return n > 99 ? '99+' : n;
+  }
+
+  async function refreshNavBadgeFor(pageId) {
+    const page = window.BromarPages[pageId];
+    const el = document.getElementById(`nav-badges-${pageId}`);
+    if (!page || !el) return;
+
+    let red = 0, yellow = 0, provided = false;
+    try {
+      if (typeof page.badge === 'function') {
+        const r = (await page.badge()) || {};
+        red = Number(r.red) || 0;
+        yellow = Number(r.yellow) || 0;
+        provided = true;
+      } else if (typeof page.getBadgeCount === 'function') {
+        red = Number(await page.getBadgeCount()) || 0;
+        provided = true;
+      }
+    } catch (err) {
+      console.warn(`[nav-badge ${pageId}]`, err);
+    }
+
+    if (!provided) { el.innerHTML = ''; return; }
+    let html = '';
+    if (red > 0)    html += `<span class="nav-pill red">${clampCount(red)}</span>`;
+    if (yellow > 0) html += `<span class="nav-pill yellow">${clampCount(yellow)}</span>`;
+    el.innerHTML = html;
+  }
+
+  async function refreshNavBadges() {
+    const ids = Object.keys(window.BromarPages).filter(id =>
+      typeof window.BromarPages[id].badge === 'function' ||
+      typeof window.BromarPages[id].getBadgeCount === 'function'
+    );
+    await Promise.all(ids.map(refreshNavBadgeFor));
+  }
+
   function renderErrorCard(container, pageId, err) {
     container.innerHTML = `
       <div class="card" style="border-color:#dc2626;">
@@ -175,6 +217,9 @@ const BromarOps = (() => {
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebar-overlay')?.classList.remove('show');
     window.scrollTo(0, 0);
+
+    // Refresh this page's badge after render (give page a moment to load data)
+    setTimeout(() => refreshNavBadgeFor(pageId), 1500);
   }
 
   function getPageFromHash() {
@@ -218,9 +263,20 @@ const BromarOps = (() => {
     navigate(getPageFromHash());
 
     populateUserName();
+
+    setTimeout(refreshNavBadges, 3000);
+    setInterval(refreshNavBadges, BADGE_POLL_MS);
   }
 
-  return { init, navigate, toggleTheme, version: APP_VERSION };
+  return {
+    init, navigate, toggleTheme,
+    refreshNavBadges,
+    refreshNavBadgeFor,
+    // legacy aliases (pre-V1.21 callers)
+    refreshBadge: refreshNavBadgeFor,
+    refreshAllBadges: refreshNavBadges,
+    version: APP_VERSION
+  };
 })();
 
 document.addEventListener('bromar-auth-ready', BromarOps.init);
