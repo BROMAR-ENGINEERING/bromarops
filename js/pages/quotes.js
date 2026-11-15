@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.78
+   V1.79
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.78',
+  version: 'V1.79',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -1369,6 +1369,7 @@ window.BromarPages.quotes = {
       document.getElementById('modal-close').addEventListener('click', close);
       dialog.querySelectorAll('.section-pick').forEach(el => {
         el.addEventListener('click', async () => {
+          if (el.dataset.type === 'quoteTotal' && hasQuoteTotalSection(q)) { toast('Only one Quote Total per quote.'); return; }
           const sec = newSection(el.dataset.type);
           q.sections = q.sections || [];
           // Insert right after the currently selected section (or at the
