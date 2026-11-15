@@ -1,11 +1,18 @@
 /* ============================================================
    BROMAR OPS — SERVICE WORKER
-   V1.06
-   Strategy: network-first, fall back to cache when offline.
+   Path: sw.js
+   V1.08
+   Strategy:
+     • Navigations (HTML), JS and CSS  → NETWORK-FIRST
+         always fetch fresh when online; fall back to cache offline.
+         Fixes staff getting stale cached builds.
+     • Images / fonts / other assets   → CACHE-FIRST
+         served from cache for speed; fetched + cached on first miss.
+     • Non-GET and cross-origin         → passthrough (not handled).
    Bumping CACHE name auto-purges old caches on activate.
    ============================================================ */
 
-const CACHE = 'bromar-ops-v1-06';
+const CACHE = 'bromar-ops-v1-08';
 
 const PRECACHE_URLS = [
   'index.html',
@@ -32,6 +39,7 @@ const PRECACHE_URLS = [
   'js/pages/ims/ims-bromar-hub-jobsheets.js',
   'js/pages/ims/ims-placeholders.js',
   'js/pages/ims/ims-safety-approved-swms.js',
+  'js/pages/compliance.js',
   'js/pages/fleet.js',
   'js/pages/equipment.js',
   'js/pages/clients.js',
@@ -63,21 +71,48 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/* ── Is this a request that must stay fresh? (HTML / JS / CSS) ── */
+function isFreshFirst(req) {
+  if (req.mode === 'navigate') return true;            // HTML page loads
+  const dest = req.destination;
+  if (dest === 'document' || dest === 'script' || dest === 'style') return true;
+  // Fallback for requests with no destination hint (some browsers):
+  const path = new URL(req.url).pathname;
+  return /\.(?:html|js|css)$/i.test(path);
+}
+
+async function networkFirst(req) {
+  try {
+    const res = await fetch(req);
+    if (res && res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+    }
+    return res;
+  } catch (err) {
+    const cached = await caches.match(req);
+    if (cached) return cached;
+    if (req.mode === 'navigate') {
+      const shell = await caches.match('index.html');
+      if (shell) return shell;
+    }
+    throw err;
+  }
+}
+
+async function cacheFirst(req) {
+  const cached = await caches.match(req);
+  if (cached) return cached;
+  const res = await fetch(req);
+  if (res && res.ok) {
+    const copy = res.clone();
+    caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+  }
+  return res;
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-
-  event.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() =>
-        caches.match(req).then((cached) => cached || caches.match('index.html'))
-      )
-  );
+  event.respondWith(isFreshFirst(req) ? networkFirst(req) : cacheFirst(req));
 });
