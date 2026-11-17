@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.79
+   V1.80
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.79',
+  version: 'V1.80',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -1246,7 +1246,7 @@ window.BromarPages.quotes = {
           <div class="rail-controls">
             <button class="icon-btn rail-mini" data-rail="up" data-sid="${s.id}" ${idx === 0 ? 'disabled' : ''} title="Move up">${ICON_UP}</button>
             <button class="icon-btn rail-mini" data-rail="down" data-sid="${s.id}" ${idx === total - 1 ? 'disabled' : ''} title="Move down">${ICON_DOWN}</button>
-            ${s.type === 'quoteTotal' ? '' : `<button class="icon-btn rail-mini" data-rail="dup" data-sid="${s.id}" title="Duplicate">${ICON_COPY}</button>
+            ${(s.type === 'quoteTotal' && q.sections.filter(x => x.type === 'quoteTotal').length <= 1) ? '' : `<button class="icon-btn rail-mini" data-rail="dup" data-sid="${s.id}" title="Duplicate">${ICON_COPY}</button>
             <button class="icon-btn rail-mini icon-danger" data-rail="del" data-sid="${s.id}" title="Remove">${ICON_TRASH}</button>`}
           </div>
         </div>`;
@@ -1330,7 +1330,7 @@ window.BromarPages.quotes = {
             q.sections.splice(idx + 1, 0, copy);
             activeSectionId = copy.id;
           } else if (op === 'del') {
-            if (q.sections[idx].type === 'quoteTotal') { toast('The Quote Total can\'t be deleted — untick "Show to client" to hide it.'); return; }
+            if (q.sections[idx].type === 'quoteTotal' && (q.sections.filter(x => x.type === 'quoteTotal').length <= 1)) { toast('The Quote Total can\'t be deleted — untick "Show to client" to hide it.'); return; }
             if (!confirm(`Remove section "${q.sections[idx].name}"?`)) return;
             q.sections.splice(idx, 1);
             if (activeSectionId === id) activeSectionId = '__details__';
