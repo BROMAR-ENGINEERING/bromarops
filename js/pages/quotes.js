@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.81
+   V1.82
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.81',
+  version: 'V1.82',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -291,20 +291,42 @@ window.BromarPages.quotes = {
       const supabase = await waitForSupabase();
       if (pendingSaves.size === 0) return;
       if (!supabase) { toast('Not connected — changes not saved'); return; }
-      const batch = Array.from(pendingSaves.values()).map(quoteToRow);
+      const quotesToSave = Array.from(pendingSaves.values());
       pendingSaves.clear();
+      const ok = (data) => { const el = document.getElementById('save-indicator'); if (el) { el.textContent = 'Saved'; el.classList.remove('saving'); el.classList.add('saved'); setTimeout(() => el.classList.remove('saved'), 1200); } };
+      const fail = (e) => { console.error('Save failed', e); const el = document.getElementById('save-indicator'); if (el) { el.textContent = 'NOT SAVED'; el.classList.remove('saving', 'saved'); el.classList.add('save-error'); } toast('Save failed — check console'); };
       try {
-        const { data, error } = await supabase.from('quotes').upsert(batch).select();
+        const { data, error } = await supabase.from('quotes').upsert(quotesToSave.map(quoteToRow)).select();
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
-        const el = document.getElementById('save-indicator');
-        if (el) { el.textContent = 'Saved'; el.classList.remove('saving'); el.classList.add('saved'); setTimeout(() => el.classList.remove('saved'), 1200); }
+        ok(data);
       } catch (e) {
-        console.error('Save failed', e);
-        const el = document.getElementById('save-indicator');
-        if (el) { el.textContent = 'NOT SAVED'; el.classList.remove('saving', 'saved'); el.classList.add('save-error'); }
-        toast('Save failed — check console');
+        // A not-yet-added column blocks the whole batch. Flag it so
+        // quoteToRow stops sending it, then retry once.
+        if (noteMissingColumn(e)) {
+          try {
+            const { data, error } = await supabase.from('quotes').upsert(quotesToSave.map(quoteToRow)).select();
+            if (error) throw error;
+            if (!data || data.length === 0) throw new Error('Write returned no rows (blocked by RLS?)');
+            ok(data); return;
+          } catch (e2) { fail(e2); return; }
+        }
+        fail(e);
       }
+    }
+    /* Inspect a Supabase error for a missing column we can safely drop;
+       set the matching flag so quoteToRow omits it next time. Returns
+       true when a flag was newly set (caller should retry once). */
+    function noteMissingColumn(e) {
+      const msg = (e && (e.message || e.details || '')) + '';
+      let flagged = false;
+      if (!validDaysColumnMissing && /valid_days/.test(msg)) { validDaysColumnMissing = true; flagged = true;
+        console.warn('valid_days column missing — saving without it. SQL: alter table quotes add column if not exists valid_days integer default 30;'); }
+      if (!acceptColsMissing && /(accepted_job_number|accepted_at|edited_after_publish)/.test(msg)) { acceptColsMissing = true; flagged = true;
+        console.warn('accept columns missing — saving without them.'); }
+      if (!reviewColsMissing && /(review_status|review_requested_by|reviewed_by|reviewed_at|review_note)/.test(msg)) { reviewColsMissing = true; flagged = true;
+        console.warn('review columns missing — saving without them. SQL: alter table quotes add column if not exists review_status text; alter table quotes add column if not exists review_requested_by text; alter table quotes add column if not exists reviewed_by text; alter table quotes add column if not exists reviewed_at timestamptz; alter table quotes add column if not exists review_note text;'); }
+      return flagged;
     }
     /* Some deployments haven't added the valid_days column yet. Once a
        write fails because of it, we stop sending the field entirely so
