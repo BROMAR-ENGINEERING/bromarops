@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.80
+   V1.81
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.80',
+  version: 'V1.81',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -288,7 +288,7 @@ window.BromarPages.quotes = {
       saveTimer = setTimeout(flushSaves, 500);
     }
     async function flushSaves() {
-      const supabase = sb();
+      const supabase = await waitForSupabase();
       if (pendingSaves.size === 0) return;
       if (!supabase) { toast('Not connected — changes not saved'); return; }
       const batch = Array.from(pendingSaves.values()).map(quoteToRow);
@@ -314,7 +314,7 @@ window.BromarPages.quotes = {
     let reviewColsMissing = false;
 
     async function saveQuoteNow(q) {
-      const supabase = sb();
+      const supabase = await waitForSupabase();
       if (!supabase) { toast('Not connected — changes not saved'); return false; }
       try {
         const { data, error } = await supabase.from('quotes').upsert(quoteToRow(q)).select();
@@ -345,7 +345,7 @@ window.BromarPages.quotes = {
       }
     }
     async function deleteQuoteDB(id) {
-      const supabase = sb();
+      const supabase = await waitForSupabase();
       if (!supabase) { toast('Not connected — delete not saved'); return; }
       try {
         const { error } = await supabase.from('quotes').delete().eq('id', id);
@@ -353,7 +353,7 @@ window.BromarPages.quotes = {
       } catch (e) { console.error(e); toast('Delete failed'); }
     }
     async function savePrebuiltDB(id, fav) {
-      const supabase = sb();
+      const supabase = await waitForSupabase();
       if (!supabase) { toast('Not connected — prebuilt not saved'); return; }
       try {
         const { data, error } = await supabase.from('quote_favourites').upsert({ id, name: fav.name, type: fav.type, data: fav.data }).select();
@@ -362,7 +362,7 @@ window.BromarPages.quotes = {
       } catch (e) { console.error(e); toast('Prebuilt save failed'); }
     }
     async function deletePrebuiltDB(id) {
-      const supabase = sb();
+      const supabase = await waitForSupabase();
       if (!supabase) return;
       try {
         const { error } = await supabase.from('quote_favourites').delete().eq('id', id);
