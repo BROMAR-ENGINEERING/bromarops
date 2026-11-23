@@ -1,14 +1,17 @@
 /* ============================================================
-   Jobs — V1.15 — 2026-10-12
+   Jobs — V1.16 — 2026-11-23
    Repo: js/pages/jobs.js
-   Sub-tabs: Job Register (list/edit/create) + Job Overview (per-job rollup + PDF).
+   Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
+   activity in a week / month / custom range + Work Report PDF via BromarReportKit).
    Job types are loaded live from the job_types table (no hardcoded list).
    Registers on window.BromarPages.jobs
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
-window.BromarPages.jobs = {
+window.BromarPages.jobs = (() => {
+  const PAGE_VERSION = 'V1.16';
+  return {
   title: 'Jobs',
-  version: 'V1.15',
+  version: PAGE_VERSION,
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
@@ -67,8 +70,6 @@ window.BromarPages.jobs = {
     let editing = null;
     let activePrefix = '';
     let activeTab = 'register';
-    let ovJob = null;
-    let ovData = null;
     let JOB_TYPES_CACHE = null;   // rows from job_types (active only)
     const prefixGroups = {};      // code -> category (for register tile labels)
     const docListeners = [];
@@ -83,18 +84,6 @@ window.BromarPages.jobs = {
     const round1 = (v) => Math.round(v * 100) / 100;
 
     const isoLocal = (d) => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); };
-    function thisWeek() { const d = new Date(); const day = (d.getDay() + 6) % 7; const mon = new Date(d); mon.setDate(d.getDate() - day); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); return [isoLocal(mon), isoLocal(sun)]; }
-    function lastWeek() { const [f] = thisWeek(); const mon = new Date(f + 'T12:00:00'); mon.setDate(mon.getDate() - 7); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); return [isoLocal(mon), isoLocal(sun)]; }
-    function thisMonth() { const d = new Date(); return [isoLocal(new Date(d.getFullYear(), d.getMonth(), 1)), isoLocal(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; }
-    function lastMonth() { const d = new Date(); return [isoLocal(new Date(d.getFullYear(), d.getMonth() - 1, 1)), isoLocal(new Date(d.getFullYear(), d.getMonth(), 0))]; }
-    function presetRange(v) {
-      if (v === 'this_week') return thisWeek();
-      if (v === 'last_week') return lastWeek();
-      if (v === 'this_month') return thisMonth();
-      if (v === 'last_month') return lastMonth();
-      if (v === 'all') return ['', ''];
-      return null;
-    }
 
     /* ── job types (live lookup) ── */
     async function fetchJobTypes() {
@@ -136,12 +125,6 @@ window.BromarPages.jobs = {
         .jobs-tab { font-family:'Outfit',sans-serif; padding:0.6rem 1.2rem; border:none; background:none; color:var(--text-secondary);
           font-weight:600; font-size:0.95rem; cursor:pointer; border-bottom:2px solid transparent; }
         .jobs-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
-        .ov-controls { margin-left:auto; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding-bottom:0.4rem; }
-        .ov-controls input, .ov-controls select { font-family:'Outfit',sans-serif; font-size:0.85rem; padding:0.45rem 0.7rem;
-          border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-primary); }
-        .ov-jobsearch { position:relative; }
-        .ov-jobsearch input { min-width:210px; }
-
         .jobs-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem; margin-bottom:1.25rem; }
         .jobs-stat { background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:0.85rem 1rem; box-shadow:0 3px 10px var(--shadow); }
         .jobs-stat .n { font-size:1.5rem; font-weight:700; letter-spacing:-0.03em; line-height:1; }
@@ -231,28 +214,33 @@ window.BromarPages.jobs = {
         .ov-head .who { font-size:1.05rem; font-weight:600; }
         .ov-head .who .ov-jn { font-size:1.05rem; }
         .ov-head .sub { font-size:0.85rem; color:var(--text-secondary); }
-        .ov-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:0.7rem; margin:1rem 0 1.5rem; }
+        .ov-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(95px,1fr)); gap:0.7rem; margin:1rem 0 1.5rem; }
         .ov-stat { background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:0.8rem 1rem; box-shadow:0 3px 10px var(--shadow); }
         .ov-stat .n { font-size:1.4rem; font-weight:700; line-height:1; }
         .ov-stat .l { font-size:0.72rem; color:var(--text-secondary); margin-top:0.3rem; }
-        .ov-sec { margin-top:1.75rem; }
-        .ov-sec-title { font-weight:600; font-size:1.05rem; margin-bottom:0.7rem; color:var(--text-primary); }
-        .ov-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--bg-secondary); }
-        .ov-table { width:100%; border-collapse:collapse; font-size:0.85rem; min-width:520px; }
-        .ov-table th { text-align:left; padding:0.55rem 0.75rem; color:var(--text-secondary); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid var(--border); }
-        .ov-table td { padding:0.6rem 0.75rem; border-bottom:1px solid var(--border); }
-        .ov-table tr:last-child td { border-bottom:none; }
-        .ov-row { cursor:pointer; }
-        .ov-row:hover { background:var(--card-hover); }
-        .ov-row.sel { background:var(--card-hover); }
         .ov-jn { font-family:'JetBrains Mono',monospace; color:var(--accent); font-weight:600; }
-        .ov-badge { font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:12px; }
-        .ov-detail-card { background:var(--bg-main); border:1px solid var(--accent); border-radius:12px; padding:1rem 1.25rem; margin-top:1rem; }
-        .ov-detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:1rem; margin-top:0.75rem; font-size:0.83rem; }
-        .ov-dt { font-size:0.7rem; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:0.35rem; }
-        .ov-detail-grid ul { padding-left:1.05rem; margin:0; }
-        .ov-detail-grid .muted { color:var(--text-secondary); }
-
+        .ov-bar { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1.25rem; }
+        .ov-mode { margin-bottom:0; min-width:240px; }
+        .ov-range { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+        .ov-range-lbl { font-weight:600; font-size:0.92rem; min-width:150px; text-align:center; }
+        .ov-arrow { font-size:1.3rem; display:flex; align-items:center; justify-content:center; }
+        .ov-date { display:flex; flex-direction:column; gap:0.2rem; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); }
+        .ov-date input { font-family:'Outfit',sans-serif; font-size:0.88rem; padding:0.5rem 0.7rem; border-radius:var(--radius-sm);
+          border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-primary); }
+        .ov-back { padding:0.45rem 0.9rem; margin-bottom:1rem; }
+        .ov-selbar { display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap; margin:1rem 0 0.75rem; }
+        .ov-selbar .btn-primary { padding:0.6rem 1.3rem; }
+        .ov-selbar .btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+        .ov-check { display:flex; align-items:center; gap:0.5rem; font-size:0.88rem; font-weight:600; cursor:pointer; }
+        .ov-check input, .ov-sheet input { width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; }
+        .ov-sheet { display:flex; gap:0.75rem; align-items:flex-start; background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px;
+          padding:0.75rem 0.95rem; margin-bottom:0.5rem; cursor:pointer; box-shadow:0 2px 6px var(--shadow); }
+        .ov-sheet.sel { border-color:var(--accent); background:var(--card-hover); }
+        .ov-sheet input { margin-top:2px; }
+        .ov-sheet-main { flex:1; min-width:0; }
+        .ov-sheet-top { display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; font-size:0.85rem; }
+        .ov-sheet-tech { font-size:0.8rem; color:var(--text-secondary); margin-top:0.2rem; overflow-wrap:anywhere; }
+        .ov-sheet-work { margin:0.35rem 0 0; padding-left:1.1rem; font-size:0.85rem; overflow-wrap:anywhere; }
         .jobs-toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--text-primary); color:var(--bg-secondary);
           padding:0.7rem 1.3rem; border-radius:10px; font-size:0.88rem; font-weight:500; z-index:9999; opacity:0; transition:opacity 0.25s; pointer-events:none; max-width:90vw; text-align:center; }
         .jobs-toast.show { opacity:1; }
@@ -262,9 +250,8 @@ window.BromarPages.jobs = {
           .prefix-tiles { grid-template-columns:repeat(3,1fr); }
           .jobs-toolbar .btn-primary { margin-left:0; width:100%; }
           .job-drawer { width:100vw; }
-          .ov-controls { margin-left:0; width:100%; }
-          .ov-jobsearch { flex:1; }
-          .ov-jobsearch input { min-width:0; width:100%; }
+          .ov-bar { flex-direction:column; align-items:stretch; }
+          .ov-range { justify-content:space-between; }
         }
       </style>
 
@@ -276,22 +263,6 @@ window.BromarPages.jobs = {
       <div class="jobs-tabs">
         <button class="jobs-tab active" data-tab="register">Job Register</button>
         <button class="jobs-tab" data-tab="overview">Job Overview</button>
-        <div class="ov-controls" id="ovControls" style="display:none;">
-          <div class="ac-wrap ov-jobsearch">
-            <input type="text" id="ovJobSearch" placeholder="Choose a job…" autocomplete="off">
-            <div class="ac-results" id="ovJobResults"></div>
-          </div>
-          <select id="ovPreset">
-            <option value="this_week">This week</option>
-            <option value="last_week">Last week</option>
-            <option value="this_month">This month</option>
-            <option value="last_month">Last month</option>
-            <option value="all">All time</option>
-            <option value="custom">Custom</option>
-          </select>
-          <input type="date" id="ovFrom" title="From date">
-          <input type="date" id="ovTo" title="To date">
-        </div>
       </div>
 
       <div id="jobsTabContent"></div>
@@ -505,209 +476,265 @@ window.BromarPages.jobs = {
       }).join('');
     }
 
-    /* ══════════════ JOB OVERVIEW TAB (per job) ══════════════ */
-    function renderOverview() {
-      const body = $('jobsTabContent');
-      if (!ovJob) body.innerHTML = `<div class="jobs-empty">Choose a job (top right) to see its overview.</div>`;
-      else loadJobOverview();
+    /* ══════════════ JOB OVERVIEW TAB (activity in a period + work report) ══════════════ */
+    // Lists only jobs with job sheet submissions in the selected range.
+    // Click a job → its sheets in range, tick which go into the Work Report PDF.
+    const ov = { mode: 'week', from: '', to: '', sheets: [], jobNo: null, selected: new Set(), loading: false, error: '' };
+
+    const isoAdd = (iso, days) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + days); return isoLocal(d); };
+    function weekOf(iso) { const d = new Date(iso + 'T12:00:00'); const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return [isoLocal(mon), isoAdd(isoLocal(mon), 6)]; }
+    function monthOf(iso) { const d = new Date(iso + 'T12:00:00'); return [isoLocal(new Date(d.getFullYear(), d.getMonth(), 1)), isoLocal(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; }
+    function setMode(mode) {
+      ov.mode = mode;
+      // keep today if it's inside the current range, otherwise stay near the range being viewed
+      const today = isoLocal(new Date());
+      const anchor = (!ov.from || (today >= ov.from && today <= ov.to)) ? today : ov.from;
+      if (mode === 'week') [ov.from, ov.to] = weekOf(anchor);
+      else if (mode === 'month') [ov.from, ov.to] = monthOf(anchor);
     }
-    function periodLabel() {
-      const f = $('ovFrom').value, t = $('ovTo').value;
-      if (!f && !t) return 'All time';
-      return `${fmtDate(f)} – ${fmtDate(t)}`;
+    function stepRange(dir) {
+      if (ov.mode === 'week') [ov.from, ov.to] = weekOf(isoAdd(ov.from, dir * 7));
+      else if (ov.mode === 'month') { const d = new Date(ov.from + 'T12:00:00'); [ov.from, ov.to] = monthOf(isoLocal(new Date(d.getFullYear(), d.getMonth() + dir, 1))); }
     }
-    async function loadJobOverview() {
-      const body = $('jobsTabContent'); if (!ovJob) { renderOverview(); return; }
-      const from = $('ovFrom').value, to = $('ovTo').value;
-      body.innerHTML = `<div class="jobs-empty">Loading ${esc(ovJob.job_number)}…</div>`;
+    function rangeLabel() {
+      if (!ov.from || !ov.to) return 'Choose dates';
+      if (ov.mode === 'month') return new Date(ov.from + 'T12:00:00').toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+      return `${fmtDate(ov.from)} – ${fmtDate(ov.to)}`;
+    }
+
+    const taskText = (t) => typeof t === 'string' ? t : (t && (t.description || t.text)) || '';
+    const noteText = (n) => typeof n === 'string' ? n : (n && n.text) || '';
+    const sheetHours = (sh) => round1(parseArr(sh.labour).reduce((a, l) => a + num(l.normalHours ?? l.normal) + num(l.overtimeHours ?? l.ot), 0));
+    const sheetTechs = (sh) => { const names = [...new Set(parseArr(sh.labour).map(l => l.employee).filter(Boolean))]; return names.length ? names.join(', ') : (sh.created_by || '—'); };
+    const jobByNo = (no) => jobs.find(j => j.job_number === no) || { job_number: no, client_name: '', site_name: '', _missing: true };
+    const sheetsFor = (no) => ov.sheets.filter(s => s.job_number === no);
+
+    async function loadOverviewSheets() {
+      ov.loading = true; ov.error = ''; paintOverview();
       try {
-        let q = sb.from('job_sheets').select('*').eq('job_number', ovJob.job_number).order('sheet_date', { ascending: false });
-        if (from) q = q.gte('sheet_date', from);
-        if (to) q = q.lte('sheet_date', to);
-        const { data, error } = await q; if (error) throw error;
-        const sheets = data || [];
-
-        let pos = [];
-        try {
-          let pq = sb.from('purchase_orders').select('*').eq('job_number', ovJob.job_number);
-          if (from) pq = pq.gte('created_at', from);
-          if (to) pq = pq.lte('created_at', to + 'T23:59:59');
-          const { data: pd, error: pe } = await pq; if (!pe) pos = pd || [];
-        } catch (e) { /* no PO table */ }
-
-        let totN = 0, totO = 0, srCount = 0;
-        const byEmp = {}, mat = {}, notesAll = [];
-        sheets.forEach(sh => {
-          parseArr(sh.labour).forEach(l => {
-            const n = num(l.normalHours ?? l.normal), o = num(l.overtimeHours ?? l.ot);
-            totN += n; totO += o; const k = l.employee || '—';
-            (byEmp[k] = byEmp[k] || { n: 0, o: 0 }); byEmp[k].n += n; byEmp[k].o += o;
-          });
-          parseArr(sh.materials).forEach(m => {
-            const k = (m.name || '') + '|' + (m.unit || '');
-            (mat[k] = mat[k] || { name: m.name || '', unit: m.unit || '', qty: 0 }); mat[k].qty += num(m.quantity ?? m.qty);
-          });
-          parseArr(sh.notes).forEach(n => notesAll.push({ sheet: sh.job_sheet_number, text: typeof n === 'string' ? n : (n.text || '') }));
-          if (sh.is_service_report) srCount++;
-        });
-        totN = round1(totN); totO = round1(totO);
-
-        ovData = { job: ovJob, from, to, sheets, pos, byEmp, mat, totN, totO, srCount };
-
-        const tiles = `
-          <div class="ov-summary">
-            <div class="ov-stat"><div class="n">${sheets.length}</div><div class="l">Job Sheets</div></div>
-            <div class="ov-stat"><div class="n">${totN}h</div><div class="l">Normal Hours</div></div>
-            <div class="ov-stat"><div class="n">${totO}h</div><div class="l">Overtime Hours</div></div>
-            <div class="ov-stat"><div class="n">${Object.keys(mat).length}</div><div class="l">Material Lines</div></div>
-            <div class="ov-stat"><div class="n">${srCount}</div><div class="l">Service Reports</div></div>
-            <div class="ov-stat"><div class="n">${pos.length}</div><div class="l">Purchase Orders</div></div>
-          </div>`;
-
-        const sheetRows = sheets.length ? sheets.map((sh, i) => {
-          const h = parseArr(sh.labour).reduce((a, l) => a + num(l.normalHours ?? l.normal) + num(l.overtimeHours ?? l.ot), 0);
-          const type = sh.is_service_report ? '🧾 Service Report' : 'Job Sheet';
-          const sign = sh.signing_status ? `<span class="ov-badge" style="background:var(--card-hover);color:var(--accent);">${esc(sh.signing_status)}</span>` : '—';
-          return `<tr class="ov-row" data-idx="${i}"><td class="ov-jn">${esc(sh.job_sheet_number || '—')}</td><td>${fmtDate(sh.sheet_date)}</td><td>${type}</td><td>${esc(sh.created_by || '')}</td><td>${round1(h)}h</td><td>${sign}</td></tr>`;
-        }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:1.5rem;">No job sheets in this period.</td></tr>`;
-
-        const labourRows = Object.keys(byEmp).length ? Object.entries(byEmp).map(([e, v]) =>
-          `<tr><td>${esc(e)}</td><td>${round1(v.n)}h</td><td>${round1(v.o)}h</td><td><strong>${round1(v.n + v.o)}h</strong></td></tr>`).join('')
-          + `<tr><td><strong>TOTAL</strong></td><td><strong>${totN}h</strong></td><td><strong>${totO}h</strong></td><td><strong>${round1(totN + totO)}h</strong></td></tr>`
-          : `<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:1rem;">No labour in this period.</td></tr>`;
-
-        const matRows = Object.keys(mat).length ? Object.values(mat).map(m =>
-          `<tr><td>${esc(m.name || '—')}</td><td>${round1(m.qty)}</td><td>${esc(m.unit || '')}</td></tr>`).join('')
-          : `<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:1rem;">No materials in this period.</td></tr>`;
-
-        const notesHtml = notesAll.length ? notesAll.map(n =>
-          `<div style="padding:0.6rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.85rem;"><span class="ov-jn" style="font-size:0.75rem;">${esc(n.sheet)}</span> — ${esc(n.text)}</div>`).join('')
-          : `<div style="padding:1rem;text-align:center;color:var(--text-secondary);">No notes in this period.</div>`;
-
-        const poHtml = pos.length ? `<div class="ov-scroll"><table class="ov-table"><thead><tr><th>PO #</th><th>Supplier</th><th>Total</th><th>Status</th></tr></thead><tbody>${pos.map(p =>
-          `<tr><td class="ov-jn">${esc(p.po_number || p.number || p.id || '—')}</td><td>${esc(p.supplier || p.supplier_name || p.vendor || '—')}</td><td>${p.total != null ? '$' + esc(p.total) : '—'}</td><td>${esc(p.status || '—')}</td></tr>`).join('')}</tbody></table></div>`
-          : `<div class="jobs-empty" style="padding:1.5rem;">No purchase orders in this period.</div>`;
-
-        body.innerHTML = `
-          <div class="ov-head">
-            <div>
-              <div class="who"><span class="ov-jn">${esc(ovJob.job_number)}</span> — ${esc(ovJob.client_name || '')}</div>
-              <div class="sub">${ovJob.site_name ? '📍 ' + esc(ovJob.site_name) + ' · ' : ''}Period: ${esc(periodLabel())}</div>
-            </div>
-            <button class="btn-primary" id="ovPdf" style="padding:0.6rem 1.3rem;">🖨 Generate PDF</button>
-          </div>
-          ${tiles}
-          <div class="ov-sec">
-            <div class="ov-sec-title">Job Sheets</div>
-            <div class="ov-scroll"><table class="ov-table">
-              <thead><tr><th>Sheet #</th><th>Date</th><th>Type</th><th>By</th><th>Hours</th><th>Signing</th></tr></thead>
-              <tbody id="ovSheetRows">${sheetRows}</tbody></table></div>
-            <div id="ovSheetDetail"></div>
-          </div>
-          <div class="ov-sec"><div class="ov-sec-title">Labour</div>
-            <div class="ov-scroll"><table class="ov-table"><thead><tr><th>Employee</th><th>Normal</th><th>Overtime</th><th>Total</th></tr></thead><tbody>${labourRows}</tbody></table></div></div>
-          <div class="ov-sec"><div class="ov-sec-title">Materials</div>
-            <div class="ov-scroll"><table class="ov-table"><thead><tr><th>Material</th><th>Qty</th><th>Unit</th></tr></thead><tbody>${matRows}</tbody></table></div></div>
-          <div class="ov-sec"><div class="ov-sec-title">Notes</div><div class="ov-scroll">${notesHtml}</div></div>
-          <div class="ov-sec"><div class="ov-sec-title">Purchase Orders</div>${poHtml}</div>`;
-
-        $('ovPdf').addEventListener('click', generateJobPdf);
-        body.querySelectorAll('#ovSheetRows .ov-row').forEach(row => row.addEventListener('click', () => {
-          body.querySelectorAll('#ovSheetRows .ov-row').forEach(r => r.classList.remove('sel'));
-          row.classList.add('sel');
-          $('ovSheetDetail').innerHTML = sheetDetailHTML(sheets[+row.dataset.idx]);
-        }));
+        if (!ov.from || !ov.to || ov.from > ov.to) { ov.sheets = []; return; }
+        const { data, error } = await sb.from('job_sheets')
+          .select('id, job_sheet_number, job_number, sheet_date, created_by, tasks, labour, materials, notes, is_service_report')
+          .gte('sheet_date', ov.from).lte('sheet_date', ov.to)
+          .order('sheet_date', { ascending: true });
+        if (error) throw error;
+        ov.sheets = data || [];
+        if (ov.jobNo && !sheetsFor(ov.jobNo).length) ov.jobNo = null;
+        if (ov.jobNo) ov.selected = new Set(sheetsFor(ov.jobNo).map(s => s.id));
       } catch (err) {
-        body.innerHTML = `<div class="jobs-empty">Could not load overview: ${esc(err.message)}</div>`;
+        ov.sheets = []; ov.error = err.message || String(err);
+      } finally {
+        ov.loading = false; paintOverview();
       }
     }
 
-    function sheetDetailHTML(sh) {
-      const tasks = parseArr(sh.tasks), lab = parseArr(sh.labour), mats = parseArr(sh.materials), nts = parseArr(sh.notes);
-      const col = (title, inner) => `<div><div class="ov-dt">${title}</div>${inner}</div>`;
-      return `
-        <div class="ov-detail-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
-            <div class="ov-jn">${esc(sh.job_sheet_number || '')}</div>
-            <div style="font-size:0.8rem;color:var(--text-secondary);">${fmtDate(sh.sheet_date)}${sh.created_by ? ' · ' + esc(sh.created_by) : ''}</div>
+    function renderOverview() {
+      if (!ov.from) setMode(ov.mode);
+      $('jobsTabContent').innerHTML = `
+        <div class="ov-bar">
+          <div class="nj-mode ov-mode">
+            ${['week', 'month', 'custom'].map(m => `<button class="nj-mode-btn ${ov.mode === m ? 'active' : ''}" data-mode="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}
           </div>
-          <div class="ov-detail-grid">
-            ${col('Tasks', tasks.length ? `<ul>${tasks.map(t => `<li>${esc(typeof t === 'string' ? t : (t.description || ''))}</li>`).join('')}</ul>` : '<div class="muted">None</div>')}
-            ${col('Labour', lab.length ? lab.map(l => `<div>${esc(l.employee || '')} — ${num(l.normalHours ?? l.normal)}h / ${num(l.overtimeHours ?? l.ot)}h OT</div>`).join('') : '<div class="muted">None</div>')}
-            ${col('Materials', mats.length ? mats.map(m => `<div>${esc(m.name || '')} — ${num(m.quantity ?? m.qty)} ${esc(m.unit || '')}</div>`).join('') : '<div class="muted">None</div>')}
-            ${col('Notes', nts.length ? nts.map(n => `<div>${esc(typeof n === 'string' ? n : (n.text || ''))}</div>`).join('') : '<div class="muted">None</div>')}
-          </div>
-        </div>`;
+          <div class="ov-range" id="ovRange"></div>
+        </div>
+        <div id="ovBody"></div>`;
+      $('jobsTabContent').querySelectorAll('.ov-mode .nj-mode-btn').forEach(b => b.addEventListener('click', () => {
+        setMode(b.dataset.mode); ov.jobNo = null; renderOverview();
+      }));
+      paintRange();
+      loadOverviewSheets();
     }
 
-    async function generateJobPdf() {
-      if (!ovData) { toast('Nothing to export yet'); return; }
-      const d = ovData;
-      toast('Building PDF…');
+    function paintRange() {
+      const el = $('ovRange'); if (!el) return;
+      if (ov.mode === 'custom') {
+        el.innerHTML = `
+          <label class="ov-date"><span>From</span><input type="date" id="ovFrom" value="${ov.from}"></label>
+          <label class="ov-date"><span>To</span><input type="date" id="ovTo" value="${ov.to}"></label>`;
+        const onDate = () => { ov.from = $('ovFrom').value; ov.to = $('ovTo').value; ov.jobNo = null; loadOverviewSheets(); };
+        $('ovFrom').addEventListener('change', onDate);
+        $('ovTo').addEventListener('change', onDate);
+      } else {
+        el.innerHTML = `
+          <button class="job-close ov-arrow" id="ovPrev" aria-label="Previous ${ov.mode}">&lsaquo;</button>
+          <div class="ov-range-lbl">${esc(rangeLabel())}</div>
+          <button class="job-close ov-arrow" id="ovNext" aria-label="Next ${ov.mode}">&rsaquo;</button>`;
+        $('ovPrev').addEventListener('click', () => { stepRange(-1); ov.jobNo = null; paintRange(); loadOverviewSheets(); });
+        $('ovNext').addEventListener('click', () => { stepRange(1); ov.jobNo = null; paintRange(); loadOverviewSheets(); });
+      }
+    }
+
+    function paintOverview() {
+      const body = $('ovBody'); if (!body) return;
+      if (ov.loading) { body.innerHTML = `<div class="jobs-empty">Loading job sheets…</div>`; return; }
+      if (ov.error) { body.innerHTML = `<div class="jobs-empty">Could not load job sheets: ${esc(ov.error)}</div>`; return; }
+      if (ov.mode === 'custom' && (!ov.from || !ov.to)) { body.innerHTML = `<div class="jobs-empty">Pick a start and end date.</div>`; return; }
+      if (ov.from > ov.to) { body.innerHTML = `<div class="jobs-empty">Start date is after end date.</div>`; return; }
+      if (ov.jobNo) paintJobDetail(body); else paintActiveJobs(body);
+    }
+
+    function paintActiveJobs(body) {
+      const groups = {};
+      ov.sheets.forEach(s => { (groups[s.job_number] = groups[s.job_number] || []).push(s); });
+      const nos = Object.keys(groups).sort();
+      if (!nos.length) { body.innerHTML = `<div class="jobs-empty">No job sheets submitted in this period.</div>`; return; }
+      const totalH = round1(ov.sheets.reduce((a, s) => a + sheetHours(s), 0));
+      body.innerHTML = `
+        <div class="ov-summary">
+          <div class="ov-stat"><div class="n">${nos.length}</div><div class="l">Active Jobs</div></div>
+          <div class="ov-stat"><div class="n">${ov.sheets.length}</div><div class="l">Job Sheets</div></div>
+          <div class="ov-stat"><div class="n">${totalH}h</div><div class="l">Hours</div></div>
+        </div>
+        <div id="ovJobList">${nos.map(no => {
+          const j = jobByNo(no); const list = groups[no];
+          const h = round1(list.reduce((a, s) => a + sheetHours(s), 0));
+          const sm = STATUS_META[j.status];
+          return `
+            <div class="job-card" data-no="${esc(no)}">
+              <div class="jn">${esc(no)}</div>
+              <div class="mid">
+                <div class="cli">${esc(j.client_name || '—')}${j._missing ? '<span class="unlinked">Not in register</span>' : ''}</div>
+                <div class="site">${j.site_name ? '<span class="pin">📍</span> ' + esc(j.site_name) + ' · ' : ''}${list.length} sheet${list.length === 1 ? '' : 's'} · ${h}h</div>
+              </div>
+              ${sm ? `<span class="job-badge" style="background:${sm.bg}; color:${sm.fg};">${sm.label}</span>` : ''}
+            </div>`;
+        }).join('')}</div>`;
+      body.querySelectorAll('#ovJobList .job-card').forEach(c => c.addEventListener('click', () => {
+        ov.jobNo = c.dataset.no;
+        ov.selected = new Set(sheetsFor(ov.jobNo).map(s => s.id));
+        paintOverview(); window.scrollTo(0, 0);
+      }));
+    }
+
+    function paintJobDetail(body) {
+      const j = jobByNo(ov.jobNo); const list = sheetsFor(ov.jobNo);
+      const selCount = list.filter(s => ov.selected.has(s.id)).length;
+      body.innerHTML = `
+        <button class="btn-secondary ov-back" id="ovBack">&larr; All active jobs</button>
+        <div class="ov-head">
+          <div>
+            <div class="who"><span class="ov-jn">${esc(j.job_number)}</span> — ${esc(j.client_name || '')}</div>
+            <div class="sub">${j.site_name ? '📍 ' + esc(j.site_name) + ' · ' : ''}${esc(rangeLabel())}</div>
+          </div>
+        </div>
+        <div class="ov-selbar">
+          <label class="ov-check"><input type="checkbox" id="ovAll" ${selCount === list.length ? 'checked' : ''}> Select all (${selCount}/${list.length})</label>
+          <button class="btn-primary" id="ovReport" ${selCount ? '' : 'disabled'}>🖨 Work Report</button>
+        </div>
+        <div id="ovSheets">${list.map(sh => {
+          const tasks = parseArr(sh.tasks).map(taskText).filter(Boolean);
+          const mats = parseArr(sh.materials);
+          return `
+            <label class="ov-sheet ${ov.selected.has(sh.id) ? 'sel' : ''}">
+              <input type="checkbox" data-id="${sh.id}" ${ov.selected.has(sh.id) ? 'checked' : ''}>
+              <div class="ov-sheet-main">
+                <div class="ov-sheet-top">
+                  <span class="ov-jn">${esc(sh.job_sheet_number || '—')}</span>
+                  <span>${fmtDate(sh.sheet_date)} · ${sheetHours(sh)}h</span>
+                </div>
+                <div class="ov-sheet-tech">${esc(sheetTechs(sh))}${sh.is_service_report ? ' · 🧾 Service report' : ''}</div>
+                ${tasks.length ? `<ul class="ov-sheet-work">${tasks.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<div class="ov-sheet-tech">No work recorded</div>'}
+                ${mats.length ? `<div class="ov-sheet-tech">Materials: ${mats.map(m => `${esc(m.name || '')} × ${num(m.quantity ?? m.qty)}${m.unit ? ' ' + esc(m.unit) : ''}`).join(', ')}</div>` : ''}
+              </div>
+            </label>`;
+        }).join('')}</div>`;
+
+      $('ovBack').addEventListener('click', () => { ov.jobNo = null; paintOverview(); });
+      $('ovAll').addEventListener('change', function () {
+        ov.selected = this.checked ? new Set(list.map(s => s.id)) : new Set(); paintOverview();
+      });
+      body.querySelectorAll('#ovSheets input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+        if (cb.checked) ov.selected.add(cb.dataset.id); else ov.selected.delete(cb.dataset.id);
+        paintOverview();
+      }));
+      $('ovReport').addEventListener('click', () => generateWorkReport(j, list.filter(s => ov.selected.has(s.id))));
+    }
+
+    async function generateWorkReport(job, sheets) {
+      const RK = window.BromarReportKit;
+      if (!RK) { toast('Report kit not loaded — refresh the page', 5000); return; }
+      if (!sheets.length) { toast('Tick at least one job sheet'); return; }
+      const btn = $('ovReport'); if (btn) btn.disabled = true;
+      toast('Building work report…');
       try {
         await ensureJsPDF();
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('p', 'mm', 'a4');
-        const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight(), m = 14;
+        const doc = RK.createDoc();
+        const L = RK.LAYOUT, F = RK.FONT, P = RK.PALETTE, M = L.margin;
+        const top = L.headerH + 8, bottom = L.footerY - 10;
+        let y = top;
+        const need = (h) => { if (y + h > bottom) { doc.addPage(); y = top; } };
 
-        doc.setFillColor(194, 68, 14); doc.rect(0, 0, pw, 4, 'F');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(194, 68, 14);
-        doc.text('Job Summary', m, 16);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90);
-        doc.text('Bromar Electrical Services (Aust)  |  ABN 45 634 835 939  |  REC 30340', m, 22);
-        doc.setFontSize(11); doc.setTextColor(40); doc.setFont('helvetica', 'bold');
-        doc.text(`${d.job.job_number} — ${d.job.client_name || ''}`, m, 30);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90);
-        doc.text(`${d.job.site_name ? d.job.site_name + '   |   ' : ''}Period: ${periodLabelFrom(d.from, d.to)}`, m, 35.5);
-        doc.text(`Sheets ${d.sheets.length}   •   Normal ${d.totN}h   •   Overtime ${d.totO}h   •   Material lines ${Object.keys(d.mat).length}   •   POs ${d.pos.length}`, m, 40.5);
+        // title + job details
+        RK.para(doc, M, y, 'WORK REPORT', { size: F.title, style: 'bold', rgb: P.navy.rgb });
+        y += 9;
+        const site = [job.site_name, job.site_address].filter(Boolean).join(' — ');
+        const desc = [job.job_type, job.work_type].filter(Boolean).join(' — ') || job.notes || '';
+        y = RK.pairRow(doc, M, y, 'Job No.', job.job_number);
+        y = RK.pairRow(doc, M, y, 'Client', job.client_name || '—');
+        y = RK.pairRow(doc, M, y, 'Site', site || '—');
+        y = RK.pairRow(doc, M, y, 'Description', desc || '—');
+        y = RK.pairRow(doc, M, y, 'Period', rangeLabel());
+        const totH = round1(sheets.reduce((a, s) => a + sheetHours(s), 0));
+        y = RK.pairRow(doc, M, y, 'Total hours', `${totH}h across ${sheets.length} job sheet${sheets.length === 1 ? '' : 's'}`);
+        y += 4;
 
-        const head = { fillColor: [194, 68, 14], textColor: 255, fontSize: 8.5 };
-        const base = { styles: { fontSize: 8, cellPadding: 2 }, headStyles: head, alternateRowStyles: { fillColor: [248, 248, 248] }, margin: { left: m, right: m } };
-        const sec = (title, y) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(194, 68, 14); doc.text(title, m, y); return y + 2; };
+        sheets.forEach(sh => {
+          need(30);
+          y = RK.sectionHeading(doc, M, y + 2, `${fmtDate(sh.sheet_date)}${sh.job_sheet_number ? '  ·  ' + sh.job_sheet_number : ''}`);
+          y = RK.pairRow(doc, M, y, 'Technician', sheetTechs(sh));
+          y = RK.pairRow(doc, M, y, 'Hours', `${sheetHours(sh)}h`);
 
-        let y = 48;
-        y = sec('Labour', y);
-        const labVals = Object.entries(d.byEmp);
-        doc.autoTable(Object.assign({}, base, {
-          startY: y + 2,
-          head: [['Employee', 'Normal (h)', 'OT (h)', 'Total (h)']],
-          body: labVals.length ? labVals.map(([e, v]) => [e, round1(v.n), round1(v.o), round1(v.n + v.o)]) : [['No labour in range', '', '', '']],
-          foot: labVals.length ? [['TOTAL', d.totN, d.totO, round1(d.totN + d.totO)]] : undefined,
-          footStyles: { fillColor: [235, 235, 235], textColor: 20, fontStyle: 'bold' }
-        }));
-        y = doc.lastAutoTable.finalY + 8; if (y > ph - 40) { doc.addPage(); y = m; }
+          const tasks = parseArr(sh.tasks).map(taskText).filter(Boolean);
+          const notes = parseArr(sh.notes).map(noteText).filter(Boolean);
+          need(10);
+          RK.para(doc, M, y, 'Work done', { size: F.body, style: 'bold', rgb: P.charcoal.rgb }); y += 5;
+          if (tasks.length) tasks.forEach(t => { y = RK.para(doc, M + 3, y, '•  ' + t, { bottom }); });
+          else y = RK.para(doc, M + 3, y, 'No work recorded', { rgb: P.muted.rgb, bottom });
+          if (notes.length) {
+            need(10);
+            RK.para(doc, M, y + 1, 'Notes', { size: F.body, style: 'bold', rgb: P.charcoal.rgb }); y += 6;
+            notes.forEach(n => { y = RK.para(doc, M + 3, y, '•  ' + n, { bottom }); });
+          }
 
-        y = sec('Materials', y);
-        const matVals = Object.values(d.mat);
-        doc.autoTable(Object.assign({}, base, {
-          startY: y + 2,
-          head: [['Material', 'Qty', 'Unit']],
-          body: matVals.length ? matVals.map(mm => [mm.name || '—', round1(mm.qty), mm.unit || '']) : [['No materials in range', '', '']]
-        }));
-        y = doc.lastAutoTable.finalY + 8; if (y > ph - 40) { doc.addPage(); y = m; }
+          const mats = parseArr(sh.materials);
+          need(14);
+          RK.para(doc, M, y + 1, 'Materials', { size: F.body, style: 'bold', rgb: P.charcoal.rgb }); y += 4;
+          if (mats.length && typeof doc.autoTable === 'function') {
+            doc.autoTable({
+              startY: y,
+              head: [['Material', 'Qty', 'Unit']],
+              body: mats.map(m => [RK.normalize(m.name || '—'), round1(num(m.quantity ?? m.qty)), RK.normalize(m.unit || '')]),
+              margin: { left: M, right: M, top, bottom: L.pageH - bottom },
+              theme: 'grid',
+              styles: { font: 'helvetica', fontSize: F.small, cellPadding: 1.8, textColor: P.black.rgb, lineColor: P.line.rgb, lineWidth: 0.2 },
+              headStyles: { fillColor: P.navy.rgb, textColor: P.white.rgb, fontStyle: 'bold' },
+              columnStyles: { 1: { halign: 'right', cellWidth: 20 }, 2: { cellWidth: 20 } }
+            });
+            y = doc.lastAutoTable.finalY + 6;
+          } else if (mats.length) {
+            y += 1;
+            mats.forEach(m => { y = RK.para(doc, M + 3, y, `•  ${m.name || '—'} × ${num(m.quantity ?? m.qty)} ${m.unit || ''}`, { bottom }); });
+            y += 3;
+          } else {
+            y = RK.para(doc, M + 3, y + 1, 'None', { rgb: P.muted.rgb, bottom }) + 3;
+          }
+        });
 
-        y = sec('Purchase Orders', y);
-        doc.autoTable(Object.assign({}, base, {
-          startY: y + 2,
-          head: [['PO #', 'Supplier', 'Total', 'Status']],
-          body: d.pos.length ? d.pos.map(p => [p.po_number || p.number || p.id || '—', p.supplier || p.supplier_name || p.vendor || '—', p.total != null ? '$' + p.total : '—', p.status || '—']) : [['No purchase orders in range', '', '', '']]
-        }));
-
+        // header (colour logo) + footer on every page
         const n = doc.internal.getNumberOfPages();
         for (let i = 1; i <= n; i++) {
           doc.setPage(i);
-          doc.setFontSize(7); doc.setTextColor(150); doc.setFont('helvetica', 'normal');
-          doc.text(`Generated ${fmtDate(new Date())} · Bromar Ops`, m, ph - 6);
-          doc.text(`Page ${i} of ${n}`, pw - m, ph - 6, { align: 'right' });
+          await RK.drawHeader(doc);
+          RK.drawFooter(doc, { title: 'Work Report', ref: job.job_number, pageNo: `${i} of ${n}` });
         }
-        const tag = (d.from || 'all') + (d.to ? '_' + d.to : '');
-        doc.save(`Job-Summary_${d.job.job_number}_${tag}.pdf`);
-        toast('PDF downloaded');
+        doc.save(`Work-Report_${job.job_number}_${ov.from}_${ov.to}.pdf`);
+        toast('Work report downloaded');
       } catch (err) {
-        toast('PDF failed: ' + err.message, 6000);
+        toast('Work report failed: ' + err.message, 6000);
+      } finally {
+        if (btn) btn.disabled = false;
       }
     }
-    function periodLabelFrom(f, t) { if (!f && !t) return 'All time'; return `${fmtDate(f)} – ${fmtDate(t)}`; }
 
     /* ══════════════ DRAWER / EDIT ══════════════ */
     function openDrawer(job) {
@@ -1023,47 +1050,10 @@ window.BromarPages.jobs = {
       jobs = data || [];
     }
 
-    /* ── overview controls (persistent on the tab line) ── */
-    function initOverviewControls() {
-      const [f, t] = thisWeek();
-      $('ovFrom').value = f; $('ovTo').value = t; $('ovPreset').value = 'this_week';
-
-      $('ovPreset').addEventListener('change', function () {
-        const r = presetRange(this.value);
-        if (r) { $('ovFrom').value = r[0]; $('ovTo').value = r[1]; }
-        if (activeTab === 'overview' && ovJob) loadJobOverview();
-      });
-      const onDate = () => { $('ovPreset').value = 'custom'; if (activeTab === 'overview' && ovJob) loadJobOverview(); };
-      $('ovFrom').addEventListener('change', onDate);
-      $('ovTo').addEventListener('change', onDate);
-
-      let jt;
-      $('ovJobSearch').addEventListener('input', function () {
-        clearTimeout(jt);
-        const q = this.value.trim().toLowerCase();
-        const r = $('ovJobResults');
-        if (!q) { r.classList.remove('show'); return; }
-        jt = setTimeout(() => {
-          const matches = jobs.filter(j => (`${j.job_number} ${j.client_name || ''} ${j.site_name || ''}`).toLowerCase().includes(q)).slice(0, 12);
-          r.innerHTML = matches.length ? matches.map(j =>
-            `<div class="ac-item" data-id="${j.id}"><div style="font-weight:600;">${esc(j.job_number)} <span style="color:var(--text-secondary);font-weight:400;">${esc(j.client_name || '')}</span></div>${j.site_name ? `<div class="ac-sub">📍 ${esc(j.site_name)}</div>` : ''}</div>`).join('')
-            : `<div class="ac-item" style="color:var(--text-secondary)">No jobs found</div>`;
-          r.querySelectorAll('.ac-item[data-id]').forEach(it => it.addEventListener('click', () => {
-            ovJob = jobs.find(j => String(j.id) === it.dataset.id);
-            $('ovJobSearch').value = ovJob.job_number + ' — ' + (ovJob.client_name || '');
-            r.classList.remove('show');
-            loadJobOverview();
-          }));
-          r.classList.add('show');
-        }, 200);
-      });
-    }
-
     /* ── tabs ── */
     function showTab(tab) {
       activeTab = tab;
       container.querySelectorAll('.jobs-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-      $('ovControls').style.display = tab === 'overview' ? 'flex' : 'none';
       closeDrawer();
       if (tab === 'register') renderRegister(); else renderOverview();
     }
@@ -1081,7 +1071,6 @@ window.BromarPages.jobs = {
       try {
         await loadJobs();
         try { await fetchJobTypes(); } catch (e) { /* tiles fall back to raw code labels */ }
-        initOverviewControls();
         showTab('register');
       } catch (err) {
         $('jobsTabContent').innerHTML = `<div class="jobs-empty">Could not load jobs: ${esc(err.message)}</div>`;
@@ -1094,3 +1083,4 @@ window.BromarPages.jobs = {
     this._docListeners = [];
   }
 };
+})();
