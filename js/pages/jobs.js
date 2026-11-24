@@ -1,5 +1,6 @@
 /* ============================================================
-   Jobs — V1.19 — 2026-11-24
+   Jobs — V1.20 — 2026-11-24
+   V1.20: Work Report labour table is now employee rows × day columns (Normal/OT weekdays, OT-only weekends) + total column
    V1.19: register loaded in pages (no 1,000-row cap); clickable "Not in register" badge opens an add-to-register form
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
@@ -9,7 +10,7 @@
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = (() => {
-  const PAGE_VERSION = 'V1.19';
+  const PAGE_VERSION = 'V1.20';
   return {
   title: 'Jobs',
   version: PAGE_VERSION,
@@ -782,20 +783,72 @@ window.BromarPages.jobs = (() => {
           { columnStyles: { 0: { cellWidth: 26 }, 1: { cellWidth: 28 } } });
 
         // 2. Labour — combined per technician
-        const lab = {};
+        // Employee per row, one column per worked day (matches the timesheets):
+        // weekdays = Normal + OT sub-columns, weekends = OT only. Split by Mon–Sun week.
+        const lab = {};   // employee -> date -> { n, o }
+        const dateSet = new Set();
         sorted.forEach(sh => parseArr(sh.labour).forEach(l => {
-          const k = l.employee || '—';
-          const r = lab[k] = lab[k] || { days: new Set(), n: 0, o: 0 };
-          r.days.add(sh.sheet_date); r.n += num(l.normalHours ?? l.normal); r.o += num(l.overtimeHours ?? l.ot);
+          const d = String(sh.sheet_date || '').slice(0, 10);
+          if (!d) return;
+          const e = l.employee || '—';
+          const c = ((lab[e] = lab[e] || {})[d] = lab[e][d] || { n: 0, o: 0 });
+          c.n += num(l.normalHours ?? l.normal); c.o += num(l.overtimeHours ?? l.ot);
+          dateSet.add(d);
         }));
-        const labRows = Object.entries(lab).sort((a, b) => a[0].localeCompare(b[0]));
-        const tN = round1(labRows.reduce((a, [, r]) => a + r.n, 0)), tO = round1(labRows.reduce((a, [, r]) => a + r.o, 0));
+        const dateObj = (d) => new Date(d + 'T12:00:00');
+        const isWeekend = (d) => { const w = dateObj(d).getDay(); return w === 0 || w === 6; };
+        const weekKey = (d) => { const o = dateObj(d); o.setDate(o.getDate() - ((o.getDay() + 6) % 7)); return o.toISOString().slice(0, 10); };
+        const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayLabel = (d) => `${DOW[dateObj(d).getDay()]} ${d.slice(8, 10)}/${d.slice(5, 7)}`;
+        const emps = Object.keys(lab).sort((a, b) => a.localeCompare(b));
+        const weeks = {};
+        [...dateSet].sort().forEach(d => (weeks[weekKey(d)] = weeks[weekKey(d)] || []).push(d));
+        const fmtH = (v) => v ? round1(v) : '';
         heading('Labour');
-        if (labRows.length) {
-          table(['Technician', 'Days', 'Normal (h)', 'Overtime (h)', 'Total (h)'],
-            labRows.map(([e, r]) => [N(e), r.days.size, round1(r.n), round1(r.o), round1(r.n + r.o)]),
-            { foot: [['TOTAL', ...[new Set(sorted.map(s => s.sheet_date)).size, tN, tO, round1(tN + tO)].map(v => ({ content: v, styles: { halign: 'right' } }))]],
-              columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 26 }, 3: { halign: 'right', cellWidth: 26 }, 4: { halign: 'right', cellWidth: 24 } } });
+        if (emps.length) {
+          const wkKeys = Object.keys(weeks).sort();
+          wkKeys.forEach((wk, wi) => {
+            const days = weeks[wk];
+            if (wkKeys.length > 1) { need(30); y = RK.para(doc, M, y, `Week commencing ${fmtDate(wk)}`, { style: 'bold', bottom }) + 1; }
+            const head1 = [{ content: 'Employee', rowSpan: 2, styles: { valign: 'middle' } }];
+            const head2 = [];
+            const colStyles = { 0: { cellWidth: 'auto' } };
+            let ci = 1;
+            days.forEach(d => {
+              if (isWeekend(d)) {
+                head1.push({ content: dayLabel(d), styles: { halign: 'center' } }); head2.push({ content: 'OT', styles: { halign: 'center' } });
+                colStyles[ci++] = { halign: 'right', cellWidth: 11 };
+              } else {
+                head1.push({ content: dayLabel(d), colSpan: 2, styles: { halign: 'center' } });
+                head2.push({ content: 'Norm', styles: { halign: 'center' } }, { content: 'OT', styles: { halign: 'center' } });
+                colStyles[ci++] = { halign: 'right', cellWidth: 11 }; colStyles[ci++] = { halign: 'right', cellWidth: 11 };
+              }
+            });
+            head1.push({ content: 'Total (h)', rowSpan: 2, styles: { halign: 'right', valign: 'middle' } });
+            colStyles[ci] = { halign: 'right', cellWidth: 16, fontStyle: 'bold' };
+            const colTot = days.map(() => ({ n: 0, o: 0 }));
+            const body = emps.filter(e => days.some(d => lab[e][d])).map(e => {
+              const row = [N(e)]; let tot = 0;
+              days.forEach((d, i) => {
+                const c = lab[e][d] || { n: 0, o: 0 };
+                colTot[i].n += c.n; colTot[i].o += c.o; tot += c.n + c.o;
+                if (isWeekend(d)) row.push(fmtH(c.n + c.o)); else row.push(fmtH(c.n), fmtH(c.o));   // weekend hours are all overtime
+              });
+              row.push(round1(tot)); return row;
+            });
+            const foot = ['TOTAL']; let grand = 0;
+            days.forEach((d, i) => {
+              const t = colTot[i]; grand += t.n + t.o;
+              if (isWeekend(d)) foot.push(fmtH(t.n + t.o)); else foot.push(fmtH(t.n), fmtH(t.o));
+            });
+            foot.push(round1(grand));
+            table(null, body, {
+              head: [head1, head2],
+              foot: [foot.map((v, i) => i === 0 ? v : { content: v, styles: { halign: 'right' } })],
+              styles: { font: 'helvetica', fontSize: F.small - 1, cellPadding: 1.5, textColor: P.black.rgb, lineColor: P.line.rgb, lineWidth: 0.2, valign: 'middle', overflow: 'linebreak' },
+              columnStyles: colStyles
+            });
+          });
         } else { y = RK.para(doc, M, y, 'No labour recorded.', { rgb: P.muted.rgb, bottom }) + 4; }
 
         // 3. Materials — combined by item + unit
