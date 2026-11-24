@@ -1,5 +1,5 @@
 /* ============================================================
-   Jobs — V1.16 — 2026-11-23
+   Jobs — V1.17 — 2026-11-23
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
    activity in a week / month / custom range + Work Report PDF via BromarReportKit).
@@ -8,15 +8,13 @@
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = (() => {
-  const PAGE_VERSION = 'V1.16';
+  const PAGE_VERSION = 'V1.17';
   return {
   title: 'Jobs',
   version: PAGE_VERSION,
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
-    const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
     let sb = null;
 
     function loadScript(url) {
@@ -29,14 +27,8 @@ window.BromarPages.jobs = (() => {
     async function ensureSupabase() {
       if (window.supabaseClient) return (sb = window.supabaseClient);
       if (window.sb) return (sb = window.sb);
-      if (!window.supabase) {
-        for (const url of ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'https://unpkg.com/@supabase/supabase-js@2']) {
-          try { await loadScript(url); if (window.supabase) break; } catch (e) { /* next */ }
-        }
-        if (!window.supabase) throw new Error('Could not load the Supabase library (CDN blocked).');
-      }
-      window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      return (sb = window.supabaseClient);
+      // Never fall back to an anon-key client: it would bypass the user's session/RLS.
+      throw new Error('Not signed in: shared Supabase client (js/auth.js) is unavailable. Reload the page.');
     }
     async function ensureJsPDF() {
       if (!(window.jspdf && window.jspdf.jsPDF)) {

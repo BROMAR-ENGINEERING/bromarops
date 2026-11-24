@@ -9,12 +9,12 @@
    Register table: run test_tag_reports_table.sql in Supabase once.
    Load order: include this <script> BEFORE js/pages/admin.js.
 
-   VERSION: V1.32  (bump +0.01 per change; major digit only on request)
+   VERSION: V1.33  (bump +0.01 per change; major digit only on request)
    ============================================================ */
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.32',
+  version: 'V1.33',
 
   /* ── Supabase config ── */
   _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
@@ -22,7 +22,7 @@ window.BromarAdmin.testtag = {
   _sbHeaders() {
     return {
       'apikey': this._SB_KEY,
-      'Authorization': 'Bearer ' + this._SB_KEY,
+      'Authorization': 'Bearer ' + (window.BromarAuth ? window.BromarAuth.token() : this._SB_KEY),
       'Content-Type': 'application/json',
       'Prefer': 'return=minimal'
     };
@@ -49,7 +49,7 @@ window.BromarAdmin.testtag = {
         method: 'POST',
         headers: {
           apikey: this._SB_KEY,
-          Authorization: 'Bearer ' + this._SB_KEY,
+          Authorization: 'Bearer ' + (window.BromarAuth ? window.BromarAuth.token() : this._SB_KEY),
           'Content-Type': 'application/pdf',
           'x-upsert': 'true'            // replace existing file for this cert
         },

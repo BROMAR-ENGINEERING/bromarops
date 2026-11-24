@@ -5,21 +5,18 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.36
+   V1.37
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.36';
+  const PAGE_VERSION = 'V1.37';
 
   /* ── SUPABASE CONFIG ── */
-  const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
   let supabase = null;
   function getSupabase() {
     if (supabase) return supabase;
     if (window.supabaseClient) { supabase = window.supabaseClient; return supabase; }
-    if (window.supabase?.createClient) { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return supabase; }
     return null;
   }
 

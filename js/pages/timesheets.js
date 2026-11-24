@@ -7,13 +7,13 @@
    BROMAR OPS — TIMESHEETS PAGE
    File     : js/pages/timesheets.js
    Registers: window.BromarPages.timesheets
-   Version  : V1.10
+   Version  : V1.11
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.10',
+  version: 'V1.11',
 
   render(container) {
     // Display this page's version in the footer
@@ -110,7 +110,7 @@ window.BromarPages.timesheets = {
       const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
       Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
       const res = await fetch(url, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${window.BromarAuth ? window.BromarAuth.token() : SUPABASE_KEY}` }
       });
       if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
       return res.json();

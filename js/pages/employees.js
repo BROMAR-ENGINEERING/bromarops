@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — EMPLOYEES PAGE
-   V1.13
+   V1.14
    Supabase tables: employees, employee_certs, cert_types,
                     employee_cert_history, employee_cert_images,
                     inductions, employee_skills
@@ -10,7 +10,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.13',
+  version: 'V1.14',
 
   render(container) {
     const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -31,15 +31,17 @@ window.BromarPages.employees = {
     let skillSuggestions         = [];
 
     /* ── HELPERS ── */
+    // Use the signed-in user's JWT (fresh on every request) so RLS applies.
+    const authTok = () => (window.BromarAuth ? window.BromarAuth.token() : SUPABASE_KEY);
     const sbH = {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      get 'Authorization'() { return `Bearer ${authTok()}`; },
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
     const sbHnoPrefer = {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      get 'Authorization'() { return `Bearer ${authTok()}`; },
       'Content-Type': 'application/json'
     };
 
@@ -78,7 +80,7 @@ window.BromarPages.employees = {
       });
     }
     async function loadImageAsDataUrl(url) {
-      const r = await fetch(url + '?t=' + Date.now(), { headers: { 'apikey': SUPABASE_KEY } });
+      const r = await fetch(url + '?t=' + Date.now(), { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authTok()}` } });
       if (!r.ok) return null;
       const blob = await r.blob();
       return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
@@ -139,7 +141,7 @@ window.BromarPages.employees = {
     async function uploadToStorage(path, file) {
       const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
         method: 'POST',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authTok()}`, 'Content-Type': file.type, 'x-upsert': 'true' },
         body: file,
       });
       if (!r.ok) { const t = await r.text(); throw new Error(t); }
@@ -147,7 +149,7 @@ window.BromarPages.employees = {
     async function deleteFromStorage(path) {
       await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
         method: 'DELETE',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authTok()}` },
       });
     }
 

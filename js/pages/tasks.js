@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — TASKS & ANNOUNCEMENTS
-   Version: V1.02
+   Version: V1.03
    Supabase: tasks table + employees table
    Tasks = completable | Announcements = acknowledgeable
    ============================================================ */
@@ -8,7 +8,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.tasks = {
   title: 'Tasks',
-  version: 'V1.02',
+  version: 'V1.03',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -17,7 +17,7 @@ window.BromarPages.tasks = {
     /* ── Supabase ── */
     const SB = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
     const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
-    const H = { 'apikey': KEY, 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+    const H = { 'apikey': KEY, get 'Authorization'() { return `Bearer ${window.BromarAuth ? window.BromarAuth.token() : KEY}`; }, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
 
     /* ── Helpers ── */
     function parseISO(s) { if (!s) return null; if (s instanceof Date) return s; const p = String(s).split('T')[0].split('-').map(Number); return (p[0] && p[1] && p[2]) ? new Date(p[0], p[1]-1, p[2]) : null; }
