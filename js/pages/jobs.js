@@ -1093,12 +1093,16 @@ window.BromarPages.jobs = (() => {
     });
 
     /* ── boot ── */
+    const deepLink = window.BromarOps?.takeParams?.() || {};
     (async () => {
       $('jobsTabContent').innerHTML = `<div class="jobs-empty">Loading jobs…</div>`;
       try {
         await loadJobs();
         try { await fetchJobTypes(); } catch (e) { /* tiles fall back to raw code labels */ }
         showTab('register');
+        // deep link from global search: #jobs?no=BE5817
+        const target = deepLink.no && jobs.find(j => j.job_number === deepLink.no);
+        if (target) openDrawer(target);
       } catch (err) {
         $('jobsTabContent').innerHTML = `<div class="jobs-empty">Could not load jobs: ${esc(err.message)}</div>`;
       }

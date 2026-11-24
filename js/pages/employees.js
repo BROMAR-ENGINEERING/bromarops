@@ -375,6 +375,7 @@ window.BromarPages.employees = {
       </div>`;
 
     /* ── LOAD ── */
+    const deepLink = window.BromarOps?.takeParams?.() || {}; // #employees?name=<full name>
     async function load() {
       const [emps, cts, indTypes, skillNames] = await Promise.all([
         sbFetch('employees?select=*&order=full_name.asc'),
@@ -387,6 +388,8 @@ window.BromarPages.employees = {
       inductionTypeSuggestions = [...new Set(indTypes.map(r => r.induction_type).filter(Boolean))].sort();
       skillSuggestions         = [...new Set(skillNames.map(r => r.skill_name).filter(Boolean))].sort();
       renderStats(); renderGrid();
+      const target = deepLink.name && allEmployees.find(e => e.full_name === deepLink.name);
+      if (target) openDetail(target);
     }
 
     /* ── STATS ── */

@@ -3402,7 +3402,11 @@ ${q.preparedBy || COMPANY.name}`;
 
     /* ── LOAD FROM SUPABASE THEN RENDER ── */
     container.innerHTML = '<div class="card"><p class="hint">Loading quotes…</p></div>';
-    loadAll().then(rerender);
+    const deepLink = window.BromarOps?.takeParams?.() || {}; // #quotes?id=<quote id> from global search
+    loadAll().then(() => {
+      rerender();
+      if (deepLink.id && quotes.some(q => q.id === deepLink.id)) openEditor(deepLink.id);
+    });
 
     // let destroy() flush any debounced edits before the page unmounts
     window.BromarPages.quotes._flush = flushSaves;

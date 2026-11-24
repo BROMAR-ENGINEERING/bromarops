@@ -721,6 +721,8 @@
     version: VERSION,
     render(container) {
       root = container;
+      const deepLink = window.BromarOps?.takeParams?.() || {}; // #clients?id=<client id>
+      if (deepLink.id) state.activeId = deepLink.id;
       injectStyles();
       container.innerHTML = shell();
       container.addEventListener('click', onClick);
