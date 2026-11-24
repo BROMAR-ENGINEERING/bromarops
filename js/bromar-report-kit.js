@@ -7,14 +7,14 @@
    Requires : jsPDF 2.5.1 UMD (+ jspdf-autotable 3.8.2 for tables)
    Pattern  : window-export, no build step, no framework.
 
-   VERSION V1.01
+   VERSION V1.02
    (+0.01 per change; major digit only bumps on explicit major change)
    =========================================================== */
 
 (function () {
   'use strict';
 
-  const VERSION = 'V1.01';
+  const VERSION = 'V1.02';
 
   /* ── CONFIG (per-repo overrides) ──
      Bromar Ops and Bromar Hub live in separate repos with different
@@ -24,7 +24,7 @@
      index.html at repo root, not this JS file). */
   const config = {
     logoColour:  'assets/logo/bromar-logo-colour.png',
-    logoReverse: 'assets/logo/bromar-logo-reverse-white.png'
+    logoReverse: 'assets/logo/bromar-logo-white.png'
   };
 
   function configure(opts) {
