@@ -146,6 +146,7 @@ js/config.js          Supabase URL + anon key (only place they should live)
 js/auth.js            session guard, creates window.supabaseClient
 js/core.js            sidebar, header, router, nav badges
 js/utils.js, js/bromar-*.js   shared helpers / kits
+js/global-search.js   header search box (jobs, quotes, clients, sites, employees); results link to `#page?param=…`
 js/pages/<page>.js    one file per sidebar page
 js/pages/ims/ims-<section>-<name>.js   IMS sub-tabs
 assets/               logos, icons
@@ -161,6 +162,7 @@ and attaches 380px + desktop screenshots. When you add a page, add its id to `PA
 - Page = `window.BromarPages.<id> = { title, version, render(container), destroy(), badge()? }`. Add new pages to
   the `files` list in `index.html` **and** the nav list in `js/core.js`.
 - IMS sub-tab = `window.BromarIMS.registerSubTab(section, { id, label, order, render, destroy })`, loaded after `ims.js`.
+- Deep links: hash may carry params (`#jobs?no=BE5817`, `#quotes?id=`, `#clients?id=`, `#employees?name=`). A page reads them once in `render()` with `BromarOps.takeParams()`.
 - Admin sub-modules (`testtag.js`, `compliance.js`) must load **before** `admin.js`.
 - Each file has a header comment with a version (`V1.xx`); bump +0.01 per change, major only on request.
 - Tables: `snake_case`, plural. Dates: Australian format, Melbourne time; pay week Mon–Sun.

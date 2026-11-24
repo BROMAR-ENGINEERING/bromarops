@@ -1,7 +1,11 @@
 /* ============================================================
    BROMAR OPS — SHARED CORE (SPA shell)
    Path: js/core.js
-   V1.22
+   V1.23
+   GLOBAL SEARCH / DEEP LINKS:
+     Hash may carry params: #jobs?no=BE5817. Core strips them from the
+     page id and keeps them for BromarOps.takeParams(), which a page calls
+     once in render() to open a specific record.
    NAV BADGES:
      A page may expose EITHER of:
        badge()         → async, returns { red, yellow } counts
@@ -13,7 +17,7 @@
 
 const BromarOps = (() => {
 
-  const APP_VERSION = 'V1.22';
+  const APP_VERSION = 'V1.23';
   const BADGE_POLL_MS = 60_000;
 
   function renderVersion(pageVersion) {
@@ -62,6 +66,7 @@ const BromarOps = (() => {
 
   window.BromarPages = window.BromarPages || {};
   let currentPage = null;
+  let pendingParams = {};
 
   function renderShell() {
     const items = NAV_ITEMS.map(i => `
@@ -183,7 +188,16 @@ const BromarOps = (() => {
     `;
   }
 
+  /* Query part of the hash, e.g. '#jobs?no=BE5817' → { no: 'BE5817' } */
+  function getHashParams() {
+    const q = (location.hash || '').split('?')[1] || '';
+    return Object.fromEntries(new URLSearchParams(q));
+  }
+  /* Pages call this once in render(); returns the params and clears them. */
+  function takeParams() { const p = pendingParams; pendingParams = {}; return p; }
+
   function navigate(pageId) {
+    pendingParams = getHashParams();
     const page = window.BromarPages[pageId];
     if (!page) {
       document.getElementById('page-content').innerHTML =
@@ -223,7 +237,7 @@ const BromarOps = (() => {
   }
 
   function getPageFromHash() {
-    const id = (location.hash || '#dashboard').slice(1);
+    const id = (location.hash || '#dashboard').slice(1).split('?')[0];
     return window.BromarPages[id] ? id : 'dashboard';
   }
 
@@ -239,6 +253,7 @@ const BromarOps = (() => {
 
     applyTheme(getTheme());
     renderVersion();
+    window.BromarSearch?.mount(document.querySelector('.header-right'));
 
     document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
     document.getElementById('sign-out').addEventListener('click', async () => {
@@ -269,7 +284,7 @@ const BromarOps = (() => {
   }
 
   return {
-    init, navigate, toggleTheme,
+    init, navigate, toggleTheme, takeParams,
     refreshNavBadges,
     refreshNavBadgeFor,
     // legacy aliases (pre-V1.21 callers)
@@ -279,4 +294,5 @@ const BromarOps = (() => {
   };
 })();
 
+window.BromarOps = BromarOps;
 document.addEventListener('bromar-auth-ready', BromarOps.init);

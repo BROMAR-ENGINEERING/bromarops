@@ -12,7 +12,7 @@
    Bumping CACHE name auto-purges old caches on activate.
    ============================================================ */
 
-const CACHE = 'bromar-ops-v1-12';
+const CACHE = 'bromar-ops-v1-13';
 
 const PRECACHE_URLS = [
   'index.html',
@@ -23,6 +23,7 @@ const PRECACHE_URLS = [
   'js/auth.js',
   'js/utils.js',
   'js/core.js',
+  'js/global-search.js',
   'js/bromar-report-kit.js',
   'js/bromar-form-kit.js',
   'js/pages/dashboard.js',
