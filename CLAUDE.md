@@ -148,7 +148,12 @@ js/utils.js, js/bromar-*.js   shared helpers / kits
 js/pages/<page>.js    one file per sidebar page
 js/pages/ims/ims-<section>-<name>.js   IMS sub-tabs
 assets/               logos, icons
+tests/                Playwright smoke test (dev/CI only; the app itself has no npm/build)
 ```
+
+**Smoke test:** `cd tests && npm ci && npx playwright install chromium && npx playwright test`. Loads every page with a stubbed
+Supabase client (`tests/smoke/supabase-stub.js`, sample data in `tests/fixtures/tables.json`), fails on any console error,
+and attaches 380px + desktop screenshots. When you add a page, add its id to `PAGES` in `tests/smoke/pages.smoke.spec.js`.
 
 **Naming & patterns**
 - No framework, no build step, no npm. Plain JS loaded by `<script>` tags; libraries from CDN (supabase-js, jsPDF, SheetJS, pdf.js).

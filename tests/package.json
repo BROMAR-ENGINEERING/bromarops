@@ -1,0 +1,11 @@
+{
+  "name": "bromar-ops-smoke-tests",
+  "private": true,
+  "description": "Playwright smoke test. Dev/CI only - the app itself has no build step or npm.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
