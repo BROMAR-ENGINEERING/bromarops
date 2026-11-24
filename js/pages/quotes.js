@@ -1,13 +1,13 @@
 /* ============================================================
    BROMAR OPS — QUOTES PAGE
-   V1.82
+   V1.83
    Repo path: js/pages/quotes.js
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.quotes = {
   title: 'Quotes',
-  version: 'V1.82',
+  version: 'V1.83',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -940,7 +940,7 @@ window.BromarPages.quotes = {
           <div class="row-main">
             <div class="row-top">
               <span class="row-number" data-action="renumber" data-id="${q.id}" title="Click to change number">${escape(displayNumber(q))}${q.editedAfterPublish ? '<span class="edited-star" title="Edited after publishing">*</span>' : ''}</span>
-              ${q.acceptedJobNumber ? `<span class="row-badge badge-job" title="Job number">JOB ${escape(q.acceptedJobNumber)}</span>` : ''}
+              ${q.acceptedJobNumber ? `<a class="row-badge badge-job" href="#jobs?no=${encodeURIComponent(q.acceptedJobNumber)}" onclick="event.stopPropagation()" title="Open job">JOB ${escape(q.acceptedJobNumber)}</a>` : ''}
               ${q.nickname ? `<span class="row-nick">${escape(q.nickname)}</span>` : ''}
               ${isEstimate ? '<span class="row-badge badge-est">Estimate</span>' : ''}
               ${!isPublished && q.reviewStatus === 'in_review' ? '<span class="row-badge badge-review">In Review</span>' : ''}
@@ -1193,7 +1193,7 @@ window.BromarPages.quotes = {
         <div class="page-title-wrapper editor-header">
           <button class="btn-secondary" id="back-btn">← Back</button>
           <div class="editor-titlebar">
-            <h1>${escape(displayNumber(q))}${q.editedAfterPublish ? '<span class="edited-star" title="Edited after publishing">*</span>' : ''} ${docTag} ${statusTag}${q.acceptedJobNumber ? `<span class="pub-tag pub-job">JOB ${escape(q.acceptedJobNumber)}</span>` : ''}</h1>
+            <h1>${escape(displayNumber(q))}${q.editedAfterPublish ? '<span class="edited-star" title="Edited after publishing">*</span>' : ''} ${docTag} ${statusTag}${q.acceptedJobNumber ? `<a class="pub-tag pub-job" href="#jobs?no=${encodeURIComponent(q.acceptedJobNumber)}" title="Open job" style="text-decoration:none">JOB ${escape(q.acceptedJobNumber)}</a>` : ''}</h1>
             <p class="subtitle">${escape(q.nickname || q.siteName || q.client)} · ${revLabel} · ${escape(q.preparedBy || 'No preparer')}</p>
           </div>
           <div class="editor-actions">
@@ -2907,32 +2907,47 @@ ${q.preparedBy || COMPANY.name}`;
       remapSectionRefs(copy.sections, idMap);
       quotes.push(copy); await saveQuoteNow(copy); openEditor(copy.id);
     }
-    /* Approve a published quote into a job: mark Accepted and capture
-       a job number (keep the quote number or override, e.g. BAxxx).
-       The jobs-table row is stubbed until the schema is provided. */
+    /* Approve a published quote into a job: mark Accepted and create the job
+       in job_number_register via the create_new_job RPC (same as Jobs page).
+       "Use existing number" covers jobs already opened in the old system. */
+    let jobTypesCache = null;
+    async function loadJobTypes() {
+      if (jobTypesCache) return jobTypesCache;
+      const { data, error } = await sb().from('job_types').select('id, category, code, name, sort_order, active')
+        .order('code', { ascending: true }).order('sort_order', { ascending: true });
+      if (error) throw error;
+      jobTypesCache = (data || []).filter(r => r.active !== false);
+      return jobTypesCache;
+    }
     function openAcceptDialog(id) {
       const q = quotes.find(x => x.id === id); if (!q) return;
       if (q.docType !== 'quote') { toast('Only quotes can be approved into jobs.'); return; }
       if (!q.publishedAt) { toast('Publish the quote before approving it.'); return; }
-      const suggested = q.acceptedJobNumber || displayNumber(q);
+      const already = !!q.acceptedJobNumber;   // job already exists: only the number can be edited
       const dialog = document.createElement('div');
       dialog.className = 'quote-modal-overlay';
       dialog.innerHTML = `
         <div class="quote-modal quote-modal-sm">
-          <div class="modal-header"><h2>Approve &amp; Create Job</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
+          <div class="modal-header"><h2>${already ? 'Edit Job Number' : 'Approve &amp; Create Job'}</h2><button class="icon-btn" id="modal-close">${ICON_X}</button></div>
           <div class="modal-body">
-            <p class="hint">Marks <strong>${escape(displayNumber(q))}</strong> as Accepted and creates a job.</p>
+            ${already ? `
+            <p class="hint"><strong>${escape(displayNumber(q))}</strong> is already linked to a job.</p>
             <div class="form-row"><label>Job Number</label>
-              <input id="acc-jobnum" class="quote-input" value="${escape(suggested)}" autocomplete="off" spellcheck="false">
-              <span class="field-hint">Keep the quote number, or override (e.g. BA1042).</span>
+              <input id="acc-jobnum" class="quote-input" value="${escape(q.acceptedJobNumber)}" autocomplete="off" spellcheck="false">
+              <span class="field-hint">Only changes the number shown on this quote. It does not edit the job.</span>
+            </div>` : `
+            <p class="hint">Marks <strong>${escape(displayNumber(q))}</strong> as Accepted and creates a job for <strong>${escape(q.client || 'Unassigned')}</strong>${q.siteName ? ' — ' + escape(q.siteName) : ''}.</p>
+            <div class="form-row"><label><input type="radio" name="acc-mode" value="new" checked> Create new job number</label>
+              <select id="acc-type" class="quote-input" disabled><option value="">Loading job types…</option></select>
+              <span class="field-hint" id="acc-match"></span>
             </div>
-            <div class="quick-actions" style="display:flex;gap:0.5rem;margin-top:0.4rem">
-              <button type="button" class="btn-secondary preset-btn" id="acc-keep">Keep ${escape(displayNumber(q))}</button>
-            </div>
+            <div class="form-row"><label><input type="radio" name="acc-mode" value="existing"> Use an existing job number (old system)</label>
+              <input id="acc-jobnum" class="quote-input" placeholder="e.g. BA1042" autocomplete="off" spellcheck="false" disabled>
+            </div>`}
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" id="acc-cancel">Cancel</button>
-            <button class="btn-primary" id="acc-save">Approve &amp; Create Job</button>
+            <button class="btn-primary" id="acc-save">${already ? 'Save' : 'Approve &amp; Create Job'}</button>
           </div>
         </div>`;
       document.body.appendChild(dialog);
@@ -2941,33 +2956,89 @@ ${q.preparedBy || COMPANY.name}`;
       dialog.addEventListener('click', e => { if (e.target === dialog && downOnBackdrop) close(); });
       const close = () => dialog.remove();
       const input = dialog.querySelector('#acc-jobnum');
+      const typeSel = dialog.querySelector('#acc-type');
+      const mode = () => already ? 'existing' : dialog.querySelector('input[name="acc-mode"]:checked').value;
       dialog.querySelector('#modal-close').addEventListener('click', close);
       dialog.querySelector('#acc-cancel').addEventListener('click', close);
-      dialog.querySelector('#acc-keep').addEventListener('click', () => { input.value = displayNumber(q); input.focus(); });
-      dialog.querySelector('#acc-save').addEventListener('click', async () => {
-        const jobNum = input.value.trim();
-        if (!jobNum) { toast('Enter a job number.'); input.focus(); return; }
-        q.status = 'accepted';
+      let types = [];
+      if (!already) {
+        const m = matchClientSite(q);
+        dialog.querySelector('#acc-match').textContent =
+          (m.client ? 'Client matched. ' : 'Client not found in Clients — job will use the typed name only. ') +
+          (m.site ? 'Site matched.' : (q.siteName ? 'Site not found — address copied as text.' : ''));
+        loadJobTypes().then(rows => {
+          types = rows;
+          const groups = {}, order = [];
+          rows.forEach(r => { const k = r.category || 'Other'; (groups[k] = groups[k] || (order.push(k), [])).push(r); });
+          typeSel.innerHTML = '<option value="">Select job type…</option>' + order.map(k =>
+            `<optgroup label="${escape(k)} — ${escape(groups[k][0].code || '')}">${groups[k].map(r => `<option value="${r.id}">${escape(r.name)}</option>`).join('')}</optgroup>`).join('');
+          typeSel.disabled = mode() !== 'new';
+        }).catch(err => { typeSel.innerHTML = '<option value="">Could not load job types</option>'; toast('Could not load job types: ' + err.message); });
+        dialog.querySelectorAll('input[name="acc-mode"]').forEach(r => r.addEventListener('change', () => {
+          const isNew = mode() === 'new'; typeSel.disabled = !isNew || !types.length; input.disabled = isNew; if (!isNew) input.focus();
+        }));
+      } else { input.focus(); input.select(); }
+      const saveBtn = dialog.querySelector('#acc-save');
+      saveBtn.addEventListener('click', async () => {
+        let jobNum = '';
+        let createdNew = false;
+        if (mode() === 'existing') {
+          jobNum = input.value.trim();
+          if (!jobNum) { toast('Enter a job number.'); input.focus(); return; }
+        } else {
+          const jt = types.find(t => String(t.id) === typeSel.value);
+          if (!jt) { toast('Select a job type.'); typeSel.focus(); return; }
+          saveBtn.disabled = true; saveBtn.textContent = 'Creating job…';
+          try { jobNum = await createJobRecord(q, jt); createdNew = true; }
+          catch (err) {
+            console.error('create_new_job failed', err);
+            toast('Could not create job: ' + (err.message || err)); saveBtn.disabled = false; saveBtn.textContent = 'Approve & Create Job'; return;
+          }
+        }
+        if (!already) { q.status = 'accepted'; q.acceptedAt = new Date().toISOString(); }
         q.acceptedJobNumber = jobNum;
-        q.acceptedAt = new Date().toISOString();
         const ok = await saveQuoteNow(q);
-        if (!ok) { toast('Could not save — not approved.'); return; }
-        await createJobRecord(q);   // stubbed until jobs schema lands
+        if (!ok) { toast(createdNew ? `Job ${jobNum} was created but the quote could not be saved. Set the job number on the quote manually.` : 'Could not save — not approved.'); saveBtn.disabled = false; return; }
         close();
-        toast(`Approved — job ${jobNum} created.`);
+        toast(already ? 'Job number updated.' : (createdNew ? `Approved — job ${jobNum} created.` : `Approved — linked to job ${jobNum}.`));
         rerender();
       });
-      input.focus(); input.select();
     }
 
-    /* STUB: writes the jobs-table row once the schema is provided.
-       For now it no-ops so the accept flow works end to end. */
-    async function createJobRecord(q) {
-      // TODO: insert into 'jobs' when schema is confirmed, e.g.:
-      // await sb().from('jobs').insert({ job_number: q.acceptedJobNumber,
-      //   quote_id: q.id, client: q.client, site_name: q.siteName,
-      //   total: quoteTotal(q), created_at: q.acceptedAt }).select();
-      return true;
+    /* Match the quote's client/site (stored as text names) to Clients & Sites. */
+    function matchClientSite(q) {
+      const norm = v => (v || '').trim().toLowerCase();
+      const client = clients.find(c => norm(c.name) === norm(q.client)) || null;
+      const site = sites.find(s => norm(s.site_name) === norm(q.siteName) && (!client || s.client_id === client.id)) || null;
+      return { client, site };
+    }
+
+    /* Create the job via RPC create_new_job, then copy quote details onto the
+       register row. Returns the new job number; throws if the RPC fails. */
+    async function createJobRecord(q, jobType) {
+      const { client, site } = matchClientSite(q);
+      const clientId = client ? client.id : (site ? site.client_id : null);
+      const { data: jobNum, error } = await sb().rpc('create_new_job', {
+        p_prefix: jobType.code, p_client_id: clientId || null, p_site_id: site ? site.id : null,
+        p_job_type: jobType.name, p_contact_person: q.siteContactName || null,
+        p_contact_phone: q.siteContactPhone || null, p_contact_role: null
+      });
+      if (error) throw error;
+      if (!jobNum) throw new Error('No job number returned');
+      const extra = { notes: `From quote ${displayNumber(q)}` };
+      if (q.nickname) extra.work_type = q.nickname;
+      if (q.client) extra.client_name = q.client;
+      if (q.siteName) extra.site_name = q.siteName;
+      if (q.siteAddress) extra.site_address = q.siteAddress;
+      if (q.siteContactName) extra.contact_person = q.siteContactName;
+      if (q.siteContactPhone) extra.contact_phone = q.siteContactPhone;
+      const reg = () => sb().from('job_number_register');
+      const { error: exErr } = await reg().update(extra).eq('job_number', jobNum).select();
+      if (exErr) console.warn('Quote detail update failed:', exErr.message);
+      // Optional back-link column (db/migrations/2026-11-24_job_quote_link.sql); ignore if not applied yet.
+      const { error: linkErr } = await reg().update({ quote_id: q.id }).eq('job_number', jobNum).select();
+      if (linkErr) console.warn('quote_id link not saved (run the quote_id migration):', linkErr.message);
+      return jobNum;
     }
 
     async function convertEstimateToQuote(id) {

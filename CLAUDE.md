@@ -27,7 +27,7 @@ R = reads, W = writes (insert/update/delete). "Fn" = server function called.
 | **Login** (`login.html`) | Email + password sign-in; signs out anyone who isn't admin | R `employees` | — |
 | **Dashboard** (`js/pages/dashboard.js`) | Date, Melbourne weather, who's on call-out standby, pending leave requests, pending drafts (read-only) | R `callout_roster`, `leave_requests`, `timesheet_drafts`, `job_sheet_drafts` | — |
 | **Jobs** (`js/pages/jobs.js`) | Job register (list/create/edit) and per-job overview + PDF | R `job_number_register`, `job_types`, `job_number_counters`, `clients`, `client_sites` (falls back to `sites`), `job_sheets`, `purchase_orders`, `quotes`; W `job_number_register`; RPC `create_new_job` | — |
-| **Quotes** (`js/pages/quotes.js`) | Quotes & estimates builder, review/approve flow, favourites, PDF | RW `quotes`, `quote_favourites`; R `clients`, `client_sites` (insert into `jobs` is commented out) | — |
+| **Quotes** (`js/pages/quotes.js`) | Quotes & estimates builder, review/approve flow, favourites, PDF | RW `quotes`, `quote_favourites`; R `clients`, `client_sites`, `job_types`; RPC `create_new_job` (on Approve) + W `job_number_register` | — |
 | **Scheduling** (`js/pages/scheduling.js`) | Drag-drop weekly staff schedule; notify staff of changes | RW `schedule_assignments`, `pinned_sites`; W `notifications`; R `employees`, `client_sites`, `job_number_register`, `rdo_roster` | Supabase Edge Fn `send-notification` |
 | **Timesheets** (`js/pages/timesheets.js`) | Read-only: who has submitted for the pay week, lookup, analysis, PDF export | R `timesheets`, `employees` | — |
 | **Employees** (`js/pages/employees.js`) | Staff records, licences/certs (with history & images), inductions, skills | RW `employees`, `employee_certs`, `cert_types`, `employee_cert_history`, `inductions`, `employee_skills`; header also lists `employee_cert_images`. Storage bucket `employee-documents` | — |
@@ -85,7 +85,7 @@ Tables: `callout_roster`, `cert_types`, `client_access_requests`, `client_sites`
 `employee_cert_history`, `employee_cert_images`, `employee_certs`, `employee_skills`, `employees`, `equipment`,
 `equipment_categories`, `equipment_movements`, `equipment_records`, `feedback_reports`, `fuel_transactions`,
 `ims_document_revisions`, `ims_documents`, `ims_form_submissions`, `inductions`, `itc_form_revisions`, `itc_forms`,
-`job_number_counters`, `job_number_register`, `job_sheets`, `job_type_fields`, `job_types`, `jobs` (commented out),
+`job_number_counters`, `job_number_register`, `job_sheets`, `job_type_fields`, `job_types`,
 `leave_requests`, `materials`, `notifications`, `pinned_sites`, `public_holidays`, `purchase_order_items`,
 `purchase_orders`, `quote_favourites`, `quotes`, `rdo_roster`, `schedule_assignments`, `site_contacts`,
 `sites` (fallback only), `suppliers`, `swms`, `swms_hrcw_categories`, `swms_revisions`, `swms_signoffs`,
@@ -103,7 +103,7 @@ Storage buckets: `employee-documents`, `Equipment`, `Templates`, `test-tag-repor
 
 ### ⚠ Possible clashes — check before changing
 
-1. **Two job tables:** Jobs uses `job_number_register`; Quotes has commented-out code writing to `jobs`; Jobs looks up
+1. **Two job tables:** Jobs uses `job_number_register`; Quotes now creates jobs via `create_new_job` (no `jobs` table); Jobs looks up
    `client_sites` *and* `sites`. Confirm which are real and which the Hub uses.
 2. **Anon key used as the login token.** Timesheets, Tasks, Admin Tools, Test & Tag, Employees (and fallbacks in
    Fleet/Jobs/Scheduling) call Supabase with `Authorization: Bearer <anon key>` instead of the signed-in user's token.
