@@ -25,7 +25,7 @@ R = reads, W = writes (insert/update/delete). "Fn" = server function called.
 | Page (file) | What it does | Supabase tables / storage | Functions called |
 |---|---|---|---|
 | **Login** (`login.html`) | Email + password sign-in; signs out anyone who isn't admin | R `employees` | — |
-| **Dashboard** (`js/pages/dashboard.js`) | Date, Melbourne weather, who's on call-out standby, pending leave requests | R `callout_roster`, `leave_requests` | — |
+| **Dashboard** (`js/pages/dashboard.js`) | Date, Melbourne weather, who's on call-out standby, pending leave requests, pending drafts (read-only) | R `callout_roster`, `leave_requests`, `timesheet_drafts`, `job_sheet_drafts` | — |
 | **Jobs** (`js/pages/jobs.js`) | Job register (list/create/edit) and per-job overview + PDF | R `job_number_register`, `job_types`, `job_number_counters`, `clients`, `client_sites` (falls back to `sites`), `job_sheets`, `purchase_orders`, `quotes`; W `job_number_register`; RPC `create_new_job` | — |
 | **Quotes** (`js/pages/quotes.js`) | Quotes & estimates builder, review/approve flow, favourites, PDF | RW `quotes`, `quote_favourites`; R `clients`, `client_sites` (insert into `jobs` is commented out) | — |
 | **Scheduling** (`js/pages/scheduling.js`) | Drag-drop weekly staff schedule; notify staff of changes | RW `schedule_assignments`, `pinned_sites`; W `notifications`; R `employees`, `client_sites`, `job_number_register`, `rdo_roster` | Supabase Edge Fn `send-notification` |
@@ -125,8 +125,8 @@ Intended flow:
 2. The user opens the draft in the app, reviews and edits it.
 3. The user submits → the app copies it into the real table (`timesheets` / `job_sheets`) and marks or deletes the draft.
 
-**Status in this repo: not built.** Neither draft table is referenced anywhere in the code yet, and nothing here
-writes to `timesheets` or `job_sheets` (the Hub does). Rules for building it:
+**Status:** the review/submit flow lives in **Bromar Hub**. Ops only has a read-only "Pending Drafts" tile on the Dashboard
+(`js/pages/dashboard.js`) for admin visibility. Nothing here writes to the draft tables, `timesheets` or `job_sheets`. Rules for building it:
 - Claude writes **only** to the `*_drafts` tables — never directly to `timesheets` or `job_sheets`.
 - Only a signed-in human submits. Keep a `status` (`draft` → `submitted`), `created_by` (e.g. `claude`) and `submitted_by`.
 - Draft columns should mirror the real table so submit is a straight copy.
@@ -193,7 +193,7 @@ and attaches 380px + desktop screenshots. When you add a page, add its id to `PA
 2. Where is the source for `client-user-admin` and `send-notification`? Should Ops get its own `netlify/functions` folder?
 3. `extract-invoice` doesn't exist — which repo will host it, and which AI provider/key?
 4. Xero sync and push notifications: do they exist (Hub? Supabase?) and which tables do they touch?
-5. `timesheet_drafts` / `job_sheet_drafts`: do these tables exist yet? Review in Ops, Hub, or both?
+5. ~~`timesheet_drafts` / `job_sheet_drafts`~~ — answered: Hub reviews/submits; Ops shows a read-only dashboard tile.
 6. Is RLS enabled on all tables, and do policies allow `anon`? (See clash #2.)
 7. Which job table is current: `job_number_register`, `jobs`, or both? Is `sites` still used?
 9. `employee_cert_images` is listed in the Employees header but not found in calls — still used?
