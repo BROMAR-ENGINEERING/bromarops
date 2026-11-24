@@ -32,6 +32,17 @@ Legend: **Ops** = this repo, **Hub** = Bromar Hub. R/W = read/write. "Ops (anon)
   which suggests RLS is on for at least those.
 - The admin gate (`employees.is_admin`) is enforced in the browser only.
 
+**Admin enforcement (issue #6):** `db/migrations/2026-11-24_rls_is_admin.sql` adds `public.is_admin()` (JWT email → `employees.is_admin`)
+and *restrictive* policies (they only remove access; existing policies are untouched):
+- Tier A, admin-only read+write: `suppliers`, `quotes`, `quote_favourites`, `test_tag_reports`, `job_number_counters`, `client_users`.
+- Tier B, signed-in read, admin-only write: rosters, `public_holidays`, `job_number_register`, `clients`/`client_sites`/`site_contacts`, `job_types`/`job_type_fields`,
+  `ims_documents`/`ims_document_revisions`, `swms_templates`, `schedule_assignments`, `pinned_sites`, `materials`, `purchase_orders(_items)`,
+  `equipment_categories`, `cert_types`, `employee_certs`/`employee_cert_history`/`employee_skills`/`inductions`, `vehicle_costs`, `fuel_transactions`.
+- `employees`: update = admin or own row (trigger blocks non-admins changing `is_admin`/`email`); insert/delete admin only.
+- `feedback_reports`: staff may insert; update/delete admin only.
+- Not yet covered (field-staff writes need per-row rules): tasks, notifications, timesheets, job_sheets, leave_requests, vehicle_audits*, equipment*, vehicles, ims_form_submissions, itc*, swms*, client_access_requests.
+- Restrictive policies only bite where RLS is enabled — run the step-0 check in the migration.
+
 TODO (needs dashboard access): fill the table below from the `pg_policies` query above.
 
 | Table | RLS on? | Who can read | Who can write |
