@@ -175,7 +175,13 @@ assets/               logos, icons
 - **Never put secret keys in code** (Supabase service-role key, Xero, OpenAI/Anthropic, email, VAPID private keys).
   They go in **Netlify environment variables** (for Netlify functions) or **Supabase Edge Function secrets**.
 
-## 7. Open questions
+## 7. Pull request rules
+
+- Always put "Fixes #<issue number>" in the PR description so merging closes the issue.
+- One issue per PR.
+- Before finishing, check the change against the issue and say what was done.
+
+## 8. Open questions
 
 1. The task says the other repo is "Bromar Ops" — the code calls it **Bromar Hub**. Confirm the name/repo.
 2. Where is the source for `client-user-admin` and `send-notification`? Should Ops get its own `netlify/functions` folder?
