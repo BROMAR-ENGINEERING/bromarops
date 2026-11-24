@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.36
+   V1.37
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.36';
+  const PAGE_VERSION = 'V1.37';
 
   /* ── SUPABASE CONFIG ── */
   const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
@@ -70,12 +70,13 @@ window.BromarPages.scheduling = (() => {
       try {
         const sb = await this.init();
         const { data, error } = await sb.from('employees')
-          .select('full_name, first_name, last_name, role, a_grade, is_active')
+          .select('id, full_name, first_name, last_name, role, a_grade, is_active')
           .eq('is_active', true)
           .order('full_name');
         if (error) throw error;
         return (data || []).map((e, i) => ({
           id: 'emp-' + i,
+          dbId: e.id,
           name: e.full_name || `${e.first_name || ''} ${e.last_name || ''}`.trim(),
           firstName: e.first_name || '',
           lastName: e.last_name || '',
@@ -185,6 +186,7 @@ window.BromarPages.scheduling = (() => {
         return (data || []).map(a => ({
           id: a.id,
           employeeName: a.employee_name,
+          employeeId: a.employee_id || null,
           type: a.type || 'job',
           jobNumber: a.job_number || null,
           siteId: a.site_id || null,
@@ -213,6 +215,7 @@ window.BromarPages.scheduling = (() => {
         const sb = await this.init();
         const row = {
           employee_name: a.employeeName,
+          employee_id: a.employeeName ? (empIdByName(a.employeeName) || a.employeeId || null) : null,
           type: a.type,
           job_number: a.jobNumber || null,
           site_id: a.siteId || null,
@@ -288,6 +291,8 @@ window.BromarPages.scheduling = (() => {
   }
 
   /* ── HELPERS ── */
+  // Resolve employees.id (uuid) from a display name; the ID is stored behind the scenes (issue #18)
+  function empIdByName(name) { const e = employees.find(x => x.name === name); return e ? e.dbId : null; }
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
   function getMonday(d) { const dt = new Date(d); const day = dt.getDay(); dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1)); dt.setHours(0, 0, 0, 0); return dt; }
   function formatDate(d) { const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${d.getDate()} ${m[d.getMonth()]}`; }
@@ -304,7 +309,7 @@ window.BromarPages.scheduling = (() => {
     notificationQueue.push(notif);
     try {
       const sb = await DB.init();
-      await sb.from('notifications').insert({ employee_name: empName, message, type: 'schedule_change' });
+      await sb.from('notifications').insert({ employee_name: empName, employee_id: empIdByName(empName), message, type: 'schedule_change' });
     } catch (err) { console.warn('Failed to save notification:', err); }
   }
   function roleLabel(r) { return { electrician: 'Electrician', senior_electrician: 'Senior Electrician', apprentice: 'Apprentice', engineer: 'Engineer', unassigned: 'Unassigned' }[r] || r; }
@@ -1254,7 +1259,7 @@ window.BromarPages.scheduling = (() => {
   // Notify a single assignment: send push/email + flip notified
   async function notifyAssignment(a){
     const msg=buildDefaultMessage(a);
-    try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:a.employeeName,message:msg,type:'schedule_change'});await sb.functions.invoke('send-notification',{body:{employee_name:a.employeeName,message:msg}});}catch(err){console.warn('notifyAssignment failed:',err);}
+    try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:a.employeeName,employee_id:empIdByName(a.employeeName),message:msg,type:'schedule_change'});await sb.functions.invoke('send-notification',{body:{employee_name:a.employeeName,message:msg}});}catch(err){console.warn('notifyAssignment failed:',err);}
     a.notified=true;await DB.markNotified(a.id);
   }
 
@@ -1275,7 +1280,7 @@ window.BromarPages.scheduling = (() => {
       if(btn){btn.disabled=true;btn.textContent='Sending…';}
       const msg="Next Week's Schedule is now live";
       for(const name of names){
-        try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:name,message:msg,type:'schedule_live'});await sb.functions.invoke('send-notification',{body:{employee_name:name,message:msg}});}catch(err){console.warn('notify all failed for',name,err);}
+        try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:name,employee_id:empIdByName(name),message:msg,type:'schedule_live'});await sb.functions.invoke('send-notification',{body:{employee_name:name,message:msg}});}catch(err){console.warn('notify all failed for',name,err);}
       }
       // Mark all their week assignments notified
       for(const a of assignments){

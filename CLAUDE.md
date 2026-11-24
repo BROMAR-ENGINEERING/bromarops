@@ -109,6 +109,7 @@ Storage buckets: `employee-documents`, `Equipment`, `Templates`, `test-tag-repor
 4. **`timesheets` and `job_sheets`** are written by the Hub and only read here — adding draft tables (section 5)
    must not change these tables' shape.
 5. **`notifications`** — rows here are keyed by `employee_name` (text), not an ID. Renaming an employee breaks the link.
+   *Migration in progress (issue #18):* `db/migrations/2026-11-24_employee_id_links.sql` adds `employee_id` (uuid → `employees.id`) with backfill and a fill-from-name trigger. Scheduling (`schedule_assignments`, `notifications`) now dual-writes the ID. Other pages and the Hub still use names; reads switch to ID later.
 6. **`bromar-report-kit.js`** must stay identical in both repos (per its header).
 7. **`ims_documents.slug`** is how the Hub loads forms — don't rename slugs.
 
