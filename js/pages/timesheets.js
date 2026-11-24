@@ -7,13 +7,13 @@
    BROMAR OPS — TIMESHEETS PAGE
    File     : js/pages/timesheets.js
    Registers: window.BromarPages.timesheets
-   Version  : V1.11
+   Version  : V1.12
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.11',
+  version: 'V1.12',
 
   render(container) {
     // Display this page's version in the footer
@@ -40,6 +40,22 @@ window.BromarPages.timesheets = {
       analysisFilter: 'all',
       lookupEmployee: 'all'
     };
+
+    /* Remember view, week and analysis filters (BromarUtils.saveState, key bromar_ops_state_timesheets) */
+    const PERSIST_KEYS = ['view', 'weekStarting', 'analysisFrom', 'analysisTo', 'analysisEmployee', 'analysisFilter', 'lookupEmployee'];
+    function persistState() {
+      if (!window.BromarUtils) return;
+      const o = {}; PERSIST_KEYS.forEach(k => { o[k] = state[k]; });
+      BromarUtils.saveState('timesheets', o);
+    }
+    (function restoreState() {
+      if (!window.BromarUtils) return;
+      const v = BromarUtils.loadState('timesheets');
+      const isDate = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
+      if (['status', 'lookup', 'analysis'].includes(v.view)) state.view = v.view;
+      ['weekStarting', 'analysisFrom', 'analysisTo'].forEach(k => { if (isDate(v[k])) state[k] = v[k]; });
+      ['analysisEmployee', 'analysisFilter', 'lookupEmployee'].forEach(k => { if (typeof v[k] === 'string') state[k] = v[k]; });
+    })();
 
     /* ── DATE HELPERS (all local time, never UTC) ── */
     function isoDate(d) {
@@ -1248,6 +1264,7 @@ window.BromarPages.timesheets = {
     }
 
     async function loadWeekData() {
+      persistState();
       state.loading = true; state.error = null; renderView();
       try { state.timesheets = await loadTimesheetsByWeek(state.weekStarting); }
       catch (err) { state.error = `Failed to load timesheets: ${err.message}`; }
@@ -1255,12 +1272,14 @@ window.BromarPages.timesheets = {
     }
 
     async function loadRangeData() {
+      persistState();
       state.loading = true; state.error = null; renderView();
       try { state.timesheets = await loadTimesheetsByRange(state.analysisFrom, state.analysisTo); }
       catch (err) { state.error = `Failed to load timesheets: ${err.message}`; }
       finally { state.loading = false; renderView(); }
     }
 
+    container.querySelectorAll('.ts-tab').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
     container.querySelectorAll('.ts-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         container.querySelectorAll('.ts-tab').forEach(b => b.classList.remove('active'));
@@ -1316,7 +1335,9 @@ window.BromarPages.timesheets = {
       state.loading = true; renderView();
       try {
         state.employees = await loadEmployees();
-        state.timesheets = await loadTimesheetsByWeek(state.weekStarting);
+        state.timesheets = state.view === 'analysis'
+          ? await loadTimesheetsByRange(state.analysisFrom, state.analysisTo)
+          : await loadTimesheetsByWeek(state.weekStarting);
       } catch (err) {
         state.error = `Failed to load data: ${err.message}`;
       } finally {

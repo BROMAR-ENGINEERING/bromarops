@@ -56,7 +56,7 @@ Shared code:
 - `js/bromar-form-kit.js`: renders IMS forms from schema. R `ims_documents`, W `ims_form_submissions`.
 - `js/bromar-report-kit.js`: shared PDF branding (meant to be identical in the Hub repo).
 - `js/pages/ims/ims-report-kit.js`: IMS document PDF template.
-- `js/utils.js`: date/format helpers (`window.BromarUtils`).
+- `js/utils.js`: date/format helpers (`window.BromarUtils`); also `saveState(page, obj)` / `loadState(page)` which remember each page's last tab/filters/date range in `localStorage` under `bromar_ops_state_<page>` (used by Jobs, Timesheets, Scheduling, Equipment).
 
 ## 3. Server functions
 

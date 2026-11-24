@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED UTILITIES
-   V1.00
+   V1.01
    Exposed as window.BromarUtils.
    Pages should use these helpers rather than reinventing them.
    ============================================================ */
@@ -169,8 +169,25 @@
     }
   }
 
+  /* ── PER-PAGE UI STATE (localStorage) ── */
+  const STATE_PREFIX = 'bromar_ops_state_';
+
+  function saveState(page, obj) {
+    try { localStorage.setItem(STATE_PREFIX + page, JSON.stringify(obj || {})); }
+    catch (_) { /* storage full or blocked — non-critical */ }
+  }
+
+  function loadState(page) {
+    try {
+      const v = JSON.parse(localStorage.getItem(STATE_PREFIX + page));
+      return v && typeof v === 'object' ? v : {};
+    } catch (_) { return {}; }
+  }
+
   window.BromarUtils = {
-    version: 'V1.00',
+    version: 'V1.01',
+    saveState,
+    loadState,
     parseISO,
     formatDate,
     toISODate,

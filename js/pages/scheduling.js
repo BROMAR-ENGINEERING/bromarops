@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.37
+   V1.38
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.37';
+  const PAGE_VERSION = 'V1.38';
 
   /* ── SUPABASE CONFIG ── */
   let supabase = null;
@@ -738,6 +738,7 @@ window.BromarPages.scheduling = (() => {
   /* ═══════════════════════════════════════ RENDER ═══════════════════════════════════════ */
   async function render(container) {
     injectStyles(); containerRef = container;
+    if (!currentWeekStart) restoreState();
     if (!currentWeekStart) currentWeekStart = getMonday(new Date());
     if (!mobileSelectedDate) mobileSelectedDate = new Date();
     container.innerHTML = `<div class="card"><div class="sched-empty">Loading…</div></div>`;
@@ -748,7 +749,28 @@ window.BromarPages.scheduling = (() => {
     const vEl = document.getElementById('app-version'); if (vEl) vEl.textContent = `scheduling ${PAGE_VERSION}`;
   }
 
+  /* Remember week, view, filters and hidden staff (BromarUtils.saveState, key bromar_ops_state_scheduling) */
+  function persistState() {
+    if (!window.BromarUtils || !currentWeekStart) return;
+    BromarUtils.saveState('scheduling', {
+      week: BromarUtils.toISODate(currentWeekStart), viewMode, filterRole, searchTerm, showWeekends,
+      hidden: [...hiddenEmployees]
+    });
+  }
+  function restoreState() {
+    if (!window.BromarUtils) return;
+    const v = BromarUtils.loadState('scheduling');
+    if (typeof v.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.week)) currentWeekStart = getMonday(BromarUtils.parseISO(v.week));
+    if (v.viewMode === 'employee' || v.viewMode === 'job') viewMode = v.viewMode;
+    if (typeof v.filterRole === 'string') filterRole = v.filterRole;
+    if (typeof v.searchTerm === 'string') searchTerm = v.searchTerm;
+    if (typeof v.showWeekends === 'boolean') showWeekends = v.showWeekends;
+    if (Array.isArray(v.hidden)) hiddenEmployees = new Set(v.hidden);
+    if (currentWeekStart) mobileSelectedDate = new Date(currentWeekStart);
+  }
+
   function rerender(container) {
+    persistState();
     container.innerHTML = `<div class="sched-desktop">${buildDesktop()}</div><div class="sched-mobile">${buildMobile()}</div>`;
     bindDesktop(container); bindMobile(container);
   }

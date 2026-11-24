@@ -1,16 +1,17 @@
 /* ============================================================
    File: js/pages/equipment.js
    BROMAR OPS — EQUIPMENT
-   Version: V1.01
+   Version: V1.02
    Register, sign-out / sign-in, service & calibration records.
    Tables: equipment, equipment_categories, equipment_movements,
            equipment_records, view v_equipment_compliance
    Storage bucket: Equipment (private) — certificates
+   V1.02: remembers tab + filters between visits (BromarUtils.saveState)
    V1.01: sidebar badge() (red = overdue/no record, yellow = due ≤30d),
           affected jobs shown on failed/adjusted calibrations
    ============================================================ */
 (() => {
-  const PAGE_VERSION = 'V1.01';
+  const PAGE_VERSION = 'V1.02';
   const BUCKET = 'Equipment';
 
   const STATUS = {
@@ -40,6 +41,20 @@
       tab: 'register', q: '', cat: '', status: '', showRetired: false, comp: 'all',
       openId: null, detail: null, modal: null
     };
+  }
+
+  /* Remember tab + filters (BromarUtils.saveState, key bromar_ops_state_equipment) */
+  function persistState() {
+    window.BromarUtils?.saveState('equipment', { tab: S.tab, q: S.q, cat: S.cat, status: S.status, showRetired: S.showRetired, comp: S.comp });
+  }
+  function restoreState() {
+    const v = window.BromarUtils?.loadState('equipment') || {};
+    if (TABS.some(t => t.id === v.tab)) S.tab = v.tab;
+    if (typeof v.q === 'string') S.q = v.q;
+    if (typeof v.cat === 'string') S.cat = v.cat;
+    if (typeof v.status === 'string') S.status = v.status;
+    if (typeof v.showRetired === 'boolean') S.showRetired = v.showRetired;
+    if (['all', 'overdue', 'soon'].includes(v.comp)) S.comp = v.comp;
   }
 
   /* ── HELPERS ── */
@@ -795,6 +810,7 @@
   function onClick(ev) {
     const t = ev.target.closest('[data-act]');
     if (!t || !root || !root.contains(t)) return;
+    setTimeout(persistState, 0);   // after the handler has updated S
     const a = t.dataset.act;
     if ((a === 'bg-detail' || a === 'bg-modal') && ev.target !== t) return;
     switch (a) {
@@ -826,11 +842,12 @@
     }
   }
   function onInput(ev) {
-    if (ev.target.dataset?.f === 'q') { S.q = ev.target.value; drawList(); }
+    if (ev.target.dataset?.f === 'q') { S.q = ev.target.value; drawList(); persistState(); }
   }
   function onChange(ev) {
     const t = ev.target;
     const f = t.dataset?.f;
+    if (f) setTimeout(persistState, 0);
     if (f === 'cat') { S.cat = t.value; drawList(); return; }
     if (f === 'status') { S.status = t.value; drawList(); return; }
     if (f === 'retired') { S.showRetired = t.checked; drawList(); return; }
@@ -952,6 +969,7 @@
     render(container) {
       root = container;
       S = fresh();
+      restoreState();
       container.addEventListener('click', onClick);
       container.addEventListener('input', onInput);
       container.addEventListener('change', onChange);
