@@ -75,6 +75,10 @@ they are in the Hub repo or in Supabase.
 
 This repo and **Bromar Hub** use the **same** Supabase project. Any schema, RLS or data change here affects the Hub.
 
+> **Full schema reference: [`DATABASE.md`](DATABASE.md)** — columns, JSON shapes, who reads/writes each table, storage buckets, RPCs.
+> **Update `DATABASE.md` in the same change whenever you add/change a table, column, JSON shape, RLS policy, view, RPC or bucket**,
+> and mirror the change in the copy in the Bromar Hub repo.
+
 ### Every table/view/RPC/bucket this repo touches
 
 Tables: `callout_roster`, `cert_types`, `client_access_requests`, `client_sites`, `client_users`, `clients`,
@@ -105,10 +109,11 @@ Storage buckets: `employee-documents`, `Equipment`, `Templates`, `test-tag-repor
    Fleet/Jobs/Scheduling) call Supabase with `Authorization: Bearer <anon key>` instead of the signed-in user's token.
    Those requests run as `anon`, so either RLS lets **anyone with the public key** read/write these tables, or the
    calls only work because RLS is off. Same risk for the Hub.
-3. **`employee-documents` is read via a public URL** — staff licence images may be publicly viewable.
+3. **`employee-documents`** — Ops now loads images via signed URLs (employees.js V1.14); run `sql/employee-documents-private.sql` to make the bucket private. Check the Hub doesn't use public URLs for it.
 4. **`timesheets` and `job_sheets`** are written by the Hub and only read here — adding draft tables (section 5)
    must not change these tables' shape.
 5. **`notifications`** — rows here are keyed by `employee_name` (text), not an ID. Renaming an employee breaks the link.
+   *Migration in progress (issue #18):* `db/migrations/2026-11-24_employee_id_links.sql` adds `employee_id` (uuid → `employees.id`) with backfill and a fill-from-name trigger. Scheduling (`schedule_assignments`, `notifications`) now dual-writes the ID. Other pages and the Hub still use names; reads switch to ID later.
 6. **`bromar-report-kit.js`** must stay identical in both repos (per its header).
 7. **`ims_documents.slug`** is how the Hub loads forms — don't rename slugs.
 
@@ -170,7 +175,13 @@ assets/               logos, icons
 - **Never put secret keys in code** (Supabase service-role key, Xero, OpenAI/Anthropic, email, VAPID private keys).
   They go in **Netlify environment variables** (for Netlify functions) or **Supabase Edge Function secrets**.
 
-## 7. Open questions
+## 7. Pull request rules
+
+- Always put "Fixes #<issue number>" in the PR description so merging closes the issue.
+- One issue per PR.
+- Before finishing, check the change against the issue and say what was done.
+
+## 8. Open questions
 
 1. The task says the other repo is "Bromar Ops" — the code calls it **Bromar Hub**. Confirm the name/repo.
 2. Where is the source for `client-user-admin` and `send-notification`? Should Ops get its own `netlify/functions` folder?

@@ -9,8 +9,8 @@ window.BromarPages.admin = {
   version: 'V1.20',
 
   /* ── Supabase config ── */
-  _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
-  _SB_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k',
+  _SB_URL: window.BROMAR_CONFIG.supabaseUrl,
+  _SB_KEY: window.BROMAR_CONFIG.supabaseAnonKey,
 
   _sbHeaders() {
     return {
@@ -830,6 +830,11 @@ window.BromarPages.admin = {
         }
         return;
       }
+      if (e.target.closest('[data-fb-github]')) {
+        const btn = e.target.closest('[data-fb-github]');
+        this._sendToGitHub(btn.dataset.fbGithub, btn, container.querySelector('#admin-section-content'));
+        return;
+      }
       if (e.target.closest('[data-fb-delete]')) {
         const btn = e.target.closest('[data-fb-delete]');
         if (confirm('Delete this report?')) this._deleteFeedback(btn.dataset.fbDelete, container.querySelector('#admin-section-content'));
@@ -941,7 +946,7 @@ window.BromarPages.admin = {
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
               <input type="file" accept=".xlsx,.xls" class="co-file-input">
             </label>
-            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+            <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
             </a>
             <button class="btn-secondary co-instructions-btn" data-co-instructions>
@@ -1301,7 +1306,7 @@ window.BromarPages.admin = {
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Select File
                 <input type="file" accept=".xlsx,.xls" class="hol-file-input">
               </label>
-              <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/public-holidays/bromar-public-holidays-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+              <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/public-holidays/bromar-public-holidays-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download Template
               </a>
             </div>
@@ -1567,7 +1572,7 @@ window.BromarPages.admin = {
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
               <input type="file" accept=".xlsx,.xls" class="rdo-file-input">
             </label>
-            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/rdo-roster/bromar-rdo-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+            <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/rdo-roster/bromar-rdo-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
             </a>
             <button class="btn-secondary" data-rdo-instructions>
@@ -1926,7 +1931,7 @@ window.BromarPages.admin = {
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Select File
                 <input type="file" accept=".xlsx,.xls" class="sup-file-input">
               </label>
-              <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/suppliers/bromar-supplier-directory-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+              <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/suppliers/bromar-supplier-directory-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download Template
               </a>
             </div>
@@ -2517,7 +2522,10 @@ window.BromarPages.admin = {
         <p class="fb-desc">${r.description}</p>
         <div class="fb-card-actions">
           <div class="fb-status-group">${statusBtns}</div>
-          <div style="display:flex;gap:0.25rem">
+          <div style="display:flex;gap:0.25rem;align-items:center">
+            ${r.github_issue_number
+              ? '<a class="fb-status-btn" href="' + encodeURI(r.github_issue_url || '#') + '" target="_blank" rel="noopener" title="Open GitHub issue">GitHub #' + r.github_issue_number + '</a>'
+              : '<button class="fb-status-btn" data-fb-github="' + r.id + '" title="Create a GitHub issue from this report">Send to GitHub</button>'}
             <button class="sup-action-btn" data-fb-edit="${r.id}" title="Edit"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
             <button class="sup-action-btn sup-action-delete" data-fb-delete="${r.id}" title="Delete"><svg viewBox="0 0 24 24" style="width:14px;height:14px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
           </div>
@@ -2634,6 +2642,30 @@ window.BromarPages.admin = {
     } catch (err) {
       console.error('Status update error:', err);
       alert('Failed to update status.');
+    }
+  },
+
+  /* Create a GitHub issue via the feedback-to-github Edge Function (token stays server-side) */
+  async _sendToGitHub(id, btn, sectionTarget) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    try {
+      const { data } = await window.supabaseClient.auth.getSession();
+      const token = data && data.session && data.session.access_token;
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(this._SB_URL + '/functions/v1/feedback-to-github', {
+        method: 'POST',
+        headers: { 'apikey': this._SB_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_id: id })
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
+      if (out.email_sent === false) console.warn('GitHub issue created but notification email was not sent.');
+      await this._fetchFeedback();
+      this._renderBugs(sectionTarget);
+    } catch (err) {
+      console.error('Send to GitHub error:', err);
+      alert('Could not create GitHub issue: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Send to GitHub'; }
     }
   },
 
