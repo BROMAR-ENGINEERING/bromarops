@@ -85,7 +85,7 @@
     }
 
     try {
-      const { data, error } = await sb.from('clients').select('*').order('name', { ascending: true });
+      const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('clients').select('*').order('name', { ascending: true }).order('id'));
       if (error) throw error;
       state.clients = data || [];
     } catch (e) {
@@ -95,7 +95,7 @@
     }
 
     try {
-      const { data, error } = await sb.from('client_sites').select('*').order('site_name', { ascending: true });
+      const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('client_sites').select('*').order('site_name', { ascending: true }).order('id'));
       if (error) throw error;
       state.sites = data || [];
     } catch (e) { console.error('sites load', e); state.sites = []; window.BromarUtils?.notify('Could not load client sites. Refresh the page to retry.', 'error'); }

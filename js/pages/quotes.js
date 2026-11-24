@@ -256,8 +256,8 @@ window.BromarPages.quotes = {
         const [qRes, fRes, cRes, sRes] = await Promise.all([
           supabase.from('quotes').select('*').order('created_at', { ascending: false }),
           supabase.from('quote_favourites').select('*'),
-          supabase.from('clients').select('*').eq('is_active', true).order('name'),
-          supabase.from('client_sites').select('*').eq('is_active', true).order('site_name')
+          window.BromarUtils.fetchAll(() => supabase.from('clients').select('*').eq('is_active', true).order('name').order('id')),
+          window.BromarUtils.fetchAll(() => supabase.from('client_sites').select('*').eq('is_active', true).order('site_name').order('id'))
         ]);
         if (qRes.error) throw qRes.error;
         if (fRes.error) throw fRes.error;

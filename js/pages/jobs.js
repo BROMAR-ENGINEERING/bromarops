@@ -1,5 +1,6 @@
 /* ============================================================
-   Jobs — V1.18 — 2026-11-24
+   Jobs — V1.19 — 2026-11-24
+   V1.19: register loaded in pages (no 1,000-row cap); clickable "Not in register" badge opens an add-to-register form
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
    activity in a week / month / custom range + Work Report PDF via BromarReportKit).
@@ -8,7 +9,7 @@
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = (() => {
-  const PAGE_VERSION = 'V1.18';
+  const PAGE_VERSION = 'V1.19';
   return {
   title: 'Jobs',
   version: PAGE_VERSION,
@@ -148,7 +149,8 @@ window.BromarPages.jobs = (() => {
         .job-card .cli { font-weight:600; font-size:0.9rem; }
         .job-card .site { font-size:0.78rem; color:var(--text-secondary); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .job-card .site .pin { color:var(--accent); }
-        .job-card .unlinked { font-size:0.68rem; font-weight:700; color:#b45309; margin-left:6px; }
+        .job-card .unlinked { font-size:0.68rem; font-weight:700; color:#b45309; margin-left:6px; background:none; border:1px solid #b45309; border-radius:10px; padding:1px 7px; cursor:pointer; font-family:inherit; }
+        .job-card .unlinked:hover { background:#b45309; color:#fff; }
         .job-avatar { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent-light));
           color:#fff; font-size:0.66rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
         .job-badge { font-size:0.7rem; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
@@ -598,12 +600,15 @@ window.BromarPages.jobs = (() => {
             <div class="job-card" data-no="${esc(no)}">
               <div class="jn">${esc(no)}</div>
               <div class="mid">
-                <div class="cli">${esc(j.client_name || '—')}${j._missing ? '<span class="unlinked">Not in register</span>' : ''}</div>
+                <div class="cli">${esc(j.client_name || '—')}${j._missing ? '<button type="button" class="unlinked" data-add-no="' + esc(no) + '" title="Add this job to the register">Not in register</button>' : ''}</div>
                 <div class="site">${j.site_name ? '<span class="pin">📍</span> ' + esc(j.site_name) + ' · ' : ''}${list.length} sheet${list.length === 1 ? '' : 's'} · ${h}h</div>
               </div>
               ${sm ? `<span class="job-badge" style="background:${sm.bg}; color:${sm.fg};">${sm.label}</span>` : ''}
             </div>`;
         }).join('')}</div>`;
+      body.querySelectorAll('#ovJobList .unlinked').forEach(b => b.addEventListener('click', (e) => {
+        e.stopPropagation(); openAddToRegister(b.dataset.addNo);
+      }));
       body.querySelectorAll('#ovJobList .job-card').forEach(c => c.addEventListener('click', () => {
         ov.jobNo = c.dataset.no;
         ov.selected = new Set(sheetsFor(ov.jobNo).map(s => s.id));
@@ -618,7 +623,7 @@ window.BromarPages.jobs = (() => {
         <button class="btn-secondary ov-back" id="ovBack">&larr; All active jobs</button>
         <div class="ov-head">
           <div>
-            <div class="who"><span class="ov-jn">${esc(j.job_number)}</span> — ${esc(j.client_name || '')}</div>
+            <div class="who"><span class="ov-jn">${esc(j.job_number)}</span> — ${esc(j.client_name || '')}${j._missing ? ' <span class="job-card"><button type="button" class="unlinked" id="ovAddReg" title="Add this job to the register">Not in register</button></span>' : ''}</div>
             <div class="sub">${j.site_name ? '📍 ' + esc(j.site_name) + ' · ' : ''}${esc(rangeLabel())}</div>
           </div>
         </div>
@@ -645,6 +650,7 @@ window.BromarPages.jobs = (() => {
         }).join('')}</div>`;
 
       $('ovBack').addEventListener('click', () => { ov.jobNo = null; paintOverview(); });
+      if ($('ovAddReg')) $('ovAddReg').addEventListener('click', () => openAddToRegister(ov.jobNo));
       $('ovAll').addEventListener('change', function () {
         ov.selected = this.checked ? new Set(list.map(s => s.id)) : new Set(); paintOverview();
       });
@@ -653,6 +659,70 @@ window.BromarPages.jobs = (() => {
         paintOverview();
       }));
       $('ovReport').addEventListener('click', () => generateWorkReport(j, list.filter(s => ov.selected.has(s.id))));
+    }
+
+    /* Add a job that has job sheets but no job_number_register row. */
+    async function openAddToRegister(jobNo) {
+      const sheet = ov.sheets.find(s => s.job_number === jobNo) || {};
+      const sheetClient = String(sheet.client_name || sheet.client || '').trim();
+      editing = null;
+      $('drawerTitle').textContent = 'Add to Register';
+      $('drawerBody').innerHTML = `
+        <div class="jf"><label>Job Number</label><input type="text" id="ar_no" value="${esc(jobNo)}" disabled></div>
+        <div class="jf"><label>Client <span style="color:var(--accent)">*</span></label>
+          <select id="ar_client"><option value="">Loading clients…</option></select>
+          ${sheetClient ? `<div class="ac-sub" style="margin-top:3px;">Job sheet says: ${esc(sheetClient)}</div>` : ''}
+        </div>
+        <div class="jf"><label>Site</label><input type="text" id="ar_site" placeholder="Site name (optional)"></div>
+        <div class="jf"><label>Description</label><textarea id="ar_desc" rows="3" placeholder="What is this job? (optional)"></textarea></div>
+        <div class="drawer-actions">
+          <button class="btn-secondary" id="ar_cancel">Cancel</button>
+          <button class="btn-primary" id="ar_save" disabled>Add to Register</button>
+        </div>`;
+      $('jobOverlay').classList.add('show');
+      $('jobDrawer').classList.add('show');
+      $('ar_cancel').addEventListener('click', closeDrawer);
+
+      const selEl = $('ar_client'); const saveBtn = $('ar_save');
+      let clientList = [];
+      try {
+        const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('clients').select('id, name, is_active').order('name').order('id'));
+        if (error) throw error;
+        clientList = (data || []).filter(c => c.is_active !== false);
+        const guess = sheetClient && clientList.find(c => c.name.toLowerCase() === sheetClient.toLowerCase());
+        selEl.innerHTML = `<option value="">Select client…</option>` + clientList.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+        if (guess) selEl.value = guess.id;
+      } catch (err) {
+        selEl.innerHTML = `<option value="">⚠ Could not load clients</option>`;
+        toast('Could not load clients: ' + err.message, 6000);
+      }
+      const refresh = () => { saveBtn.disabled = !selEl.value; };
+      selEl.addEventListener('change', refresh); refresh();
+
+      saveBtn.addEventListener('click', async () => {
+        const client = clientList.find(c => String(c.id) === selEl.value);
+        if (!client) return;
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+        try {
+          const row = {
+            job_number: jobNo,
+            prefix: (jobNo.match(/^[A-Za-z]+/) || [''])[0].toUpperCase() || null,
+            status: 'active',
+            client_id: client.id, client_name: client.name,
+            site_name: $('ar_site').value.trim() || null,
+            work_type: $('ar_desc').value.trim() || null
+          };
+          const { data, error } = await sb.from('job_number_register').insert(row).select();
+          if (error) throw error;
+          if (!data || !data.length) throw new Error('Insert wrote 0 rows — check RLS policies on job_number_register.');
+          jobs.unshift(data[0]);
+          toast('Added ' + jobNo + ' to the register');
+          closeDrawer(); paintOverview();
+        } catch (err) {
+          toast('Save failed: ' + err.message, 6000);
+          saveBtn.disabled = false; saveBtn.textContent = 'Add to Register';
+        }
+      });
     }
 
     async function generateWorkReport(job, sheets) {
@@ -1072,7 +1142,8 @@ window.BromarPages.jobs = (() => {
     /* ── data ── */
     async function loadJobs() {
       if (!sb) await ensureSupabase();
-      const { data, error } = await sb.from('job_number_register').select('*').order('created_at', { ascending: false });
+      // Page through the whole register — Supabase caps a single request at 1,000 rows.
+      const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('job_number_register').select('*').order('created_at', { ascending: false }).order('id', { ascending: false }));
       if (error) throw error;
       jobs = data || [];
     }

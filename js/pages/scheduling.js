@@ -97,10 +97,10 @@ function notify(msg, type) { if (window.BromarUtils?.notify) window.BromarUtils.
     async fetchJobs() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('job_number_register')
+        const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('job_number_register')
           .select('job_number, client_name, site_name, site_address, status')
           .eq('status', 'active')
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).order('job_number'));
         if (error) {
           if (error.code === '42P01' || error.message?.includes('does not exist')) {
             console.warn('job_number_register table not found');
@@ -125,10 +125,10 @@ function notify(msg, type) { if (window.BromarUtils?.notify) window.BromarUtils.
     async fetchSites() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('client_sites')
+        const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('client_sites')
           .select('id, site_name, address, city, client_id, is_active, clients(name)')
           .eq('is_active', true)
-          .order('site_name');
+          .order('site_name').order('id'));
         if (error) throw error;
         return (data || []).map(s => ({
           id: s.id,
