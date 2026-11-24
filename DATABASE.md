@@ -230,6 +230,9 @@ RDO rows shown on the schedule are synthesised from `rdo_roster` (not stored).
 ### leave_requests — **Written by Hub**; Ops R (Dashboard, `status='pending'`)
 `employee_name`, `leave_type`, `last_day_of_work`, `return_to_work`, `working_days`, `notes`, `status` (only `pending` is known).
 
+### timesheet_drafts / job_sheet_drafts — **Owned by Hub**; Ops R only (Dashboard "Pending Drafts" tile)
+Ops reads `select *` where `status='draft'`, newest `created_at` first (limit 50 each). Optional fields used for display if present: `employee_name`, `created_by`, `created_at`, `job_number`, and a date (`week_starting` / `work_date` / `date`). Needs an admin SELECT policy on both tables. Ops never writes them; review and submit happen in the Hub.
+
 ### timesheets — **Written by Hub**; Ops R only (Timesheets; Ops anon). Do not change shape.
 `id`, `employee_name`, `employee_email`, `employee_type`, `week_starting` (Monday), `submitted_at`, `total_hours`, `total_normal_hours`, `total_overtime_hours`, `total_travel_hours`, `on_call_standby` bool, `allowance_first_aid` bool, `allowance_construction_wiring` bool, `general_comments`, `timesheet_entries` (jsonb array, or JSON string):
 ```
