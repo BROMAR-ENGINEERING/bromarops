@@ -10,13 +10,14 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.employees = {
   title: 'Employees',
-  version: 'V1.13',
+  version: 'V1.14',
 
   render(container) {
     const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
     const SUPABASE_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
     const BUCKET      = 'employee-documents';
-    const STORAGE_URL = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}`;
+    const SIGNED_URL_TTL = 3600; // seconds
+    const signedUrlCache = new Map(); // path -> { url, exp }
 
     const EMPLOYEE_TYPES = ['Apprentice','Electrician','Senior Electrician','Junior Engineer','Engineer','Admin','Operations'];
     const GROUP_ORDER    = ['Medical & Health','First Aid','Electrical','Safety','Plant','Rail','Education','Accreditations','Other'];
@@ -67,18 +68,40 @@ window.BromarPages.employees = {
       return age;
     }
     function safePath(name) { return encodeURIComponent(name.replace(/[^a-zA-Z0-9 _-]/g, '_')); }
-    function profilePhotoUrl(name) { return `${STORAGE_URL}/${safePath(name)}/profile/photo`; }
-    function certImageUrl(name, certTypeId, side) { return `${STORAGE_URL}/${safePath(name)}/certs/${certTypeId}/${side}`; }
-    function imgExists(url) {
+    /* The bucket is private: these return storage object paths, which are
+       turned into short-lived signed URLs by getSignedUrl(). */
+    function profilePhotoUrl(name) { return `${safePath(name)}/profile/photo`; }
+    function certImageUrl(name, certTypeId, side) { return `${safePath(name)}/certs/${certTypeId}/${side}`; }
+    async function getSignedUrl(path) {
+      const hit = signedUrlCache.get(path);
+      if (hit && hit.exp > Date.now()) return hit.url;
+      const { data, error } = await window.supabaseClient.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL);
+      if (error || !data?.signedUrl) return null;   // missing object or no access
+      signedUrlCache.set(path, { url: data.signedUrl, exp: Date.now() + (SIGNED_URL_TTL - 60) * 1000 });
+      return data.signedUrl;
+    }
+    function clearSignedUrl(path) { signedUrlCache.delete(path); }
+    /* Resolves to a signed URL if the image exists and loads, otherwise null. */
+    async function resolveImage(path) {
+      const url = await getSignedUrl(path);
+      if (!url) return null;
       return new Promise(res => {
         const img = new Image();
-        img.onload  = () => res(true);
-        img.onerror = () => res(false);
-        img.src = url + '?t=' + Date.now();
+        img.onload  = () => res(url);
+        img.onerror = () => res(null);
+        img.src = url;
       });
     }
-    async function loadImageAsDataUrl(url) {
-      const r = await fetch(url + '?t=' + Date.now(), { headers: { 'apikey': SUPABASE_KEY } });
+    async function loadImageAsDataUrl(path) {
+      const url = await getSignedUrl(path);
+      if (!url) return null;
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+    }
+    async function loadLocalImageAsDataUrl(url) {
+      const r = await fetch(url);
       if (!r.ok) return null;
       const blob = await r.blob();
       return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
@@ -137,18 +160,14 @@ window.BromarPages.employees = {
 
     /* ── STORAGE ── */
     async function uploadToStorage(path, file) {
-      const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
-        method: 'POST',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
-        body: file,
-      });
-      if (!r.ok) { const t = await r.text(); throw new Error(t); }
+      const { error } = await window.supabaseClient.storage.from(BUCKET)
+        .upload(decodeURIComponent(path), file, { upsert: true, contentType: file.type });
+      if (error) throw new Error(error.message);
+      clearSignedUrl(path);
     }
     async function deleteFromStorage(path) {
-      await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
-        method: 'DELETE',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
-      });
+      await window.supabaseClient.storage.from(BUCKET).remove([decodeURIComponent(path)]);
+      clearSignedUrl(path);
     }
 
     /* ── STYLES ── */
@@ -416,11 +435,11 @@ window.BromarPages.employees = {
 
       /* load profile photos async */
       grid.querySelectorAll('[data-avatar-url]').forEach(el => {
-        imgExists(el.dataset.avatarUrl).then(exists => {
-          if (!exists) return;
+        resolveImage(el.dataset.avatarUrl).then(signed => {
+          if (!signed) return;
           const img = document.createElement('img');
           img.className = 'emp-card-avatar';
-          img.src = el.dataset.avatarUrl + '?t=' + Date.now();
+          img.src = signed;
           el.replaceWith(img);
         });
       });
@@ -518,11 +537,11 @@ window.BromarPages.employees = {
       /* profile photo */
       const avatarWrap = overlay.querySelector('#panel-avatar-wrap');
       const photoUrl = profilePhotoUrl(emp.full_name);
-      imgExists(photoUrl).then(exists => {
-        if (exists) {
+      resolveImage(photoUrl).then(signed => {
+        if (signed) {
           const img = document.createElement('img');
           img.className = 'emp-panel-avatar';
-          img.src = photoUrl + '?t=' + Date.now();
+          img.src = signed;
           img.title = 'Click to change photo';
           avatarWrap.replaceWith(img);
         }
@@ -725,14 +744,13 @@ window.BromarPages.employees = {
       triggerBtn.closest('.cert-row').insertAdjacentElement('afterend', panel);
 
       async function loadSlot(side) {
-        const url = certImageUrl(emp.full_name, certId, side);
-        const exists = await imgExists(url);
+        const url = await resolveImage(certImageUrl(emp.full_name, certId, side));
         const slotEl = panel.querySelector(`#slot-${side}-${certId}`);
         const delBtn = slotEl.querySelector('.img-del-btn');
-        if (exists) {
+        if (url) {
           const img = document.createElement('img');
           img.className = 'img-preview';
-          img.src = url + '?t=' + Date.now();
+          img.src = url;
           slotEl.querySelector('.img-placeholder').replaceWith(img);
           delBtn.style.display = 'block';
           triggerBtn.classList.add('has-img');
@@ -746,7 +764,7 @@ window.BromarPages.employees = {
           const side = input.dataset.side;
           try {
             await uploadToStorage(`${safePath(emp.full_name)}/certs/${certId}/${side}`, file);
-            const url = certImageUrl(emp.full_name, certId, side) + '?t=' + Date.now();
+            const url = await getSignedUrl(certImageUrl(emp.full_name, certId, side));
             const slotEl = panel.querySelector(`#slot-${side}-${certId}`);
             const old = slotEl.querySelector('.img-preview,.img-placeholder');
             const img = document.createElement('img');
@@ -767,8 +785,8 @@ window.BromarPages.employees = {
           const img = slotEl.querySelector('.img-preview');
           if (img) { const ph = document.createElement('div'); ph.className = 'img-placeholder'; ph.textContent = 'Click to upload'; img.replaceWith(ph); }
           btn.style.display = 'none';
-          const fExists = await imgExists(certImageUrl(emp.full_name, certId, 'front'));
-          const bExists = await imgExists(certImageUrl(emp.full_name, certId, 'back'));
+          const fExists = await resolveImage(certImageUrl(emp.full_name, certId, 'front'));
+          const bExists = await resolveImage(certImageUrl(emp.full_name, certId, 'back'));
           if (!fExists && !bExists) triggerBtn.classList.remove('has-img');
         });
       });
@@ -782,7 +800,7 @@ window.BromarPages.employees = {
         const file = input.files[0]; if (!file) return;
         try {
           await uploadToStorage(`${safePath(emp.full_name)}/profile/photo`, file);
-          const newUrl = profilePhotoUrl(emp.full_name) + '?t=' + Date.now();
+          const newUrl = await getSignedUrl(profilePhotoUrl(emp.full_name));
           const existing = overlay.querySelector('.emp-panel-avatar, #panel-avatar-wrap');
           if (existing) {
             const img = document.createElement('img');
@@ -1212,7 +1230,7 @@ window.BromarPages.employees = {
         doc.setFillColor(...ORANGE);
         doc.rect(0,0,PW,18,'F');
         try {
-          const logoData = await loadImageAsDataUrl('assets/logo/bromar-logo-white.png');
+          const logoData = await loadLocalImageAsDataUrl('assets/logo/bromar-logo-white.png');
           if (logoData) doc.addImage(logoData,'PNG',ML,3,52,12);
         } catch(_){}
         doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...WHITE);

@@ -75,6 +75,10 @@ they are in the Hub repo or in Supabase.
 
 This repo and **Bromar Hub** use the **same** Supabase project. Any schema, RLS or data change here affects the Hub.
 
+> **Full schema reference: [`DATABASE.md`](DATABASE.md)** — columns, JSON shapes, who reads/writes each table, storage buckets, RPCs.
+> **Update `DATABASE.md` in the same change whenever you add/change a table, column, JSON shape, RLS policy, view, RPC or bucket**,
+> and mirror the change in the copy in the Bromar Hub repo.
+
 ### Every table/view/RPC/bucket this repo touches
 
 Tables: `callout_roster`, `cert_types`, `client_access_requests`, `client_sites`, `client_users`, `clients`,
@@ -105,7 +109,7 @@ Storage buckets: `employee-documents`, `Equipment`, `Templates`, `test-tag-repor
    Fleet/Jobs/Scheduling) call Supabase with `Authorization: Bearer <anon key>` instead of the signed-in user's token.
    Those requests run as `anon`, so either RLS lets **anyone with the public key** read/write these tables, or the
    calls only work because RLS is off. Same risk for the Hub.
-3. **`employee-documents` is read via a public URL** — staff licence images may be publicly viewable.
+3. **`employee-documents`** — Ops now loads images via signed URLs (employees.js V1.14); run `sql/employee-documents-private.sql` to make the bucket private. Check the Hub doesn't use public URLs for it.
 4. **`timesheets` and `job_sheets`** are written by the Hub and only read here — adding draft tables (section 5)
    must not change these tables' shape.
 5. **`notifications`** — rows here are keyed by `employee_name` (text), not an ID. Renaming an employee breaks the link.

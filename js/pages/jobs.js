@@ -1,5 +1,5 @@
 /* ============================================================
-   Jobs — V1.17 — 2026-11-23
+   Jobs — V1.17 — 2026-11-24
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
    activity in a week / month / custom range + Work Report PDF via BromarReportKit).
@@ -8,7 +8,7 @@
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = (() => {
-  const PAGE_VERSION = 'V1.16';
+  const PAGE_VERSION = 'V1.17';
   return {
   title: 'Jobs',
   version: PAGE_VERSION,
@@ -678,47 +678,69 @@ window.BromarPages.jobs = (() => {
         y = RK.pairRow(doc, M, y, 'Total hours', `${totH}h across ${sheets.length} job sheet${sheets.length === 1 ? '' : 's'}`);
         y += 4;
 
-        sheets.forEach(sh => {
-          need(30);
-          y = RK.sectionHeading(doc, M, y + 2, `${fmtDate(sh.sheet_date)}${sh.job_sheet_number ? '  ·  ' + sh.job_sheet_number : ''}`);
-          y = RK.pairRow(doc, M, y, 'Technician', sheetTechs(sh));
-          y = RK.pairRow(doc, M, y, 'Hours', `${sheetHours(sh)}h`);
+        if (typeof doc.autoTable !== 'function') throw new Error('PDF table plugin not loaded');
+        const N = RK.normalize;
+        const table = (head, body, extra) => {
+          doc.autoTable(Object.assign({
+            startY: y,
+            head: [head],
+            body,
+            margin: { left: M, right: M, top, bottom: L.pageH - bottom },
+            theme: 'grid',
+            styles: { font: 'helvetica', fontSize: F.small, cellPadding: 2, textColor: P.black.rgb, lineColor: P.line.rgb, lineWidth: 0.2, valign: 'top', overflow: 'linebreak' },
+            headStyles: { fillColor: P.navy.rgb, textColor: P.white.rgb, fontStyle: 'bold' },
+            footStyles: { fillColor: [240, 240, 243], textColor: P.black.rgb, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [250, 250, 252] }
+          }, extra || {}));
+          y = doc.lastAutoTable.finalY + 8;
+        };
+        const heading = (text) => { need(24); y = RK.sectionHeading(doc, M, y, text); };
+        const sorted = [...sheets].sort((a, b) => String(a.sheet_date).localeCompare(String(b.sheet_date)));
 
-          const tasks = parseArr(sh.tasks).map(taskText).filter(Boolean);
-          const notes = parseArr(sh.notes).map(noteText).filter(Boolean);
-          need(10);
-          RK.para(doc, M, y, 'Work done', { size: F.body, style: 'bold', rgb: P.charcoal.rgb }); y += 5;
-          if (tasks.length) tasks.forEach(t => { y = RK.para(doc, M + 3, y, '•  ' + t, { bottom }); });
-          else y = RK.para(doc, M + 3, y, 'No work recorded', { rgb: P.muted.rgb, bottom });
-          if (notes.length) {
-            need(10);
-            RK.para(doc, M, y + 1, 'Notes', { size: F.body, style: 'bold', rgb: P.charcoal.rgb }); y += 6;
-            notes.forEach(n => { y = RK.para(doc, M + 3, y, '•  ' + n, { bottom }); });
-          }
+        // 1. Work completed — one row per job sheet
+        heading('Work Completed');
+        table(['Date', 'Job Sheet', 'Work done'],
+          sorted.map(sh => {
+            const tasks = parseArr(sh.tasks).map(taskText).filter(Boolean);
+            return [fmtDate(sh.sheet_date), N(sh.job_sheet_number || '—'), tasks.length ? tasks.map(t => '- ' + N(t)).join('\n') : 'No work recorded'];
+          }),
+          { columnStyles: { 0: { cellWidth: 26 }, 1: { cellWidth: 28 } } });
 
-          const mats = parseArr(sh.materials);
-          need(14);
-          RK.para(doc, M, y + 1, 'Materials', { size: F.body, style: 'bold', rgb: P.charcoal.rgb }); y += 4;
-          if (mats.length && typeof doc.autoTable === 'function') {
-            doc.autoTable({
-              startY: y,
-              head: [['Material', 'Qty', 'Unit']],
-              body: mats.map(m => [RK.normalize(m.name || '—'), round1(num(m.quantity ?? m.qty)), RK.normalize(m.unit || '')]),
-              margin: { left: M, right: M, top, bottom: L.pageH - bottom },
-              theme: 'grid',
-              styles: { font: 'helvetica', fontSize: F.small, cellPadding: 1.8, textColor: P.black.rgb, lineColor: P.line.rgb, lineWidth: 0.2 },
-              headStyles: { fillColor: P.navy.rgb, textColor: P.white.rgb, fontStyle: 'bold' },
-              columnStyles: { 1: { halign: 'right', cellWidth: 20 }, 2: { cellWidth: 20 } }
-            });
-            y = doc.lastAutoTable.finalY + 6;
-          } else if (mats.length) {
-            y += 1;
-            mats.forEach(m => { y = RK.para(doc, M + 3, y, `•  ${m.name || '—'} × ${num(m.quantity ?? m.qty)} ${m.unit || ''}`, { bottom }); });
-            y += 3;
-          } else {
-            y = RK.para(doc, M + 3, y + 1, 'None', { rgb: P.muted.rgb, bottom }) + 3;
-          }
-        });
+        // 2. Labour — combined per technician
+        const lab = {};
+        sorted.forEach(sh => parseArr(sh.labour).forEach(l => {
+          const k = l.employee || '—';
+          const r = lab[k] = lab[k] || { days: new Set(), n: 0, o: 0 };
+          r.days.add(sh.sheet_date); r.n += num(l.normalHours ?? l.normal); r.o += num(l.overtimeHours ?? l.ot);
+        }));
+        const labRows = Object.entries(lab).sort((a, b) => a[0].localeCompare(b[0]));
+        const tN = round1(labRows.reduce((a, [, r]) => a + r.n, 0)), tO = round1(labRows.reduce((a, [, r]) => a + r.o, 0));
+        heading('Labour');
+        if (labRows.length) {
+          table(['Technician', 'Days', 'Normal (h)', 'Overtime (h)', 'Total (h)'],
+            labRows.map(([e, r]) => [N(e), r.days.size, round1(r.n), round1(r.o), round1(r.n + r.o)]),
+            { foot: [['TOTAL', ...[new Set(sorted.map(s => s.sheet_date)).size, tN, tO, round1(tN + tO)].map(v => ({ content: v, styles: { halign: 'right' } }))]],
+              columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 26 }, 3: { halign: 'right', cellWidth: 26 }, 4: { halign: 'right', cellWidth: 24 } } });
+        } else { y = RK.para(doc, M, y, 'No labour recorded.', { rgb: P.muted.rgb, bottom }) + 4; }
+
+        // 3. Materials — combined by item + unit
+        const mat = {};
+        sorted.forEach(sh => parseArr(sh.materials).forEach(m => {
+          const name = (m.name || '').trim(), unit = (m.unit || '').trim();
+          const k = name.toLowerCase() + '|' + unit.toLowerCase();
+          (mat[k] = mat[k] || { name: name || '—', unit, qty: 0 }).qty += num(m.quantity ?? m.qty);
+        }));
+        const matRows = Object.values(mat).sort((a, b) => a.name.localeCompare(b.name));
+        heading('Materials');
+        if (matRows.length) {
+          table(['Material', 'Qty', 'Unit'], matRows.map(m => [N(m.name), round1(m.qty), N(m.unit)]),
+            { columnStyles: { 1: { halign: 'right', cellWidth: 22 }, 2: { cellWidth: 22 } } });
+        } else { y = RK.para(doc, M, y, 'No materials used.', { rgb: P.muted.rgb, bottom }) + 4; }
+
+        // 4. Notes — only if any
+        const noteRows = [];
+        sorted.forEach(sh => parseArr(sh.notes).map(noteText).filter(Boolean).forEach(n => noteRows.push([fmtDate(sh.sheet_date), N(n)])));
+        if (noteRows.length) { heading('Notes'); table(['Date', 'Note'], noteRows, { columnStyles: { 0: { cellWidth: 26 } } }); }
 
         // header (colour logo) + footer on every page
         const n = doc.internal.getNumberOfPages();
