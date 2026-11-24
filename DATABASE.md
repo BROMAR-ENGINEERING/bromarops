@@ -32,6 +32,17 @@ Legend: **Ops** = this repo, **Hub** = Bromar Hub. R/W = read/write. "Ops (anon)
   which suggests RLS is on for at least those.
 - The admin gate (`employees.is_admin`) is enforced in the browser only.
 
+**Admin enforcement (issue #6):** `db/migrations/2026-11-24_rls_is_admin.sql` adds `public.is_admin()` (JWT email → `employees.is_admin`)
+and *restrictive* policies (they only remove access; existing policies are untouched):
+- Tier A, admin-only read+write: `suppliers`, `quotes`, `quote_favourites`, `test_tag_reports`, `job_number_counters`, `client_users`.
+- Tier B, signed-in read, admin-only write: rosters, `public_holidays`, `job_number_register`, `clients`/`client_sites`/`site_contacts`, `job_types`/`job_type_fields`,
+  `ims_documents`/`ims_document_revisions`, `swms_templates`, `schedule_assignments`, `pinned_sites`, `materials`, `purchase_orders(_items)`,
+  `equipment_categories`, `cert_types`, `employee_certs`/`employee_cert_history`/`employee_skills`/`inductions`, `vehicle_costs`, `fuel_transactions`.
+- `employees`: update = admin or own row (trigger blocks non-admins changing `is_admin`/`email`); insert/delete admin only.
+- `feedback_reports`: staff may insert; update/delete admin only.
+- Not yet covered (field-staff writes need per-row rules): tasks, notifications, timesheets, job_sheets, leave_requests, vehicle_audits*, equipment*, vehicles, ims_form_submissions, itc*, swms*, client_access_requests.
+- Restrictive policies only bite where RLS is enabled — run the step-0 check in the migration.
+
 TODO (needs dashboard access): fill the table below from the `pg_policies` query above.
 
 | Table | RLS on? | Who can read | Who can write |
@@ -108,6 +119,7 @@ Named in the Employees header but **never queried**. Cert images live in storage
 | work_type | text | set from quote `job_title` when created from a quote |
 | contact_person, contact_phone, contact_role | text | |
 | notes | text | e.g. "From quote BQ000001 v1" |
+| quote_id | text | optional; → quotes.id of the quote that created the job (Quotes → Approve). Added by `db/migrations/2026-11-24_job_quote_link.sql`; Ops ignores a missing column |
 | created_by | text | |
 | created_at | timestamptz | |
 | completed_at | timestamptz | set when status becomes `completed`, else null |
@@ -219,6 +231,9 @@ RDO rows shown on the schedule are synthesised from `rdo_roster` (not stored).
 ### leave_requests — **Written by Hub**; Ops R (Dashboard, `status='pending'`)
 `employee_name`, `leave_type`, `last_day_of_work`, `return_to_work`, `working_days`, `notes`, `status` (only `pending` is known).
 
+### timesheet_drafts / job_sheet_drafts — **Owned by Hub**; Ops R only (Dashboard "Pending Drafts" tile)
+Ops reads `select *` where `status='draft'`, newest `created_at` first (limit 50 each). Optional fields used for display if present: `employee_name`, `created_by`, `created_at`, `job_number`, and a date (`week_starting` / `work_date` / `date`). Needs an admin SELECT policy on both tables. Ops never writes them; review and submit happen in the Hub.
+
 ### timesheets — **Written by Hub**; Ops R only (Timesheets; Ops anon). Do not change shape.
 `id`, `employee_name`, `employee_email`, `employee_type`, `week_starting` (Monday), `submitted_at`, `total_hours`, `total_normal_hours`, `total_overtime_hours`, `total_travel_hours`, `on_call_standby` bool, `allowance_first_aid` bool, `allowance_construction_wiring` bool, `general_comments`, `timesheet_entries` (jsonb array, or JSON string):
 ```
@@ -288,16 +303,16 @@ Content `blocks[]`: `{ id, type: heading|paragraph|bullets|signatory|table|space
 ### ims_document_revisions — Ops RW (builder; DDL in code). Hub: likely none.
 `id` uuid PK, `document_id` → ims_documents ON DELETE CASCADE, `revision` int, `schema` jsonb (null = legacy row with no snapshot), `version_date` date, `version_description`, `prepared_by`, `reviewed_by` (optional; Ops retries without), `created_at`. Unique (`document_id`, `revision`).
 
-### ims_form_submissions — **Written by Hub** and Ops form kit (`bromar-form-kit.js`); Ops R in Reports (not loaded)
+### ims_form_submissions — **Written by Hub** and Ops form kit (`bromar-form-kit.js`); Ops R in Reports
 `id`, `form_id` (→ ims_documents.id), `revision_at_submission` int, `data` jsonb, `linked_record_type`, `linked_record_id`, `submitted_by` (employee id), `submitted_at` (DB default), `review_status` (optional column; values seen: reviewed/completed/closed/approved/actioned vs submitted/new/open/pending).
 `data` is a flat object keyed by `field.name` (headings omitted): string for text/select/radio/date/time/etc.; number|null for number; boolean for checkbox; string[] for multiselect and dynamiclist; `'pass'|'fail'|'na'|''` for passfail; PNG data-URL for signature; JPEG data-URL for photo.
 
-### itc_forms / itc_form_revisions — Ops RW (ITC builder, **not loaded** in index.html); Hub reads published (DDL in code)
+### itc_forms / itc_form_revisions — Ops RW (ITC builder); Hub reads published (DDL in code)
 `itc_forms`: `id`, `title`, `form_code`*, `category`*, `description`, `status` (`draft`|`published`|`archived`), `published_revision`, `latest_revision`, `created_by`, `created_at`, `updated_at`. (*added by a later migration.)
 `itc_form_revisions`: `id`, `form_id` → itc_forms ON DELETE CASCADE, `revision`, `fields` jsonb, `status` (`draft`|`published`|`superseded`), `change_note` (unused), `created_by`, `created_at`, `published_at`; unique (`form_id`, `revision`).
 `fields[]`: `{ id, type, label, required, options?: string[], placeholder?, addButtonLabel? }`, types `text, dropdown, checkbox, passfail, signature, photo, dynamiclist, heading`. Uses `id`/`dropdown` rather than the form kit's `name`/`select`, so it is a separate pipeline from `ims_documents`.
 
-### SWMS (Ops page **not loaded**; Hub reads approved)
+### SWMS (Ops IMS → Safety → SWMS; Hub reads approved)
 - **swms**: `id`, `swms_number` (unique, `SWMS-…`), `title`, `current_revision` (0 = never approved), `draft_status` (`none`, `draft`, `pending`, `rejected`), `draft_content` jsonb, `draft_updated_by/at`, `submitted_by/at`, `rejection_comment`, `review_due` (default approval + 12 months), `is_active`, `created_by`, `updated_at`.
 - **swms_revisions** (insert-only): `id`, `swms_id`, `revision`, `title`, `content` jsonb, `change_summary`, `prepared_by`, `submitted_at`, `approved_by`, `approved_at`, `review_due`.
 - **swms_signoffs**: `id`, `swms_id`, `revision`, `employee_name`, `job_ref`, `recorded_by`, `method` (`office`|`hub`), `signed_at`, `is_active` (soft delete).
@@ -331,7 +346,7 @@ SWMS content JSON (`draft_content` / `swms_revisions.content`): `{ title, scope,
 
 # RPC / functions
 
-- **`create_new_job`** (RPC) — Ops (Jobs). Args: `p_prefix`, `p_client_id`, `p_site_id`, `p_job_type`, `p_contact_person`, `p_contact_phone`, `p_contact_role`. Returns the new job number as a string. Presumably bumps `job_number_counters` and inserts into `job_number_register`. After it returns, Ops updates the row with quote details (`work_type`, `site_address`, `notes`, `contact_person`).
+- **`create_new_job`** (RPC) — Ops (Jobs). Args: `p_prefix`, `p_client_id`, `p_site_id`, `p_job_type`, `p_contact_person`, `p_contact_phone`, `p_contact_role`. Returns the new job number as a string. Presumably bumps `job_number_counters` and inserts into `job_number_register`. After it returns, Ops updates the row with quote details (`work_type`, `client_name`, `site_name`, `site_address`, `notes`, contact fields, `quote_id`). Also called by Quotes when a quote is approved.
 - **`send-notification`** (Supabase Edge Function) — push: `{ employee_name, message }`; email: `{ type: 'email', to, subject, body }`.
 - **`client-user-admin`** (Netlify, Hub site) — see CLAUDE.md §3.
 - **`extract-invoice`** (Netlify) — does not exist yet. Expected: multipart POST with field `file`; response `{ supplier?, invoice_number?, items: [{ description, qty, unit_cost }] }`.

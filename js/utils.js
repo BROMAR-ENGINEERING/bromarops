@@ -1,6 +1,8 @@
 /* ============================================================
    BROMAR OPS — SHARED UTILITIES
-   V1.01
+   V1.01 — added notify(msg, type) + warning toast style
+   V1.02 — added fetchAll(buildQuery) to page past Supabase's 1,000-row limit
+   V1.03 — added saveState/loadState (per-page UI state in localStorage)
    Exposed as window.BromarUtils.
    Pages should use these helpers rather than reinventing them.
    ============================================================ */
@@ -90,7 +92,8 @@
     const bg = {
       success: 'linear-gradient(135deg,#15803d,#22c55e)',
       error:   'linear-gradient(135deg,#dc2626,#ef4444)',
-      info:    'linear-gradient(135deg,#ea580c,#fb923c)'
+      warning: 'linear-gradient(135deg,#b45309,#f59e0b)',
+      info:   'linear-gradient(135deg,#ea580c,#fb923c)'
     }[type || 'info'];
     el.style.cssText = `background:${bg};color:#fff;padding:0.75rem 1.25rem;border-radius:10px;font-family:'Outfit',sans-serif;font-weight:500;font-size:0.9rem;box-shadow:0 8px 24px rgba(0,0,0,0.15);pointer-events:auto;animation:bromar-toast-in 0.3s ease-out;max-width:90vw;`;
     el.textContent = message;
@@ -107,6 +110,13 @@
       el.style.animation = 'bromar-toast-out 0.25s ease-in forwards';
       setTimeout(() => el.remove(), 250);
     }, ms || 3000);
+  }
+
+  /* notify(msg, type): user-facing message. type = success | info | warning | error.
+     Errors and warnings stay on screen longer so they are not missed. */
+  function notify(message, type, ms) {
+    type = type || 'info';
+    showToast(message, type, ms || (type === 'error' ? 7000 : type === 'warning' ? 5000 : 3000));
   }
 
   /* ── CONFIRM DIALOG ── */
@@ -184,8 +194,26 @@
     } catch (_) { return {}; }
   }
 
+  /* Supabase/PostgREST returns at most 1,000 rows per request. fetchAll pages
+     through with .range() until a short page comes back.
+     buildQuery() must return a NEW query each call, with a stable order, e.g.
+       await BromarUtils.fetchAll(() => sb.from('t').select('*').order('created_at').order('id'))
+     Returns { data, error } like a normal supabase call. */
+  async function fetchAll(buildQuery, pageSize) {
+    const size = pageSize || 1000;
+    const out = [];
+    for (let from = 0; ; from += size) {
+      const { data, error } = await buildQuery().range(from, from + size - 1);
+      if (error) return { data: null, error };
+      out.push(...(data || []));
+      if (!data || data.length < size) break;
+    }
+    return { data: out, error: null };
+  }
+
   window.BromarUtils = {
-    version: 'V1.01',
+    version: 'V1.03',
+    fetchAll,
     saveState,
     loadState,
     parseISO,
@@ -196,6 +224,7 @@
     safeJSON,
     escHtml,
     showToast,
+    notify,
     confirmDialog,
     showSpinner,
     hideSpinner,

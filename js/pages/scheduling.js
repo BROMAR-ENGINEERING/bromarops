@@ -5,12 +5,15 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.38
+   V1.39 — visible error messages (BromarUtils.notify) instead of silent console.warn
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.38';
+// User-facing message (toast); falls back to console if utils.js isn't loaded
+function notify(msg, type) { if (window.BromarUtils?.notify) window.BromarUtils.notify(msg, type); else console.warn(msg); }
+
+  const PAGE_VERSION = 'V1.39';
 
   /* ── SUPABASE CONFIG ── */
   let supabase = null;
@@ -66,10 +69,13 @@ window.BromarPages.scheduling = (() => {
     async fetchEmployees() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('employees')
-          .select('id, full_name, first_name, last_name, role, a_grade, is_active')
-          .eq('is_active', true)
-          .order('full_name');
+        const cols = 'full_name, first_name, last_name, role, a_grade, is_active';
+        // Try with the hidden id first (issue #18); fall back so the list never goes blank
+        let { data, error } = await sb.from('employees').select('id, ' + cols).eq('is_active', true).order('full_name');
+        if (error) {
+          console.warn('Employee fetch with id failed, retrying without id:', error);
+          ({ data, error } = await sb.from('employees').select(cols).eq('is_active', true).order('full_name'));
+        }
         if (error) throw error;
         return (data || []).map((e, i) => ({
           id: 'emp-' + i,
@@ -83,6 +89,7 @@ window.BromarPages.scheduling = (() => {
         }));
       } catch (err) {
         console.error('Employee fetch failed:', err);
+        notify('Could not load employees. Check your connection and refresh the page.', 'error');
         return [];
       }
     },
@@ -90,10 +97,10 @@ window.BromarPages.scheduling = (() => {
     async fetchJobs() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('job_number_register')
+        const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('job_number_register')
           .select('job_number, client_name, site_name, site_address, status')
           .eq('status', 'active')
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).order('job_number'));
         if (error) {
           if (error.code === '42P01' || error.message?.includes('does not exist')) {
             console.warn('job_number_register table not found');
@@ -109,7 +116,8 @@ window.BromarPages.scheduling = (() => {
           priority: 'medium'
         }));
       } catch (err) {
-        console.warn('Jobs fetch failed:', err.message);
+        console.error('Jobs fetch failed:', err);
+        notify('Could not load jobs. Check your connection and refresh the page.', 'error');
         return [];
       }
     },
@@ -117,10 +125,10 @@ window.BromarPages.scheduling = (() => {
     async fetchSites() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('client_sites')
+        const { data, error } = await window.BromarUtils.fetchAll(() => sb.from('client_sites')
           .select('id, site_name, address, city, client_id, is_active, clients(name)')
           .eq('is_active', true)
-          .order('site_name');
+          .order('site_name').order('id'));
         if (error) throw error;
         return (data || []).map(s => ({
           id: s.id,
@@ -131,7 +139,8 @@ window.BromarPages.scheduling = (() => {
           clientName: s.clients?.name || ''
         }));
       } catch (err) {
-        console.warn('Sites fetch failed:', err.message);
+        console.error('Sites fetch failed:', err);
+        notify('Could not load sites. Check your connection and refresh the page.', 'error');
         return [];
       }
     },
@@ -142,7 +151,7 @@ window.BromarPages.scheduling = (() => {
         const { data, error } = await sb.from('pinned_sites').select('*').order('site_name');
         if (error) { if (error.code === '42P01') return []; throw error; }
         return (data || []).map(p => ({ id: p.site_id, name: p.site_name, clientName: p.client_name || '', pinId: p.id }));
-      } catch (err) { console.warn('Pinned fetch failed:', err.message); return []; }
+      } catch (err) { console.error('Pinned fetch failed:', err); notify('Could not load pinned sites. Refresh the page to retry.', 'warning'); return []; }
     },
 
     async pinSite(site) {
@@ -150,14 +159,14 @@ window.BromarPages.scheduling = (() => {
         const sb = await this.init();
         const { error } = await sb.from('pinned_sites').insert({ site_id: site.id, site_name: site.name, client_name: site.clientName });
         if (error && error.code !== '23505') throw error;
-      } catch (err) { console.error('Pin failed:', err); }
+      } catch (err) { console.error('Pin failed:', err); notify('Could not pin the site. Please try again.', 'error'); }
     },
 
     async unpinSite(siteId) {
       try {
         const sb = await this.init();
         await sb.from('pinned_sites').delete().eq('site_id', siteId);
-      } catch (err) { console.error('Unpin failed:', err); }
+      } catch (err) { console.error('Unpin failed:', err); notify('Could not unpin the site. Please try again.', 'error'); }
     },
 
     async fetchRdoRoster() {
@@ -166,7 +175,7 @@ window.BromarPages.scheduling = (() => {
         const { data, error } = await sb.from('rdo_roster').select('employee_name, rdo_group, rdo_date, notes');
         if (error) { if (error.code === '42P01') return []; throw error; }
         return data || [];
-      } catch (err) { console.warn('RDO roster fetch failed:', err.message); return []; }
+      } catch (err) { console.error('RDO roster fetch failed:', err); notify('Could not load the RDO roster, so RDOs may not show. Refresh to retry.', 'warning'); return []; }
     },
 
     async fetchAssignments() {
@@ -202,7 +211,8 @@ window.BromarPages.scheduling = (() => {
           recentlyChanged: false
         }));
       } catch (err) {
-        console.warn('Assignments fetch failed:', err.message);
+        console.error('Assignments fetch failed:', err);
+        notify('Could not load the schedule. The grid may be empty. Check your connection and refresh. Do not edit until it loads.', 'error');
         return [];
       }
     },
@@ -242,6 +252,7 @@ window.BromarPages.scheduling = (() => {
         }
       } catch (err) {
         console.error('Save assignment failed:', err);
+        notify('Could not save the schedule change. It is NOT saved. Check your connection and try again.', 'error');
         if (!a.id) a.id = 'local-' + uid();
         return null;
       }
@@ -307,7 +318,7 @@ window.BromarPages.scheduling = (() => {
     try {
       const sb = await DB.init();
       await sb.from('notifications').insert({ employee_name: empName, employee_id: empIdByName(empName), message, type: 'schedule_change' });
-    } catch (err) { console.warn('Failed to save notification:', err); }
+    } catch (err) { console.error('Failed to save notification:', err); notify('Could not record the notification for ' + empName + '. Check your connection.', 'warning'); }
   }
   function roleLabel(r) { return { electrician: 'Electrician', senior_electrician: 'Senior Electrician', apprentice: 'Apprentice', engineer: 'Engineer', unassigned: 'Unassigned' }[r] || r; }
   function roleColor(r) { return { electrician: 'var(--accent)', senior_electrician: '#8b5cf6', apprentice: '#0ea5e9', engineer: '#10b981', unassigned: 'var(--text-secondary)' }[r] || 'var(--text-secondary)'; }
@@ -1258,7 +1269,7 @@ window.BromarPages.scheduling = (() => {
     try {
       const sb = await DB.init();
       await sb.functions.invoke('send-notification', { body: { employee_name: n.employeeName, message: n.message } });
-    } catch (err) { console.warn('Edge function call failed (notification still saved):', err); }
+    } catch (err) { console.error('Edge function call failed (notification still saved):', err); notify('Notification saved but could not be sent to ' + n.employeeName + '. Try again or contact them directly.', 'error'); }
     await markEmployeeNotified(n.employeeName);
     rerender(container);
   }
@@ -1278,7 +1289,7 @@ window.BromarPages.scheduling = (() => {
   // Notify a single assignment: send push/email + flip notified
   async function notifyAssignment(a){
     const msg=buildDefaultMessage(a);
-    try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:a.employeeName,employee_id:empIdByName(a.employeeName),message:msg,type:'schedule_change'});await sb.functions.invoke('send-notification',{body:{employee_name:a.employeeName,message:msg}});}catch(err){console.warn('notifyAssignment failed:',err);}
+    try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:a.employeeName,employee_id:empIdByName(a.employeeName),message:msg,type:'schedule_change'});await sb.functions.invoke('send-notification',{body:{employee_name:a.employeeName,message:msg}});}catch(err){console.error('notifyAssignment failed:',err);notify('Could not notify '+a.employeeName+'. Try again or contact them directly.','error');}
     a.notified=true;await DB.markNotified(a.id);
   }
 
@@ -1298,9 +1309,11 @@ window.BromarPages.scheduling = (() => {
     showConfirm(`Send "<strong>Next Week's Schedule is now live</strong>" to all ${names.size} scheduled ${names.size===1?'employee':'employees'}?`, async ()=>{
       if(btn){btn.disabled=true;btn.textContent='Sending…';}
       const msg="Next Week's Schedule is now live";
+      const failed=[];
       for(const name of names){
-        try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:name,employee_id:empIdByName(name),message:msg,type:'schedule_live'});await sb.functions.invoke('send-notification',{body:{employee_name:name,message:msg}});}catch(err){console.warn('notify all failed for',name,err);}
+        try{const sb=await DB.init();await sb.from('notifications').insert({employee_name:name,employee_id:empIdByName(name),message:msg,type:'schedule_live'});await sb.functions.invoke('send-notification',{body:{employee_name:name,message:msg}});}catch(err){console.error('notify all failed for',name,err);failed.push(name);}
       }
+      if(failed.length)notify('Could not notify: '+failed.join(', ')+'. Try again or contact them directly.','error');
       // Mark all their week assignments notified
       for(const a of assignments){
         if(!names.has(a.employeeName))continue;
@@ -1361,7 +1374,7 @@ window.BromarPages.scheduling = (() => {
           const sb = await DB.init();
           await sb.functions.invoke('send-notification', { body: { employee_name: a.employeeName, message: msg } });
           btn.textContent='✓ Sent';
-        } catch (err) { console.warn('Edge function call failed:', err); btn.textContent='✓ Sent'; }
+        } catch (err) { console.error('Edge function call failed:', err); btn.textContent='Not sent'; notify('Notification saved but could not be sent to ' + a.employeeName + '. Try again or contact them directly.', 'error'); }
         if(!a.rdoAuto){a.notified=true;await DB.markNotified(a.id);}
         setTimeout(()=>{overlay.remove();rerender(container);},700);
       });
@@ -1522,7 +1535,7 @@ window.BromarPages.scheduling = (() => {
         <div style="display:flex;flex-direction:column;gap:0.4rem;">${notificationQueue.length===0?'<div class="sched-empty">No notifications</div>':''}
           ${notificationQueue.map(n=>`<div class="sched-notif-item"><span class="notif-msg"><strong>${n.employeeName}</strong>: ${n.message}</span>${n.sent?'<span class="notif-sent">✓</span>':`<button class="notif-send" data-notif-id="${n.id}">Send</button>`}</div>`).join('')}
         </div></div>`;
-      overlay.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',async(ev)=>{const btn=ev.target;if(btn.disabled)return;btn.disabled=true;btn.textContent='Sending…';btn.style.opacity='0.6';const n=notificationQueue.find(x=>x.id===btn.dataset.notifId);if(n){try{const sb=await DB.init();await sb.functions.invoke('send-notification',{body:{employee_name:n.employeeName,message:n.message}});}catch(err){console.warn('Edge function failed:',err);}n.sent=true;rs();}}));
+      overlay.querySelectorAll('.notif-send').forEach(b=>b.addEventListener('click',async(ev)=>{const btn=ev.target;if(btn.disabled)return;btn.disabled=true;btn.textContent='Sending…';btn.style.opacity='0.6';const n=notificationQueue.find(x=>x.id===btn.dataset.notifId);if(n){try{const sb=await DB.init();await sb.functions.invoke('send-notification',{body:{employee_name:n.employeeName,message:n.message}});}catch(err){console.error('Edge function failed:',err);notify('Could not send to '+n.employeeName+'. Try again or contact them directly.','error');}n.sent=true;rs();}}));
     }
     overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
     rs();document.body.appendChild(overlay);

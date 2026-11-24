@@ -11,11 +11,14 @@
    V1.04 — Self-initialising Supabase client (loads supabase-js
            from jsDelivr w/ unpkg fallback, creates client if
            absent) — fixes intermittent "client not initialised".
+   V1.05 — Pending Drafts tile (read-only): timesheet_drafts and
+           job_sheet_drafts with status='draft'. Review/submit
+           stays in Bromar Hub.
    ============================================================ */
 
 (() => {
   const PAGE_ID = 'dashboard';
-  const VERSION = 'V1.04';
+  const VERSION = 'V1.05';
 
   const MEL_LAT = -37.8136, MEL_LON = 144.9631;
   const SB_URL = window.BROMAR_CONFIG.supabaseUrl;
@@ -203,6 +206,57 @@
     }).join('');
   }
 
+  /* ── Pending drafts tile (read-only; review/submit happens in Bromar Hub) ── */
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+  async function loadDrafts(tile) {
+    const el = tile.querySelector('.drafts-body');
+    const badge = tile.querySelector('.drafts-count');
+    const client = await ensureClient();
+    if (!client) { el.innerHTML = `<div class="dash-err">Supabase unavailable (CDN blocked?).</div>`; return; }
+
+    const kinds = [
+      { table: 'timesheet_drafts', label: 'Timesheet', dateKeys: ['work_date', 'date', 'week_starting', 'week_ending'] },
+      { table: 'job_sheet_drafts', label: 'Job sheet', dateKeys: ['work_date', 'date', 'job_date'] }
+    ];
+    const results = await Promise.all(kinds.map(k =>
+      client.from(k.table).select('*').eq('status', 'draft').order('created_at', { ascending: false }).limit(50)
+    ));
+
+    const rows = [];
+    const errs = [];
+    results.forEach((r, i) => {
+      if (r.error) { errs.push(`${kinds[i].label} drafts: ${r.error.message}`); return; }
+      (r.data || []).forEach(d => rows.push({ k: kinds[i], d }));
+    });
+    rows.sort((a, b) => String(b.d.created_at || '').localeCompare(String(a.d.created_at || '')));
+
+    const errHtml = errs.map(m => `<div class="dash-err" style="margin-bottom:.5rem">${esc(m)}</div>`).join('');
+    if (!rows.length) {
+      el.innerHTML = errHtml + (errs.length ? '' : `<p class="dash-muted">No drafts waiting for review.</p>`);
+      return;
+    }
+    badge.textContent = rows.length;
+    badge.style.display = '';
+    el.innerHTML = errHtml + rows.map(({ k, d }) => {
+      const who = d.employee_name || d.employee || d.created_for || d.created_by || 'Unknown';
+      const dateKey = k.dateKeys.find(key => d[key]);
+      const when = dateKey ? parseISO(d[dateKey]) : null;
+      const created = d.created_at ? new Date(d.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+      const meta = [when ? fmtShort(when) : '', d.job_number, created ? 'drafted ' + created : '', d.created_by ? 'by ' + d.created_by : '']
+        .filter(Boolean).map(esc).join(' · ');
+      return `
+        <div class="person-row">
+          <div class="person-avatar">${esc(initials(who))}</div>
+          <div class="person-info">
+            <div class="person-name">${esc(who)}<span class="person-badge">${k.label}</span></div>
+            <div class="person-meta">${meta}</div>
+          </div>
+        </div>`;
+    }).join('') + `<p class="dash-muted" style="margin-top:.75rem">Review and submit in Bromar Hub.</p>`;
+  }
+
   /* ── Weather tile (Open-Meteo, no key) ── */
   function wxIcon(code) {
     if (code === 0) return '☀️';
@@ -332,6 +386,11 @@
           <div class="tile-head">Pending Leave Requests <span class="tile-count leave-count" style="display:none"></span></div>
           <div class="leave-body"><div class="dash-skel" style="width:55%"></div><div class="dash-skel" style="width:40%"></div></div>
         </div>
+
+        <div class="dash-tile dash-tile-wide" id="dash-drafts-tile">
+          <div class="tile-head">Pending Drafts <span class="tile-count drafts-count" style="display:none"></span></div>
+          <div class="drafts-body"><div class="dash-skel" style="width:55%"></div><div class="dash-skel" style="width:40%"></div></div>
+        </div>
       </div>
     `;
 
@@ -339,6 +398,7 @@
     loadWeather(container.querySelector('#dash-weather'));
     loadStandby(container.querySelector('#dash-standby'));
     loadLeave(container.querySelector('#dash-leave-tile'));
+    loadDrafts(container.querySelector('#dash-drafts-tile'));
   }
 
   function destroy() {}

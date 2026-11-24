@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — COMPONENT LIBRARY
-   V1.00
+   V1.01
    Hidden dev reference page. Renders every reusable UI element
    so page chats can see exactly what's available.
    Access via URL: #_components (not in sidebar).
@@ -9,7 +9,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages._components = {
   title: 'Component Library',
-  version: 'V1.00',
+  version: 'V1.01',
   render(container) {
     container.innerHTML = `
       <div class="page-title-wrapper">
@@ -80,6 +80,50 @@ window.BromarPages._components = {
             <textarea rows="3" placeholder="Longer text..." style="width:100%;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:10px;background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;outline:none;resize:vertical;"></textarea>
           </div>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Shared UI classes (<code>ui-*</code>, mobile first)</div>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem;">Defined in <code>css/styles.css</code>. Use these on new or touched pages instead of per-page <code>.jobs-*</code>/<code>.ts-*</code>/<code>.sched-*</code> styles. Check at 380px wide.</p>
+
+        <h3>Tabs — <code>.ui-tabs</code> &gt; <code>.ui-tab(.active)</code></h3>
+        <div class="ui-tabs"><button class="ui-tab active">Open</button><button class="ui-tab">Approved</button><button class="ui-tab">Archived</button><button class="ui-tab">Another tab</button><button class="ui-tab">Scrolls on phones</button></div>
+
+        <h3>Toolbar — <code>.ui-toolbar</code> (+ <code>.ui-toolbar-spacer</code>)</h3>
+        <div class="ui-toolbar"><input type="search" placeholder="Search..."><select><option>All</option></select><span class="ui-toolbar-spacer"></span><button class="btn-primary">+ New</button></div>
+
+        <h3>Stat tiles — <code>.ui-stats</code> &gt; <code>.ui-stat</code> &gt; <code>.ui-stat-value</code>/<code>.ui-stat-label</code></h3>
+        <div class="ui-stats"><div class="ui-stat"><div class="ui-stat-value">12</div><div class="ui-stat-label">Open jobs</div></div><div class="ui-stat"><div class="ui-stat-value">3</div><div class="ui-stat-label">Overdue</div></div></div>
+
+        <h3>Card list — <code>.ui-card-list</code> &gt; <code>.ui-card-item</code> (<code>.ui-card-title</code>, <code>.ui-card-meta</code>)</h3>
+        <div class="ui-card-list"><div class="ui-card-item"><div class="ui-card-title">Job 1234</div><div class="ui-card-meta">Client · Site</div></div><div class="ui-card-item"><div class="ui-card-title">Job 1235</div><div class="ui-card-meta">Client · Site</div></div></div>
+
+        <h3 style="margin-top:1rem;">Table — <code>.ui-table-wrap</code> &gt; <code>.ui-table</code></h3>
+        <div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>Name</th><th>Status</th><th>Date</th></tr></thead><tbody><tr><td>Example</td><td>Active</td><td>17 Jul 2026</td></tr></tbody></table></div>
+
+        <h3 style="margin-top:1rem;">Empty state — <code>.ui-empty</code></h3>
+        <div class="ui-empty"><strong>Nothing here yet</strong>Create one to get started.</div>
+
+        <h3>Modal &amp; drawer</h3>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="document.getElementById('ui-demo-modal').classList.add('show')">Open modal</button>
+          <button class="btn-secondary" onclick="document.getElementById('ui-demo-drawer').classList.add('show');document.getElementById('ui-demo-drawer-ov').classList.add('show')">Open drawer</button>
+        </div>
+        <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-secondary);">Modal: <code>.ui-overlay.show</code> &gt; <code>.ui-modal</code> (+ <code>.ui-modal-actions</code>) — bottom sheet on phones. Drawer: <code>.ui-drawer-overlay.show</code> + <code>.ui-drawer.show</code> (<code>-head</code>, <code>-body</code>, <code>-foot</code>). Toggle <code>show</code> to open/close.</p>
+
+        <h3>Toast — <code>.ui-toast.success|error|info</code> (static); in code use <code>BromarUtils.showToast</code></h3>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><span class="ui-toast success">Success</span><span class="ui-toast error">Error</span><span class="ui-toast info">Info</span></div>
+      </div>
+
+      <div class="ui-overlay" id="ui-demo-modal" onclick="if(event.target===this)this.classList.remove('show')">
+        <div class="ui-modal"><h2>Modal title</h2><p>Bottom sheet on phones, centred dialog on desktop.</p>
+          <div class="ui-modal-actions"><button class="btn-secondary" onclick="document.getElementById('ui-demo-modal').classList.remove('show')">Cancel</button><button class="btn-primary" onclick="document.getElementById('ui-demo-modal').classList.remove('show')">Save</button></div></div>
+      </div>
+      <div class="ui-drawer-overlay" id="ui-demo-drawer-ov" onclick="document.getElementById('ui-demo-drawer').classList.remove('show');this.classList.remove('show')"></div>
+      <div class="ui-drawer" id="ui-demo-drawer">
+        <div class="ui-drawer-head">Drawer title</div>
+        <div class="ui-drawer-body">Drawer content. Full width on phones, up to 480px on desktop.</div>
+        <div class="ui-drawer-foot"><button class="btn-secondary" onclick="document.getElementById('ui-demo-drawer').classList.remove('show');document.getElementById('ui-demo-drawer-ov').classList.remove('show')">Close</button></div>
       </div>
 
       <div class="card">

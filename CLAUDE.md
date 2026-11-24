@@ -25,9 +25,9 @@ R = reads, W = writes (insert/update/delete). "Fn" = server function called.
 | Page (file) | What it does | Supabase tables / storage | Functions called |
 |---|---|---|---|
 | **Login** (`login.html`) | Email + password sign-in; signs out anyone who isn't admin | R `employees` | — |
-| **Dashboard** (`js/pages/dashboard.js`) | Date, Melbourne weather, who's on call-out standby, pending leave requests | R `callout_roster`, `leave_requests` | — |
+| **Dashboard** (`js/pages/dashboard.js`) | Date, Melbourne weather, who's on call-out standby, pending leave requests, pending drafts (read-only) | R `callout_roster`, `leave_requests`, `timesheet_drafts`, `job_sheet_drafts` | — |
 | **Jobs** (`js/pages/jobs.js`) | Job register (list/create/edit) and per-job overview + PDF | R `job_number_register`, `job_types`, `job_number_counters`, `clients`, `client_sites` (falls back to `sites`), `job_sheets`, `purchase_orders`, `quotes`; W `job_number_register`; RPC `create_new_job` | — |
-| **Quotes** (`js/pages/quotes.js`) | Quotes & estimates builder, review/approve flow, favourites, PDF | RW `quotes`, `quote_favourites`; R `clients`, `client_sites` (insert into `jobs` is commented out) | — |
+| **Quotes** (`js/pages/quotes.js`) | Quotes & estimates builder, review/approve flow, favourites, PDF | RW `quotes`, `quote_favourites`; R `clients`, `client_sites`, `job_types`; RPC `create_new_job` (on Approve) + W `job_number_register` | — |
 | **Scheduling** (`js/pages/scheduling.js`) | Drag-drop weekly staff schedule; notify staff of changes | RW `schedule_assignments`, `pinned_sites`; W `notifications`; R `employees`, `client_sites`, `job_number_register`, `rdo_roster` | Supabase Edge Fn `send-notification` |
 | **Timesheets** (`js/pages/timesheets.js`) | Read-only: who has submitted for the pay week, lookup, analysis, PDF export | R `timesheets`, `employees` | — |
 | **Employees** (`js/pages/employees.js`) | Staff records, licences/certs (with history & images), inductions, skills | RW `employees`, `employee_certs`, `cert_types`, `employee_cert_history`, `inductions`, `employee_skills`; header also lists `employee_cert_images`. Storage bucket `employee-documents` | — |
@@ -38,9 +38,9 @@ R = reads, W = writes (insert/update/delete). "Fn" = server function called.
 | ↳ Jobsheets (`ims-bromar-hub-jobsheets.js`) | Custom fields per job type shown on the Hub daily jobsheet | R `job_types`, `ims_documents`; RW `job_type_fields` | — |
 | ↳ Approved SWMS (`ims-safety-approved-swms.js`) | Read-only SWMS templates | R `swms_templates` | — |
 | ↳ Placeholders (`ims-placeholders.js`) | "Coming soon" tabs + SWMS master tab | — | — |
-| ↳ SWMS (`ims-safety-swms.js`) ⚠ not loaded | Draft → pending → approved SWMS workflow | RW `swms`, `swms_revisions`, `swms_signoffs`; R `swms_hrcw_categories`, `job_types`, `employees`; Hub reads view `swms_approved_current` | — |
-| ↳ ITC builder (`ims-quality-itc-builder.js`) ⚠ not loaded | Inspection & test checklist forms | RW `itc_forms`, `itc_form_revisions` | — |
-| ↳ Reports (`ims-reports.js`) ⚠ not loaded | View submitted IMS forms | R `ims_form_submissions`, `ims_documents`, `ims_document_revisions` | — |
+| ↳ SWMS (`ims-safety-swms.js`)  | Draft → pending → approved SWMS workflow | RW `swms`, `swms_revisions`, `swms_signoffs`; R `swms_hrcw_categories`, `job_types`, `employees`; Hub reads view `swms_approved_current` | — |
+| ↳ ITC builder (`ims-quality-itc-builder.js`)  | Inspection & test checklist forms | RW `itc_forms`, `itc_form_revisions` | — |
+| ↳ Reports (`ims-reports.js`)  | View submitted IMS forms | R `ims_form_submissions`, `ims_documents`, `ims_document_revisions` | — |
 | **Fleet** (`js/pages/fleet.js`) | Vehicles, audits (from Hub), fuel card imports, costs | RW `vehicles`, `vehicle_costs`; W `fuel_transactions`, `vehicle_audits` (actioned flag); R `vehicle_audit_checks`, `employees` | — |
 | **Equipment** (`js/pages/equipment.js`) | Test equipment register, sign-out/in, calibration records, badge for overdue | RW `equipment`, `equipment_categories`, `equipment_records`; R `equipment_movements`, `employees`, view `v_equipment_compliance`. Storage bucket `Equipment` (private) | — |
 | **Clients & Sites** (`js/pages/clients.js`) | Client register, sites, site contacts | RW `clients`, `client_sites`, `site_contacts` | — |
@@ -85,7 +85,7 @@ Tables: `callout_roster`, `cert_types`, `client_access_requests`, `client_sites`
 `employee_cert_history`, `employee_cert_images`, `employee_certs`, `employee_skills`, `employees`, `equipment`,
 `equipment_categories`, `equipment_movements`, `equipment_records`, `feedback_reports`, `fuel_transactions`,
 `ims_document_revisions`, `ims_documents`, `ims_form_submissions`, `inductions`, `itc_form_revisions`, `itc_forms`,
-`job_number_counters`, `job_number_register`, `job_sheets`, `job_type_fields`, `job_types`, `jobs` (commented out),
+`job_number_counters`, `job_number_register`, `job_sheets`, `job_type_fields`, `job_types`,
 `leave_requests`, `materials`, `notifications`, `pinned_sites`, `public_holidays`, `purchase_order_items`,
 `purchase_orders`, `quote_favourites`, `quotes`, `rdo_roster`, `schedule_assignments`, `site_contacts`,
 `sites` (fallback only), `suppliers`, `swms`, `swms_hrcw_categories`, `swms_revisions`, `swms_signoffs`,
@@ -103,7 +103,7 @@ Storage buckets: `employee-documents`, `Equipment`, `Templates`, `test-tag-repor
 
 ### ⚠ Possible clashes — check before changing
 
-1. **Two job tables:** Jobs uses `job_number_register`; Quotes has commented-out code writing to `jobs`; Jobs looks up
+1. **Two job tables:** Jobs uses `job_number_register`; Quotes now creates jobs via `create_new_job` (no `jobs` table); Jobs looks up
    `client_sites` *and* `sites`. Confirm which are real and which the Hub uses.
 2. **Anon key used as the login token.** Timesheets, Tasks, Admin Tools, Test & Tag, Employees (and fallbacks in
    Fleet/Jobs/Scheduling) call Supabase with `Authorization: Bearer <anon key>` instead of the signed-in user's token.
@@ -115,7 +115,8 @@ Storage buckets: `employee-documents`, `Equipment`, `Templates`, `test-tag-repor
 5. **`notifications`** — rows here are keyed by `employee_name` (text), not an ID. Renaming an employee breaks the link.
    *Migration in progress (issue #18):* `db/migrations/2026-11-24_employee_id_links.sql` adds `employee_id` (uuid → `employees.id`) with backfill and a fill-from-name trigger. Scheduling (`schedule_assignments`, `notifications`) now dual-writes the ID. Other pages and the Hub still use names; reads switch to ID later.
 6. **`bromar-report-kit.js`** must stay identical in both repos (per its header).
-7. **`ims_documents.slug`** is how the Hub loads forms — don't rename slugs.
+7. **Admin RLS (issue #6):** `db/migrations/2026-11-24_rls_is_admin.sql` adds `is_admin()` and restrictive admin policies (not applied automatically; test with the Hub first).
+8. **`ims_documents.slug`** is how the Hub loads forms — don't rename slugs.
 
 ## 5. Draft workflow (timesheet_drafts, job_sheet_drafts)
 
@@ -124,8 +125,8 @@ Intended flow:
 2. The user opens the draft in the app, reviews and edits it.
 3. The user submits → the app copies it into the real table (`timesheets` / `job_sheets`) and marks or deletes the draft.
 
-**Status in this repo: not built.** Neither draft table is referenced anywhere in the code yet, and nothing here
-writes to `timesheets` or `job_sheets` (the Hub does). Rules for building it:
+**Status:** the review/submit flow lives in **Bromar Hub**. Ops only has a read-only "Pending Drafts" tile on the Dashboard
+(`js/pages/dashboard.js`) for admin visibility. Nothing here writes to the draft tables, `timesheets` or `job_sheets`. Rules for building it:
 - Claude writes **only** to the `*_drafts` tables — never directly to `timesheets` or `job_sheets`.
 - Only a signed-in human submits. Keep a `status` (`draft` → `submitted`), `created_by` (e.g. `claude`) and `submitted_by`.
 - Draft columns should mirror the real table so submit is a straight copy.
@@ -145,16 +146,23 @@ js/config.js          Supabase URL + anon key (only place they should live)
 js/auth.js            session guard, creates window.supabaseClient
 js/core.js            sidebar, header, router, nav badges
 js/utils.js, js/bromar-*.js   shared helpers / kits
+js/global-search.js   header search box (jobs, quotes, clients, sites, employees); results link to `#page?param=…`
 js/pages/<page>.js    one file per sidebar page
 js/pages/ims/ims-<section>-<name>.js   IMS sub-tabs
 assets/               logos, icons
+tests/                Playwright smoke test (dev/CI only; the app itself has no npm/build)
 ```
+
+**Smoke test:** `cd tests && npm ci && npx playwright install chromium && npx playwright test`. Loads every page with a stubbed
+Supabase client (`tests/smoke/supabase-stub.js`, sample data in `tests/fixtures/tables.json`), fails on any console error,
+and attaches 380px + desktop screenshots. When you add a page, add its id to `PAGES` in `tests/smoke/pages.smoke.spec.js`.
 
 **Naming & patterns**
 - No framework, no build step, no npm. Plain JS loaded by `<script>` tags; libraries from CDN (supabase-js, jsPDF, SheetJS, pdf.js).
 - Page = `window.BromarPages.<id> = { title, version, render(container), destroy(), badge()? }`. Add new pages to
   the `files` list in `index.html` **and** the nav list in `js/core.js`.
 - IMS sub-tab = `window.BromarIMS.registerSubTab(section, { id, label, order, render, destroy })`, loaded after `ims.js`.
+- Deep links: hash may carry params (`#jobs?no=BE5817`, `#quotes?id=`, `#clients?id=`, `#employees?name=`). A page reads them once in `render()` with `BromarOps.takeParams()`.
 - Admin sub-modules (`testtag.js`, `compliance.js`) must load **before** `admin.js`.
 - Each file has a header comment with a version (`V1.xx`); bump +0.01 per change, major only on request.
 - Tables: `snake_case`, plural. Dates: Australian format, Melbourne time; pay week Mon–Sun.
@@ -187,9 +195,8 @@ assets/               logos, icons
 2. Where is the source for `client-user-admin` and `send-notification`? Should Ops get its own `netlify/functions` folder?
 3. `extract-invoice` doesn't exist — which repo will host it, and which AI provider/key?
 4. Xero sync and push notifications: do they exist (Hub? Supabase?) and which tables do they touch?
-5. `timesheet_drafts` / `job_sheet_drafts`: do these tables exist yet? Review in Ops, Hub, or both?
+5. ~~`timesheet_drafts` / `job_sheet_drafts`~~ — answered: Hub reviews/submits; Ops shows a read-only dashboard tile.
 6. Is RLS enabled on all tables, and do policies allow `anon`? (See clash #2.)
 7. Which job table is current: `job_number_register`, `jobs`, or both? Is `sites` still used?
-8. `ims-safety-swms.js`, `ims-quality-itc-builder.js`, `ims-reports.js` are not loaded in `index.html` — intentional?
 9. `employee_cert_images` is listed in the Employees header but not found in calls — still used?
 10. Is the `employee-documents` bucket meant to be public?
