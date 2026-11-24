@@ -1,7 +1,7 @@
 /* ============================================================
    BROMAR OPS — IMS PLACEHOLDER SUB-TABS
    Path: js/pages/ims/ims-placeholders.js
-   Version: V1.08
+   Version: V1.09
 
    Registers "Coming soon" placeholders for planned sub-tabs that
    don't have a real module yet, plus the SWMS master tab.
@@ -19,6 +19,8 @@
      Audit       → Exports (50)   / Register (60)
      Bromar Hub  → Job Type Requirements (50) / Jobsheets (55) / Quality Allocation (60)
 
+   V1.09: Removed 'Submissions' placeholders (replaced by ims-reports.js 'Reports')
+          and the SWMS master tab (replaced by ims-safety-swms.js, id 'swms').
    V1.08: Removed Job Types placeholder — real module ims-bromar-hub-jobsheets.js
           now registers id 'job-types', label 'Jobsheets'.
    V1.07: SWMS master tab (Safety, 3rd). Left stacked menu:
@@ -134,19 +136,6 @@
   }
 
   const PLANNED = {
-    safety: [
-      placeholder('submissions', 'Submissions', 60),
-      swmsTab()
-    ],
-    quality: [
-      placeholder('submissions', 'Submissions', 60)
-    ],
-    environment: [
-      placeholder('submissions', 'Submissions', 60)
-    ],
-    other: [
-      placeholder('submissions', 'Submissions', 60)
-    ],
     audit: [
       placeholder('register', 'Register', 60)
     ],

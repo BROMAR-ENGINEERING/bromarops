@@ -38,9 +38,9 @@ R = reads, W = writes (insert/update/delete). "Fn" = server function called.
 | ↳ Jobsheets (`ims-bromar-hub-jobsheets.js`) | Custom fields per job type shown on the Hub daily jobsheet | R `job_types`, `ims_documents`; RW `job_type_fields` | — |
 | ↳ Approved SWMS (`ims-safety-approved-swms.js`) | Read-only SWMS templates | R `swms_templates` | — |
 | ↳ Placeholders (`ims-placeholders.js`) | "Coming soon" tabs + SWMS master tab | — | — |
-| ↳ SWMS (`ims-safety-swms.js`) ⚠ not loaded | Draft → pending → approved SWMS workflow | RW `swms`, `swms_revisions`, `swms_signoffs`; R `swms_hrcw_categories`, `job_types`, `employees`; Hub reads view `swms_approved_current` | — |
-| ↳ ITC builder (`ims-quality-itc-builder.js`) ⚠ not loaded | Inspection & test checklist forms | RW `itc_forms`, `itc_form_revisions` | — |
-| ↳ Reports (`ims-reports.js`) ⚠ not loaded | View submitted IMS forms | R `ims_form_submissions`, `ims_documents`, `ims_document_revisions` | — |
+| ↳ SWMS (`ims-safety-swms.js`)  | Draft → pending → approved SWMS workflow | RW `swms`, `swms_revisions`, `swms_signoffs`; R `swms_hrcw_categories`, `job_types`, `employees`; Hub reads view `swms_approved_current` | — |
+| ↳ ITC builder (`ims-quality-itc-builder.js`)  | Inspection & test checklist forms | RW `itc_forms`, `itc_form_revisions` | — |
+| ↳ Reports (`ims-reports.js`)  | View submitted IMS forms | R `ims_form_submissions`, `ims_documents`, `ims_document_revisions` | — |
 | **Fleet** (`js/pages/fleet.js`) | Vehicles, audits (from Hub), fuel card imports, costs | RW `vehicles`, `vehicle_costs`; W `fuel_transactions`, `vehicle_audits` (actioned flag); R `vehicle_audit_checks`, `employees` | — |
 | **Equipment** (`js/pages/equipment.js`) | Test equipment register, sign-out/in, calibration records, badge for overdue | RW `equipment`, `equipment_categories`, `equipment_records`; R `equipment_movements`, `employees`, view `v_equipment_compliance`. Storage bucket `Equipment` (private) | — |
 | **Clients & Sites** (`js/pages/clients.js`) | Client register, sites, site contacts | RW `clients`, `client_sites`, `site_contacts` | — |
@@ -148,7 +148,12 @@ js/utils.js, js/bromar-*.js   shared helpers / kits
 js/pages/<page>.js    one file per sidebar page
 js/pages/ims/ims-<section>-<name>.js   IMS sub-tabs
 assets/               logos, icons
+tests/                Playwright smoke test (dev/CI only; the app itself has no npm/build)
 ```
+
+**Smoke test:** `cd tests && npm ci && npx playwright install chromium && npx playwright test`. Loads every page with a stubbed
+Supabase client (`tests/smoke/supabase-stub.js`, sample data in `tests/fixtures/tables.json`), fails on any console error,
+and attaches 380px + desktop screenshots. When you add a page, add its id to `PAGES` in `tests/smoke/pages.smoke.spec.js`.
 
 **Naming & patterns**
 - No framework, no build step, no npm. Plain JS loaded by `<script>` tags; libraries from CDN (supabase-js, jsPDF, SheetJS, pdf.js).
@@ -190,6 +195,5 @@ assets/               logos, icons
 5. `timesheet_drafts` / `job_sheet_drafts`: do these tables exist yet? Review in Ops, Hub, or both?
 6. Is RLS enabled on all tables, and do policies allow `anon`? (See clash #2.)
 7. Which job table is current: `job_number_register`, `jobs`, or both? Is `sites` still used?
-8. `ims-safety-swms.js`, `ims-quality-itc-builder.js`, `ims-reports.js` are not loaded in `index.html` — intentional?
 9. `employee_cert_images` is listed in the Employees header but not found in calls — still used?
 10. Is the `employee-documents` bucket meant to be public?
