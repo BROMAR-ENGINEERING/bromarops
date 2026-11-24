@@ -9,8 +9,8 @@ window.BromarPages.admin = {
   version: 'V1.20',
 
   /* ── Supabase config ── */
-  _SB_URL: 'https://iwtvlpfprxqwveqadlwl.supabase.co',
-  _SB_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k',
+  _SB_URL: window.BROMAR_CONFIG.supabaseUrl,
+  _SB_KEY: window.BROMAR_CONFIG.supabaseAnonKey,
 
   _sbHeaders() {
     return {
@@ -946,7 +946,7 @@ window.BromarPages.admin = {
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
               <input type="file" accept=".xlsx,.xls" class="co-file-input">
             </label>
-            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+            <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/callout-roster/bromar-callout-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
             </a>
             <button class="btn-secondary co-instructions-btn" data-co-instructions>
@@ -1306,7 +1306,7 @@ window.BromarPages.admin = {
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Select File
                 <input type="file" accept=".xlsx,.xls" class="hol-file-input">
               </label>
-              <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/public-holidays/bromar-public-holidays-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+              <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/public-holidays/bromar-public-holidays-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download Template
               </a>
             </div>
@@ -1572,7 +1572,7 @@ window.BromarPages.admin = {
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload XLSX
               <input type="file" accept=".xlsx,.xls" class="rdo-file-input">
             </label>
-            <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/rdo-roster/bromar-rdo-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+            <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/rdo-roster/bromar-rdo-roster-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Template
             </a>
             <button class="btn-secondary" data-rdo-instructions>
@@ -1931,7 +1931,7 @@ window.BromarPages.admin = {
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Select File
                 <input type="file" accept=".xlsx,.xls" class="sup-file-input">
               </label>
-              <a href="https://iwtvlpfprxqwveqadlwl.supabase.co/storage/v1/object/public/Templates/suppliers/bromar-supplier-directory-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
+              <a href="${window.BROMAR_CONFIG.supabaseUrl}/storage/v1/object/public/Templates/suppliers/bromar-supplier-directory-template.xlsx" target="_blank" rel="noopener" class="btn-secondary co-download-link">
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;pointer-events:none" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download Template
               </a>
             </div>

@@ -1,15 +1,15 @@
 /* ============================================================
    BROMAR OPS — FLEET MANAGEMENT
    File: js/pages/fleet.js
-   Version: V1.15
+   Version: V1.16
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
   const PAGE_VERSION = 'V1.15';
 
   /* ── SUPABASE ── */
-  const SB_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+  const SB_URL = window.BROMAR_CONFIG.supabaseUrl;
+  const SB_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
   let sb = null;
   function loadScript(u){return new Promise((r,j)=>{const s=document.createElement('script');s.src=u;s.onload=r;s.onerror=j;document.head.appendChild(s);});}
   async function ensureClient(){if(sb)return sb;if(window.supabaseClient){sb=window.supabaseClient;return sb;}if(!window.supabase?.createClient){for(const u of['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js','https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js']){try{await loadScript(u);if(window.supabase?.createClient)break;}catch{continue;}}}if(!window.supabase?.createClient)throw new Error('Supabase library failed to load');sb=window.supabase.createClient(SB_URL,SB_KEY);window.supabaseClient=sb;return sb;}

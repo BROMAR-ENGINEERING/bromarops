@@ -13,8 +13,8 @@ window.BromarPages.employees = {
   version: 'V1.14',
 
   render(container) {
-    const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+    const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
+    const SUPABASE_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
     const BUCKET      = 'employee-documents';
     const SIGNED_URL_TTL = 3600; // seconds
     const signedUrlCache = new Map(); // path -> { url, exp }
