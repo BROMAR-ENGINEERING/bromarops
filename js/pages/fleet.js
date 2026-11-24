@@ -1,11 +1,11 @@
 /* ============================================================
    BROMAR OPS — FLEET MANAGEMENT
    File: js/pages/fleet.js
-   Version: V1.16
+   Version: V1.17
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.16';
+  const PAGE_VERSION = 'V1.17';
 
   /* ── SUPABASE ── */
   let sb = null;
@@ -180,29 +180,8 @@ window.BromarPages.fleet = (() => {
   /* ── STYLES ── */
   const STYLES = `
 <style id="fleet-page-styles">
-.fleet-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1.25rem}
-.fleet-search-wrap{position:relative;flex:1;min-width:180px}
-.fleet-search-wrap svg{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);width:16px;height:16px;stroke:var(--text-secondary);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
-.fleet-search{width:100%;padding:.65rem 1rem .65rem 2.5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:16px;outline:none;transition:border .2s;-webkit-appearance:none}
-.fleet-search:focus{border-color:var(--accent)}
-.fleet-filters{display:flex;gap:.35rem;flex-wrap:wrap}
-.fleet-fbtn{padding:.45rem .9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:500;cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent}
-.fleet-fbtn:hover{border-color:var(--accent);color:var(--text-primary)}
-.fleet-fbtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-/* attention bar */
-.fleet-attention{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem;padding:1rem 1.25rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg-secondary)}
-.fleet-attn-item{display:flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:500}
-.fleet-attn-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;font-size:.75rem;font-weight:700;padding:0 6px}
-.fleet-attn-red{background:var(--error-bg);color:var(--error)}
-.fleet-attn-yellow{background:#fef3c7;color:#92400e}
-.fleet-attn-green{background:#d1fae5;color:#15803d}
+.fleet-attn-red{color:var(--error)}.fleet-attn-yellow{color:#b45309}.fleet-attn-green{color:#15803d}
 /* table */
-.fleet-table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);-webkit-overflow-scrolling:touch}
-.fleet-table{width:100%;border-collapse:collapse;font-size:.88rem}
-.fleet-table th{text-align:left;padding:.7rem .85rem;background:var(--bg-main);color:var(--text-secondary);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
-.fleet-table td{padding:.7rem .85rem;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
-.fleet-table tr:last-child td{border-bottom:none}
-.fleet-table tr[data-id]:hover{background:var(--card-hover);cursor:pointer}
 .fleet-badge{display:inline-block;padding:.2rem .55rem;border-radius:6px;font-size:.72rem;font-weight:600;white-space:nowrap;margin-right:3px}
 .fleet-st-active{background:#d1fae5;color:#15803d}.fleet-st-shop{background:#fef3c7;color:#92400e}.fleet-st-inactive{background:var(--error-bg);color:var(--error)}
 .fleet-flag-red{background:var(--error-bg);color:var(--error)}.fleet-flag-yellow{background:#fef3c7;color:#92400e}
@@ -211,18 +190,12 @@ window.BromarPages.fleet = (() => {
 .fleet-dot-green{background:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.2)}
 .fleet-dot-yellow{background:#eab308;box-shadow:0 0 0 2px rgba(234,179,8,.2)}
 .fleet-dot-red{background:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.2)}
-/* modal */
-.fleet-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fleetFadeIn .2s ease}
-.fleet-modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;width:100%;max-width:720px;box-shadow:0 20px 60px var(--shadow);animation:fleetSlideUp .25s ease}
-.fleet-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border)}
+/* modal (box comes from shared .ui-overlay / .ui-modal) */
+.fleet-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
 .fleet-modal-title{font-size:1.15rem;font-weight:700;letter-spacing:-.02em}
 .fleet-modal-sub{font-size:.82rem;color:var(--text-secondary);font-weight:400;margin-top:2px}
 .fleet-modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
 .fleet-modal-close:hover{border-color:var(--accent);color:var(--accent)}
-.fleet-modal-body{padding:1.25rem 1.5rem}
-.fleet-tabs{display:flex;gap:.25rem;margin-bottom:1.25rem;border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch}
-.fleet-tab{padding:.55rem .9rem;border:none;background:transparent;color:var(--text-secondary);font-family:'Outfit',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;margin-bottom:-1px;white-space:nowrap}
-.fleet-tab:hover{color:var(--text-primary)}.fleet-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 .fleet-info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
 .fleet-info-item label{display:block;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);font-weight:600;margin-bottom:.2rem}
 .fleet-info-item span{font-size:.95rem;font-weight:500}
@@ -262,19 +235,14 @@ window.BromarPages.fleet = (() => {
 .fleet-cost-del{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:.85rem;padding:.25rem;margin-left:.5rem}
 .fleet-cost-del:hover{color:var(--error)}
 /* forms */
-.fleet-form-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:210;display:flex;align-items:center;justify-content:center;animation:fleetFadeIn .2s ease;padding:1rem}
-.fleet-form{background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;width:100%;max-width:600px;max-height:90dvh;overflow-y:auto;padding:2rem;box-shadow:0 20px 60px var(--shadow);-webkit-overflow-scrolling:touch}
-.fleet-form h2{font-size:1.2rem;font-weight:700;margin-bottom:1.25rem}
 .fleet-form label{display:block;font-size:.82rem;font-weight:600;color:var(--text-secondary);margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.03em}
 .fleet-form input,.fleet-form select,.fleet-form textarea{width:100%;padding:.6rem .85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-main);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:16px;margin-bottom:1rem;outline:none;transition:border .2s;-webkit-appearance:none}
 .fleet-form input:focus,.fleet-form select:focus,.fleet-form textarea:focus{border-color:var(--accent)}
 .fleet-form textarea{resize:vertical;min-height:70px}
-.fleet-form-actions{display:flex;gap:.75rem;justify-content:flex-end;margin-top:.5rem}
 .fleet-other-name{display:none;margin-top:-0.5rem}.fleet-other-name.show{display:block}
 .fleet-actions{display:flex;gap:.5rem;flex-wrap:wrap}
 .fleet-actions .btn-primary,.fleet-actions .btn-secondary{padding:.6rem 1.1rem;font-size:.85rem;white-space:nowrap}
 .fleet-loading{text-align:center;padding:3rem;color:var(--text-secondary);font-size:.95rem}
-.fleet-empty{text-align:center;padding:2rem;color:var(--text-secondary);font-size:.9rem}
 .fleet-rego-input{text-transform:uppercase}
 .fleet-upload-tbl{width:100%;border-collapse:collapse;font-size:.82rem;margin:1rem 0}
 .fleet-upload-tbl th,.fleet-upload-tbl td{padding:.5rem .6rem;border-bottom:1px solid var(--border);text-align:left}
@@ -284,22 +252,11 @@ window.BromarPages.fleet = (() => {
 .fleet-upload-drop:hover,.fleet-upload-drop.drag{border-color:var(--accent);background:var(--card-hover)}
 .fleet-upload-drop input{display:none}
 .fleet-page-version{text-align:left;margin-top:2.5rem;padding-left:.25rem;font-size:.72rem;color:var(--text-secondary);opacity:.45;font-family:'JetBrains Mono',monospace}
-.fleet-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-secondary);border:1px solid var(--border);border-radius:16px;padding:2rem 2.5rem;box-shadow:0 20px 60px var(--shadow);z-index:300;text-align:center;max-width:400px;width:90%;animation:fleetSlideUp .25s ease}
-.fleet-toast h3{font-size:1.05rem;font-weight:700;margin-bottom:.6rem}
-.fleet-toast p{font-size:.9rem;color:var(--text-secondary);margin-bottom:1.25rem;line-height:1.5}
-.fleet-toast-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:299;animation:fleetFadeIn .2s ease}
 @keyframes fleetFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fleetSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:700px){
-  .fleet-toolbar{flex-direction:column;align-items:stretch}.fleet-search-wrap{min-width:0;width:100%}
-  .fleet-filters{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;padding-bottom:.25rem}
   .fleet-actions{width:100%}.fleet-actions .btn-primary,.fleet-actions .btn-secondary{flex:1;text-align:center;min-width:0;padding:.7rem .5rem;font-size:.8rem}
   .fleet-info-grid{grid-template-columns:1fr 1fr}.fleet-rc-grid{grid-template-columns:1fr}
-  .fleet-modal{border-radius:12px}.fleet-modal-body{padding:1rem}.fleet-modal-head{padding:1rem}
-  .fleet-form{padding:1.25rem;border-radius:12px}
-  .fleet-tab{padding:.5rem .65rem;font-size:.8rem}
-  .fleet-table{font-size:.8rem}.fleet-table th,.fleet-table td{padding:.55rem .6rem}
-  .fleet-modal-overlay{padding:1rem .5rem}.fleet-attention{flex-direction:column;gap:.5rem}
 }
 @media(max-width:400px){.fleet-info-grid{grid-template-columns:1fr}}
 </style>`;
@@ -307,20 +264,16 @@ window.BromarPages.fleet = (() => {
   /* ── ATTENTION BAR ── */
   function renderAttention(){
     const a=getAttention();
-    if(a.total===0)return'<div class="fleet-attention"><span class="fleet-attn-item"><span class="fleet-attn-count fleet-attn-green">✓</span> All vehicles OK</span></div>';
-    let items='';
-    if(a.overdue)items+=`<span class="fleet-attn-item"><span class="fleet-attn-count fleet-attn-red">${a.overdue}</span> Overdue</span>`;
-    if(a.approaching)items+=`<span class="fleet-attn-item"><span class="fleet-attn-count fleet-attn-yellow">${a.approaching}</span> Approaching Service</span>`;
-    if(a.repairs)items+=`<span class="fleet-attn-item"><span class="fleet-attn-count fleet-attn-red">${a.repairs}</span> Repairs Due</span>`;
-    if(a.auditDue)items+=`<span class="fleet-attn-item"><span class="fleet-attn-count fleet-attn-yellow">${a.auditDue}</span> Audit Due</span>`;
-    return`<div class="fleet-attention">${items}</div>`;
+    if(a.total===0)return'<div class="ui-stats"><div class="ui-stat"><div class="ui-stat-value fleet-attn-green">✓</div><div class="ui-stat-label">All vehicles OK</div></div></div>';
+    const tile=(n,cls,label)=>n?`<div class="ui-stat"><div class="ui-stat-value ${cls}">${n}</div><div class="ui-stat-label">${label}</div></div>`:'';
+    return`<div class="ui-stats">${tile(a.overdue,'fleet-attn-red','Overdue')}${tile(a.approaching,'fleet-attn-yellow','Approaching Service')}${tile(a.repairs,'fleet-attn-red','Repairs Due')}${tile(a.auditDue,'fleet-attn-yellow','Audit Due')}</div>`;
   }
 
   /* ── TABLE ── */
   function renderTable(){
     const list=filtered();
-    const rows=list.length?list.map(v=>`<tr data-id="${v.id}"><td>${dotHtml(v)}</td><td><strong>${v.plant_no}</strong></td><td>${driverName(v)||'<span style="color:var(--text-secondary)">Unassigned</span>'}</td><td>${v.rego_no||'—'}</td><td>${v.make||'—'}</td><td>${v.model||'—'}</td><td>${v.year||'—'}</td><td>${fmtNum(v.current_odometer)}</td><td>${fmtNum(v.next_service_km)}</td></tr>`).join(''):'<tr><td colspan="9" class="fleet-empty">No vehicles found</td></tr>';
-    return`<div class="fleet-toolbar"><div class="fleet-search-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" class="fleet-search" id="fleet-search" placeholder="Search rego, make, model, driver…" value="${searchTerm}"></div><div class="fleet-filters">${VISIBLE_STATUSES.map(s=>`<button class="fleet-fbtn ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}</div><div class="fleet-actions"><button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button><button class="btn-secondary" id="fleet-upload-btn">📄 Upload FleetCard</button></div></div><div class="card" style="padding:0;overflow:hidden"><div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th style="width:30px"></th><th>Plant #</th><th>Assigned To</th><th>Rego</th><th>Make</th><th>Model</th><th>Year</th><th>Odometer</th><th>Next Service</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    const rows=list.length?list.map(v=>`<tr data-id="${v.id}"><td>${dotHtml(v)}</td><td><strong>${v.plant_no}</strong></td><td>${driverName(v)||'<span style="color:var(--text-secondary)">Unassigned</span>'}</td><td>${v.rego_no||'—'}</td><td>${v.make||'—'}</td><td>${v.model||'—'}</td><td>${v.year||'—'}</td><td>${fmtNum(v.current_odometer)}</td><td>${fmtNum(v.next_service_km)}</td></tr>`).join(''):'<tr><td colspan="9" class="ui-empty">No vehicles found</td></tr>';
+    return`<div class="ui-toolbar"><input type="search" id="fleet-search" placeholder="Search rego, make, model, driver…" value="${searchTerm}"><div class="ui-tabs ui-tabs-inline">${VISIBLE_STATUSES.map(s=>`<button class="ui-tab ${filterStatus===s?'active':''}" data-fs="${s}">${statusLabel(s)}</button>`).join('')}</div><div class="fleet-actions"><button class="btn-primary" id="fleet-add-btn">+ Add Vehicle</button><button class="btn-secondary" id="fleet-upload-btn">📄 Upload FleetCard</button></div></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th style="width:30px"></th><th>Plant #</th><th>Assigned To</th><th>Rego</th><th>Make</th><th>Model</th><th>Year</th><th>Odometer</th><th>Next Service</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   /* ── DETAIL MODAL ── */
@@ -347,14 +300,14 @@ window.BromarPages.fleet = (() => {
         <button class="btn-secondary fleet-delete-vehicle" data-id="${v.id}" style="padding:.5rem 1rem;font-size:.82rem;color:var(--error);border-color:var(--error)">Delete</button>
       </div>`;
     }else if(activeTab==='audits'){
-      if(!audits.length)tab='<p class="fleet-empty">No audit records.</p>';
+      if(!audits.length)tab='<p class="ui-empty">No audit records.</p>';
       else tab=audits.map(a=>{const exp=expandedAuditId===a.id;const cks=auditChecks[a.id]||[];let xh='';
         if(exp&&cks.length){xh=`<div class="fleet-audit-expand">${cks.map(ck=>{const cl=ck.status==='FAULT'?'fleet-check-fault':ck.status==='NA'?'fleet-check-na':'fleet-check-ok';return`<div class="fleet-check-row"><span>${ck.item_text}</span><span><span class="${cl}">${ck.status}</span>${ck.comment?`<span class="fleet-check-comment">${ck.comment}</span>`:''}</span></div>`;}).join('')}${a.defect_details?`<div class="fleet-defect-box"><strong>Defect:</strong> ${a.defect_details}${a.defect_reported_by?' — '+a.defect_reported_by:''}${a.defect_date?' ('+a.defect_date+')':''}</div>`:''}<div class="fleet-action-row ${a.actioned?'done':''}">${a.actioned?`<span>✔ Actioned by <strong>${a.actioned_by}</strong> on ${new Date(a.actioned_at).toLocaleDateString()}${a.action_notes?' — '+a.action_notes:''}</span>`:`<button class="btn-primary fleet-action-btn" data-audit="${a.id}" style="padding:.4rem .9rem;font-size:.8rem">Mark Actioned</button>`}</div></div>`;}else if(exp){xh='<div class="fleet-audit-expand fleet-loading">Loading…</div>';}
         return`<div class="fleet-audit-card" data-audit-id="${a.id}"><div class="fleet-audit-top"><div><strong>${a.audit_type_id}</strong><span style="margin-left:.5rem">${faultBadgeHtml(a.fault_count)}</span></div><span style="font-size:.78rem;color:var(--text-secondary)">${new Date(a.submitted_at).toLocaleDateString()}</span></div><div class="fleet-audit-meta">Operator: ${a.operator_name} · Week: ${a.week_commencing}${a.current_km_hours?' · '+fmtNum(a.current_km_hours)+' km/hrs':''} · ${a.ok_count} OK / ${a.fault_count} Fault / ${a.na_count} N/A</div>${a.notes?`<div style="margin-top:.4rem;font-size:.82rem;color:var(--text-secondary);font-style:italic">${a.notes}</div>`:''}${xh}</div>`;}).join('');
     }else if(activeTab==='fuel'){
-      if(!fuelTxns.length)tab='<p class="fleet-empty">No fuel transactions. Upload a FleetCard Vehicle Report to import.</p>';
+      if(!fuelTxns.length)tab='<p class="ui-empty">No fuel transactions. Upload a FleetCard Vehicle Report to import.</p>';
       else{const fr=fuelTxns.filter(t=>t.quantity_litres&&t.quantity_litres>1);const tl=fr.reduce((s,t)=>s+(t.quantity_litres||0),0);const te=fuelTxns.reduce((s,t)=>s+(t.price_ex_gst||0),0);const ti=fuelTxns.reduce((s,t)=>s+(t.total_inc_gst||0),0);
-        tab=`<div class="fleet-fuel-summary"><span>Total: <strong>${tl.toFixed(1)}L</strong></span><span>Ex GST: <strong>${fmtCur(te)}</strong></span><span>Inc GST: <strong>${fmtCur(ti)}</strong></span></div><div class="fleet-table-wrap"><table class="fleet-data-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Product</th><th>Litres</th><th>Odo</th><th>Total</th></tr></thead><tbody>${fuelTxns.map(t=>`<tr><td>${fmtDate(t.transaction_date)}</td><td>${t.supplier||'—'}</td><td>${t.product||'—'}</td><td>${t.quantity_litres?t.quantity_litres.toFixed(1)+'L':'—'}</td><td>${fmtNum(t.odometer_reading)}</td><td>${fmtCur(t.total_inc_gst)}</td></tr>`).join('')}</tbody></table></div>`;}
+        tab=`<div class="fleet-fuel-summary"><span>Total: <strong>${tl.toFixed(1)}L</strong></span><span>Ex GST: <strong>${fmtCur(te)}</strong></span><span>Inc GST: <strong>${fmtCur(ti)}</strong></span></div><div class="ui-table-wrap"><table class="fleet-data-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Product</th><th>Litres</th><th>Odo</th><th>Total</th></tr></thead><tbody>${fuelTxns.map(t=>`<tr><td>${fmtDate(t.transaction_date)}</td><td>${t.supplier||'—'}</td><td>${t.product||'—'}</td><td>${t.quantity_litres?t.quantity_litres.toFixed(1)+'L':'—'}</td><td>${fmtNum(t.odometer_reading)}</td><td>${fmtCur(t.total_inc_gst)}</td></tr>`).join('')}</tbody></table></div>`;}
     }else if(activeTab==='costs'){
       const rc=calcRunningCosts(fuelTxns,costEntries);
       const fyKeys=Object.keys(rc.fuelByFY).sort().reverse();
@@ -368,25 +321,25 @@ window.BromarPages.fleet = (() => {
       <div class="fleet-rc-card" style="margin-bottom:1.25rem"><h4>Fuel by Month (last 12)</h4>${monthKeys.length?monthKeys.map(mk=>{const d=rc.fuelByMonth[mk];return`<div class="fleet-rc-row"><span>${mk}</span><span>${d.litres.toFixed(0)}L · ${fmtCur(d.incGst)}</span></div>`;}).join(''):'<div class="fleet-rc-sub">No fuel data</div>'}</div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem"><h4 style="font-size:.88rem;font-weight:600">Cost Entries</h4><button class="btn-primary" id="fleet-add-cost" style="padding:.45rem .9rem;font-size:.82rem">+ Add Cost</button></div>
-      ${costEntries.length?costEntries.map(c=>`<div class="fleet-cost-row"><div class="fleet-cost-info"><div class="fleet-cost-cat">${capFirst(c.category)} · ${fmtDate(c.cost_date)}${c.supplier?' · '+c.supplier:''}</div><div class="fleet-cost-desc">${c.description||'—'}${c.invoice_ref?' · Ref: '+c.invoice_ref:''}</div></div><span class="fleet-cost-amt">${fmtCur(c.total_inc_gst)}</span><button class="fleet-cost-del" data-cost-id="${c.id}" title="Delete">✕</button></div>`).join(''):'<p class="fleet-empty">No cost entries. Add service, parts, registration costs etc.</p>'}`;
+      ${costEntries.length?costEntries.map(c=>`<div class="fleet-cost-row"><div class="fleet-cost-info"><div class="fleet-cost-cat">${capFirst(c.category)} · ${fmtDate(c.cost_date)}${c.supplier?' · '+c.supplier:''}</div><div class="fleet-cost-desc">${c.description||'—'}${c.invoice_ref?' · Ref: '+c.invoice_ref:''}</div></div><span class="fleet-cost-amt">${fmtCur(c.total_inc_gst)}</span><button class="fleet-cost-del" data-cost-id="${c.id}" title="Delete">✕</button></div>`).join(''):'<p class="ui-empty">No cost entries. Add service, parts, registration costs etc.</p>'}`;
     }
-    return`<div class="fleet-modal-overlay" id="fleet-detail-overlay"><div class="fleet-modal"><div class="fleet-modal-head"><div><div class="fleet-modal-title">${v.plant_no} — ${v.make||''} ${v.model||''}</div><div class="fleet-modal-sub">${v.rego_no||'No rego'} · ${driverName(v)||'Unassigned'} · ${v.year||''}</div></div><button class="fleet-modal-close" id="fleet-close-detail">✕</button></div><div class="fleet-modal-body"><div class="fleet-tabs"><button class="fleet-tab ${activeTab==='details'?'active':''}" data-tab="details">Details</button><button class="fleet-tab ${activeTab==='audits'?'active':''}" data-tab="audits">Audits</button><button class="fleet-tab ${activeTab==='fuel'?'active':''}" data-tab="fuel">Fuel</button><button class="fleet-tab ${activeTab==='costs'?'active':''}" data-tab="costs">Running Costs</button></div>${tab}</div></div></div>`;
+    return`<div class="ui-overlay show" id="fleet-detail-overlay"><div class="ui-modal" style="width:100%;max-width:720px"><div class="fleet-modal-head"><div><div class="fleet-modal-title">${v.plant_no} — ${v.make||''} ${v.model||''}</div><div class="fleet-modal-sub">${v.rego_no||'No rego'} · ${driverName(v)||'Unassigned'} · ${v.year||''}</div></div><button class="fleet-modal-close" id="fleet-close-detail">✕</button></div><div class="ui-tabs"><button class="ui-tab ${activeTab==='details'?'active':''}" data-tab="details">Details</button><button class="ui-tab ${activeTab==='audits'?'active':''}" data-tab="audits">Audits</button><button class="ui-tab ${activeTab==='fuel'?'active':''}" data-tab="fuel">Fuel</button><button class="ui-tab ${activeTab==='costs'?'active':''}" data-tab="costs">Running Costs</button></div>${tab}</div></div>`;
   }
 
   /* ── UPLOAD MODAL ── */
   function renderUploadModal(parsed){
-    if(!parsed)return`<div class="fleet-form-overlay" id="fleet-upload-overlay"><div class="fleet-form" style="max-width:560px"><h2>Upload FleetCard PDF</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:1.25rem">Upload a <strong>Vehicle Analysis</strong> (odometer update) or <strong>Vehicle Report</strong> (fuel transactions). Auto-detected.</p><div class="fleet-upload-drop" id="fleet-drop-zone"><input type="file" id="fleet-file-input" accept=".pdf"><p style="margin-bottom:.5rem">📄 Tap to select or drag & drop PDF</p><p style="font-size:.78rem;color:var(--text-secondary)">Vehicle Analysis or Vehicle Report</p></div><div id="fleet-upload-status" style="margin-top:1rem"></div><div class="fleet-form-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button></div></div></div>`;
+    if(!parsed)return`<div class="ui-overlay show" id="fleet-upload-overlay"><div class="ui-modal fleet-form" style="width:100%;max-width:560px"><h2>Upload FleetCard PDF</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:1.25rem">Upload a <strong>Vehicle Analysis</strong> (odometer update) or <strong>Vehicle Report</strong> (fuel transactions). Auto-detected.</p><div class="fleet-upload-drop" id="fleet-drop-zone"><input type="file" id="fleet-file-input" accept=".pdf"><p style="margin-bottom:.5rem">📄 Tap to select or drag & drop PDF</p><p style="font-size:.78rem;color:var(--text-secondary)">Vehicle Analysis or Vehicle Report</p></div><div id="fleet-upload-status" style="margin-top:1rem"></div><div class="ui-modal-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button></div></div></div>`;
     if(parsed.type==='analysis'){const matched=parsed.rows.map(r=>{const m=vehicles.find(v=>v.rego_no&&v.rego_no.toUpperCase()===r.rego);return{...r,vehicle:m,willUpdate:m&&r.odometer&&r.odometer>=1000&&(!m.current_odometer||r.odometer>Number(m.current_odometer))&&!(m.current_odometer&&r.odometer>Number(m.current_odometer)*2)};});const uc=matched.filter(r=>r.willUpdate).length;
-      return`<div class="fleet-form-overlay" id="fleet-upload-overlay"><div class="fleet-form" style="max-width:780px"><h2>Vehicle Analysis — Odometer Update</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.billingPeriod||''} · ${parsed.rows.length} vehicles · ${uc} updates</p><div style="overflow-x:auto"><table class="fleet-upload-tbl"><thead><tr><th>Rego</th><th>Match</th><th>PDF Odo</th><th>Current</th><th>Action</th></tr></thead><tbody>${matched.map(r=>`<tr><td>${r.rego}</td><td>${r.vehicle?`<span class="fleet-upload-match">✓ ${r.vehicle.plant_no}</span>`:'<span class="fleet-upload-new">—</span>'}</td><td>${r.odometer?fmtNum(r.odometer):'—'}</td><td>${r.vehicle?.current_odometer?fmtNum(r.vehicle.current_odometer):'—'}</td><td>${r.willUpdate?'<span class="fleet-upload-match">↑</span>':'—'}</td></tr>`).join('')}</tbody></table></div><div class="fleet-form-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm" ${uc===0?'disabled':''}>${uc} Odometer Update${uc!==1?'s':''}</button></div></div></div>`;}
+      return`<div class="ui-overlay show" id="fleet-upload-overlay"><div class="ui-modal fleet-form" style="width:100%;max-width:780px"><h2>Vehicle Analysis — Odometer Update</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.billingPeriod||''} · ${parsed.rows.length} vehicles · ${uc} updates</p><div style="overflow-x:auto"><table class="fleet-upload-tbl"><thead><tr><th>Rego</th><th>Match</th><th>PDF Odo</th><th>Current</th><th>Action</th></tr></thead><tbody>${matched.map(r=>`<tr><td>${r.rego}</td><td>${r.vehicle?`<span class="fleet-upload-match">✓ ${r.vehicle.plant_no}</span>`:'<span class="fleet-upload-new">—</span>'}</td><td>${r.odometer?fmtNum(r.odometer):'—'}</td><td>${r.vehicle?.current_odometer?fmtNum(r.vehicle.current_odometer):'—'}</td><td>${r.willUpdate?'<span class="fleet-upload-match">↑</span>':'—'}</td></tr>`).join('')}</tbody></table></div><div class="ui-modal-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm" ${uc===0?'disabled':''}>${uc} Odometer Update${uc!==1?'s':''}</button></div></div></div>`;}
     const skipProd=/card fee|transaction fee|surcharge/i;const fuelOnly=parsed.transactions.filter(t=>t.quantity_litres&&t.quantity_litres>0&&!skipProd.test(t.product||''));const vRegs=[...new Set(fuelOnly.map(t=>t.rego))];
-    return`<div class="fleet-form-overlay" id="fleet-upload-overlay"><div class="fleet-form" style="max-width:780px"><h2>Vehicle Report — Fuel Transactions</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.reportDate||''} · ${vRegs.length} vehicles · ${fuelOnly.length} fuel purchases</p><div style="overflow-x:auto;max-height:300px;overflow-y:auto"><table class="fleet-upload-tbl"><thead><tr><th>Date</th><th>Rego</th><th>Supplier</th><th>Product</th><th>Litres</th><th>Odo</th><th>Total</th></tr></thead><tbody>${fuelOnly.slice(0,100).map(t=>`<tr><td>${fmtDate(t.transaction_date)}</td><td>${t.rego}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${t.supplier||'—'}</td><td>${t.product||'—'}</td><td>${t.quantity_litres?t.quantity_litres.toFixed(1)+'L':'—'}</td><td>${fmtNum(t.odometer_reading)}</td><td>${fmtCur(t.total_inc_gst)}</td></tr>`).join('')}</tbody></table></div><div class="fleet-form-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm">Import ${fuelOnly.length} Fuel Transactions</button></div></div></div>`;
+    return`<div class="ui-overlay show" id="fleet-upload-overlay"><div class="ui-modal fleet-form" style="width:100%;max-width:780px"><h2>Vehicle Report — Fuel Transactions</h2><p style="color:var(--text-secondary);font-size:.88rem;margin-bottom:.5rem">${parsed.reportDate||''} · ${vRegs.length} vehicles · ${fuelOnly.length} fuel purchases</p><div style="overflow-x:auto;max-height:300px;overflow-y:auto"><table class="fleet-upload-tbl"><thead><tr><th>Date</th><th>Rego</th><th>Supplier</th><th>Product</th><th>Litres</th><th>Odo</th><th>Total</th></tr></thead><tbody>${fuelOnly.slice(0,100).map(t=>`<tr><td>${fmtDate(t.transaction_date)}</td><td>${t.rego}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${t.supplier||'—'}</td><td>${t.product||'—'}</td><td>${t.quantity_litres?t.quantity_litres.toFixed(1)+'L':'—'}</td><td>${fmtNum(t.odometer_reading)}</td><td>${fmtCur(t.total_inc_gst)}</td></tr>`).join('')}</tbody></table></div><div class="ui-modal-actions"><button class="btn-secondary" id="fu-cancel">Cancel</button><button class="btn-primary" id="fu-confirm">Import ${fuelOnly.length} Fuel Transactions</button></div></div></div>`;
   }
 
   /* ── VEHICLE FORM ── */
   function vehicleFormModal(v){
     const isEdit=!!v;const empOpts=employees.map(e=>`<option value="${e.full_name}" ${(isEdit&&v.assigned_to===e.full_name)?'selected':''}>${e.full_name}</option>`).join('');
     const typeOpts=PLANT_TYPES.map(t=>`<option value="${t}" ${(isEdit&&v.plant_type===t)?'selected':''}>${t}</option>`).join('');const isOther=isEdit&&v.assigned_to_other&&!v.assigned_to;
-    return`<div class="fleet-form-overlay" id="fleet-form-overlay"><div class="fleet-form"><h2>${isEdit?'Edit Vehicle':'Add Vehicle'}</h2>
+    return`<div class="ui-overlay show" id="fleet-form-overlay"><div class="ui-modal fleet-form" style="width:100%;max-width:600px"><h2>${isEdit?'Edit Vehicle':'Add Vehicle'}</h2>
       <label>Plant Number</label><input id="fm-plantno" value="${isEdit?v.plant_no:''}" placeholder="e.g. Car 26" ${isEdit?'readonly style="opacity:.6;cursor:not-allowed"':''}>
       <label>Rego (max 6 chars)</label><input id="fm-rego" class="fleet-rego-input" value="${isEdit?(v.rego_no||''):''}" placeholder="e.g. ABC123" maxlength="6" autocapitalize="characters">
       <label>Make</label><input id="fm-make" value="${isEdit?(v.make||''):''}" placeholder="e.g. VW">
@@ -403,14 +356,14 @@ window.BromarPages.fleet = (() => {
       <label>Fleet Card #</label><input id="fm-fleetcard" value="${isEdit?(v.fleet_card_no||''):''}" placeholder="e.g. 7034 3051 0517 9459">
       <label>Linkt Tag ID</label><input id="fm-linkt" value="${isEdit?(v.linkt_tag_id||''):''}" placeholder="e.g. 1915 0575 1021">
       <label>Notes</label><textarea id="fm-notes" placeholder="Optional notes…">${isEdit?(v.notes||''):''}</textarea>
-      <div class="fleet-form-actions"><button class="btn-secondary" id="fm-cancel">Cancel</button><button class="btn-primary" id="fm-save" data-edit-id="${isEdit?v.id:''}">${isEdit?'Update':'Add Vehicle'}</button></div>
+      <div class="ui-modal-actions"><button class="btn-secondary" id="fm-cancel">Cancel</button><button class="btn-primary" id="fm-save" data-edit-id="${isEdit?v.id:''}">${isEdit?'Update':'Add Vehicle'}</button></div>
     </div></div>`;
   }
 
   /* ── COST FORM ── */
   function costFormModal(vid){
     const catOpts=COST_CATEGORIES.map(c=>`<option value="${c}">${capFirst(c)}</option>`).join('');
-    return`<div class="fleet-form-overlay" id="fleet-cost-overlay"><div class="fleet-form" style="max-width:480px"><h2>Add Cost Entry</h2>
+    return`<div class="ui-overlay show" id="fleet-cost-overlay"><div class="ui-modal fleet-form" style="width:100%;max-width:480px"><h2>Add Cost Entry</h2>
       <label>Category</label><select id="fc-cat">${catOpts}</select>
       <label>Date</label><input id="fc-date" type="date" value="${new Date().toISOString().split('T')[0]}">
       <label>Description</label><input id="fc-desc" placeholder="e.g. Front brake pads replaced">
@@ -419,7 +372,7 @@ window.BromarPages.fleet = (() => {
       <label>Total inc GST</label><input id="fc-total" type="number" step="0.01" min="0" placeholder="0.00">
       <label>Supplier</label><input id="fc-supplier" placeholder="e.g. VW Essendon">
       <label>Invoice / Reference</label><input id="fc-ref" placeholder="Optional">
-      <div class="fleet-form-actions"><button class="btn-secondary" id="fc-cancel">Cancel</button><button class="btn-primary" id="fc-save" data-vid="${vid}">Add Cost</button></div>
+      <div class="ui-modal-actions"><button class="btn-secondary" id="fc-cancel">Cancel</button><button class="btn-primary" id="fc-save" data-vid="${vid}">Add Cost</button></div>
     </div></div>`;
   }
 
@@ -427,22 +380,22 @@ window.BromarPages.fleet = (() => {
   async function render(container){root=container;lockViewport();root.innerHTML=STYLES+'<div class="fleet-loading">Loading fleet…</div>';try{await ensureClient();await Promise.all([loadVehicles(),loadEmployees(),loadFaultMap()]);drawPage();}catch(err){root.innerHTML=STYLES+`<div class="fleet-loading" style="color:var(--error)">${err.message}</div>`;}}
 
   function drawPage(){if(!root)return;root.innerHTML=STYLES+`<div class="page-title-wrapper"><h1>Fleet Management</h1><p class="subtitle">Vehicles, audits & compliance</p></div>${renderAttention()}<div class="section-label">Vehicle Register</div><div id="fleet-table-area">${renderTable()}</div><div id="fleet-modal-area"></div><div class="fleet-page-version">${PAGE_VERSION}</div>`;bindPage();}
-  function refresh(){const t=root?.querySelector('#fleet-table-area');if(t)t.innerHTML=renderTable();const a=root?.querySelector('.fleet-attention');if(a){const tmp=document.createElement('div');tmp.innerHTML=renderAttention();a.replaceWith(tmp.firstElementChild);}bindPage();}
+  function refresh(){const t=root?.querySelector('#fleet-table-area');if(t)t.innerHTML=renderTable();const a=root?.querySelector('.ui-stats');if(a){const tmp=document.createElement('div');tmp.innerHTML=renderAttention();a.replaceWith(tmp.firstElementChild);}bindPage();}
   function refreshModal(){if(!selectedVehicle)return;const a=root?.querySelector('#fleet-modal-area');if(a){a.innerHTML=renderDetailModal(selectedVehicle);bindDetailModal();}}
   function closeModal(){const a=root?.querySelector('#fleet-modal-area');if(a)a.innerHTML='';selectedVehicle=null;audits=[];fuelTxns=[];costEntries=[];expandedAuditId=null;}
   function closeFormModal(){root?.querySelector('#fleet-form-overlay')?.remove();}
   function closeUploadModal(){root?.querySelector('#fleet-upload-overlay')?.remove();}
   function closeCostModal(){root?.querySelector('#fleet-cost-overlay')?.remove();}
-  function showToast(title,msg){const id='ft'+Date.now();document.body.insertAdjacentHTML('beforeend',`<div class="fleet-toast-overlay" id="${id}b"></div><div class="fleet-toast" id="${id}"><h3>${title}</h3><p>${msg}</p><button class="btn-primary" style="padding:.6rem 1.5rem" id="${id}o">OK</button></div>`);const cl=()=>{document.getElementById(id)?.remove();document.getElementById(id+'b')?.remove();};document.getElementById(id+'o').onclick=cl;document.getElementById(id+'b').onclick=cl;}
+  function showToast(title,msg){const id='ft'+Date.now();document.body.insertAdjacentHTML('beforeend',`<div class="ui-overlay show" id="${id}"><div class="ui-modal" style="width:100%;max-width:400px"><h2>${title}</h2><p style="color:var(--text-secondary);font-size:.9rem;line-height:1.5">${msg}</p><div class="ui-modal-actions"><button class="btn-primary" id="${id}o">OK</button></div></div></div>`);const ov=document.getElementById(id);const cl=()=>ov.remove();document.getElementById(id+'o').onclick=cl;ov.addEventListener('click',e=>{if(e.target===ov)cl();});}
 
   /* ── PAGE EVENTS ── */
   function bindPage(){if(!root)return;const si=root.querySelector('#fleet-search');if(si)si.oninput=e=>{searchTerm=e.target.value.toLowerCase();refresh();};root.querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{filterStatus=b.dataset.fs;refresh();});
-    root.querySelectorAll('.fleet-table tr[data-id]').forEach(tr=>tr.onclick=async()=>{const v=vehicles.find(x=>x.id===tr.dataset.id);if(!v)return;selectedVehicle=v;activeTab='details';expandedAuditId=null;[audits,fuelTxns,costEntries]=await Promise.all([loadAudits(v.id),loadFuelTxns(v.rego_no),loadCosts(v.id)]);root.querySelector('#fleet-modal-area').innerHTML=renderDetailModal(v);bindDetailModal();});
+    root.querySelectorAll('.ui-table tr[data-id]').forEach(tr=>tr.onclick=async()=>{const v=vehicles.find(x=>x.id===tr.dataset.id);if(!v)return;selectedVehicle=v;activeTab='details';expandedAuditId=null;[audits,fuelTxns,costEntries]=await Promise.all([loadAudits(v.id),loadFuelTxns(v.rego_no),loadCosts(v.id)]);root.querySelector('#fleet-modal-area').innerHTML=renderDetailModal(v);bindDetailModal();});
     const ab=root.querySelector('#fleet-add-btn');if(ab)ab.onclick=()=>showFormModal(null);
     const ub=root.querySelector('#fleet-upload-btn');if(ub)ub.onclick=()=>showUploadModal();}
 
   function bindDetailModal(){const ov=root.querySelector('#fleet-detail-overlay');if(!ov)return;ov.querySelector('#fleet-close-detail').onclick=closeModal;ov.addEventListener('click',e=>{if(e.target===ov)closeModal();});
-    ov.querySelectorAll('.fleet-tab').forEach(t=>t.onclick=()=>{activeTab=t.dataset.tab;refreshModal();});
+    ov.querySelectorAll('.ui-tab').forEach(t=>t.onclick=()=>{activeTab=t.dataset.tab;refreshModal();});
     const eb=ov.querySelector('.fleet-edit-vehicle');if(eb)eb.onclick=()=>{const v=vehicles.find(x=>x.id===eb.dataset.id);if(v)showFormModal(v);};
     const db=ov.querySelector('.fleet-delete-vehicle');if(db)db.onclick=()=>{const v=vehicles.find(x=>x.id===db.dataset.id);if(v&&confirm(`Delete ${v.plant_no}?`))deleteVehicle(v.id);};
     ov.querySelectorAll('.fleet-action-btn').forEach(b=>b.onclick=e=>{e.stopPropagation();actionAudit(b.dataset.audit);});
