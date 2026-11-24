@@ -1,0 +1,57 @@
+{
+  "employees": [
+    { "id": "00000000-0000-0000-0000-000000000001", "name": "Test Admin", "first_name": "Test", "last_name": "Admin", "email": "admin@example.com", "is_admin": true, "active": true, "status": "active", "role": "Electrician", "phone": "0400 000 001" },
+    { "id": "00000000-0000-0000-0000-000000000002", "name": "Sam Sparky", "first_name": "Sam", "last_name": "Sparky", "email": "sam@example.com", "is_admin": false, "active": true, "status": "active", "role": "Apprentice", "phone": "0400 000 002" }
+  ],
+  "clients": [
+    { "id": "10000000-0000-0000-0000-000000000001", "name": "Acme Pty Ltd", "client_name": "Acme Pty Ltd", "active": true }
+  ],
+  "client_sites": [
+    { "id": "20000000-0000-0000-0000-000000000001", "client_id": "10000000-0000-0000-0000-000000000001", "name": "Acme Warehouse", "site_name": "Acme Warehouse", "address": "1 Test St, Melbourne VIC 3000", "active": true }
+  ],
+  "site_contacts": [
+    { "id": "30000000-0000-0000-0000-000000000001", "site_id": "20000000-0000-0000-0000-000000000001", "name": "Pat Contact", "phone": "0400 000 003", "email": "pat@example.com" }
+  ],
+  "job_types": [
+    { "id": "40000000-0000-0000-0000-000000000001", "category": "Maintenance", "prefix": "M", "name": "Maintenance", "active": true }
+  ],
+  "job_number_register": [
+    { "id": "50000000-0000-0000-0000-000000000001", "job_number": "M-0001", "job_name": "Replace switchboard", "description": "Replace switchboard", "client_id": "10000000-0000-0000-0000-000000000001", "client_name": "Acme Pty Ltd", "site_id": "20000000-0000-0000-0000-000000000001", "status": "active", "job_type": "Maintenance", "created_at": "2026-11-01T00:00:00Z" }
+  ],
+  "quotes": [
+    { "id": "60000000-0000-0000-0000-000000000001", "quote_number": "Q-0001", "title": "Switchboard upgrade", "client_id": "10000000-0000-0000-0000-000000000001", "status": "draft", "total": 1234.5, "line_items": [], "created_at": "2026-11-01T00:00:00Z" }
+  ],
+  "callout_roster": [
+    { "id": "70000000-0000-0000-0000-000000000001", "employee_name": "Sam Sparky", "start_date": "2026-11-23", "end_date": "2026-11-29" }
+  ],
+  "leave_requests": [
+    { "id": "80000000-0000-0000-0000-000000000001", "employee_name": "Sam Sparky", "start_date": "2026-12-01", "end_date": "2026-12-03", "status": "pending", "leave_type": "Annual" }
+  ],
+  "schedule_assignments": [
+    { "id": "90000000-0000-0000-0000-000000000001", "employee_name": "Sam Sparky", "date": "2026-11-24", "site_name": "Acme Warehouse", "job_number": "M-0001" }
+  ],
+  "timesheets": [
+    { "id": "a0000000-0000-0000-0000-000000000001", "employee_name": "Sam Sparky", "week_ending": "2026-11-29", "status": "submitted", "total_hours": 38 }
+  ],
+  "vehicles": [
+    { "id": "b0000000-0000-0000-0000-000000000001", "rego": "ABC123", "make": "Toyota", "model": "Hilux", "active": true }
+  ],
+  "equipment": [
+    { "id": "c0000000-0000-0000-0000-000000000001", "name": "Multimeter", "asset_number": "EQ-001", "status": "available" }
+  ],
+  "equipment_categories": [
+    { "id": "d0000000-0000-0000-0000-000000000001", "name": "Test instruments" }
+  ],
+  "tasks": [
+    { "id": "e0000000-0000-0000-0000-000000000001", "title": "Sample task", "type": "task", "status": "open", "created_at": "2026-11-20T00:00:00Z" }
+  ],
+  "materials": [
+    { "id": "f0000000-0000-0000-0000-000000000001", "name": "20mm conduit", "sku": "C20", "unit": "m", "cost": 2.5 }
+  ],
+  "suppliers": [
+    { "id": "f1000000-0000-0000-0000-000000000001", "name": "Test Electrical Wholesale" }
+  ],
+  "ims_documents": [
+    { "id": "f2000000-0000-0000-0000-000000000001", "slug": "sample-form", "title": "Sample form", "status": "published", "section": "safety", "version": 1 }
+  ]
+}
