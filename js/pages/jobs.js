@@ -1,5 +1,5 @@
 /* ============================================================
-   Jobs — V1.17 — 2026-11-24
+   Jobs — V1.18 — 2026-11-24
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
    activity in a week / month / custom range + Work Report PDF via BromarReportKit).
@@ -8,7 +8,7 @@
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.jobs = (() => {
-  const PAGE_VERSION = 'V1.17';
+  const PAGE_VERSION = 'V1.18';
   return {
   title: 'Jobs',
   version: PAGE_VERSION,
@@ -389,15 +389,16 @@ window.BromarPages.jobs = (() => {
 
       renderStats(); renderPrefixTiles(); renderList();
 
-      $('jobSearch').addEventListener('input', renderList);
-      $('jobStatusFilter').addEventListener('change', renderList);
-      $('jobLinkFilter').addEventListener('change', renderList);
-      $('dateFrom').addEventListener('change', renderList);
-      $('dateTo').addEventListener('change', renderList);
+      shownCount = PAGE_SIZE;
+      $('jobSearch').addEventListener('input', resetAndRenderList);
+      $('jobStatusFilter').addEventListener('change', resetAndRenderList);
+      $('jobLinkFilter').addEventListener('change', resetAndRenderList);
+      $('dateFrom').addEventListener('change', resetAndRenderList);
+      $('dateTo').addEventListener('change', resetAndRenderList);
       $('newJobBtn').addEventListener('click', openNewJob);
       $('prefixTiles').addEventListener('click', (e) => {
         const tile = e.target.closest('.prefix-tile'); if (!tile) return;
-        activePrefix = tile.dataset.prefix; renderPrefixTiles(); renderList();
+        activePrefix = tile.dataset.prefix; renderPrefixTiles(); resetAndRenderList();
       });
       $('jobsList').addEventListener('click', (e) => {
         const card = e.target.closest('.job-card'); if (!card) return;
@@ -427,6 +428,10 @@ window.BromarPages.jobs = (() => {
         tile('', 'All', jobs.length, activePrefix === '', true) +
         PREFIX_ORDER.map(p => tile(p, prefixGroups[p] || p, counts[p], activePrefix === p, false)).join('');
     }
+    const PAGE_SIZE = 20;
+    let shownCount = PAGE_SIZE;
+    // Any filter/search change goes back to the first 20
+    function resetAndRenderList() { shownCount = PAGE_SIZE; renderList(); }
     function renderList() {
       if (!$('jobsList')) return;
       const q = $('jobSearch').value.trim().toLowerCase();
@@ -450,7 +455,11 @@ window.BromarPages.jobs = (() => {
       });
       const list = $('jobsList');
       if (!rows.length) { list.innerHTML = `<div class="jobs-empty">No jobs match your filters.</div>`; return; }
-      list.innerHTML = rows.map(j => {
+      // Searching shows every match across ALL jobs; otherwise show only the newest `shownCount`
+      rows.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      const visible = q ? rows : rows.slice(0, shownCount);
+      const remaining = rows.length - visible.length;
+      list.innerHTML = visible.map(j => {
         const sm = STATUS_META[j.status] || STATUS_META.active;
         const unlinked = !(j.client_id || j.site_id);
         const siteLine = j.site_name ? `<div class="site"><span class="pin">📍</span> ${esc(j.site_name)}${j.job_type ? ' · ' + esc(j.job_type) : ''}</div>`
@@ -465,7 +474,11 @@ window.BromarPages.jobs = (() => {
             <div class="job-avatar" title="Created by ${esc(j.created_by || 'Unknown')}">${initials(j.created_by)}</div>
             <span class="job-badge" style="background:${sm.bg}; color:${sm.fg};">${sm.label}</span>
           </div>`;
-      }).join('');
+      }).join('') + (remaining > 0
+        ? `<div style="text-align:center; padding:12px;"><div style="color:var(--text-secondary); font-size:13px; margin-bottom:8px;">Showing ${visible.length} of ${rows.length} jobs</div><button class="btn-primary" id="jobsLoadMore">Load more</button></div>`
+        : '');
+      const lm = $('jobsLoadMore');
+      if (lm) lm.addEventListener('click', () => { shownCount += PAGE_SIZE; renderList(); });
     }
 
     /* ══════════════ JOB OVERVIEW TAB (activity in a period + work report) ══════════════ */
