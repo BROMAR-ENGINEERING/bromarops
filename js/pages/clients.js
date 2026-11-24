@@ -8,9 +8,6 @@
   const PAGE_ID  = 'clients';
   const VERSION  = 'V1.06';
 
-  const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
-  const SUPABASE_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
-
   const db = () => window.supabaseClient;
 
   function loadSupabaseLib() {
@@ -35,10 +32,7 @@
 
   async function ensureClient() {
     if (window.supabaseClient) return window.supabaseClient;   // reuse if a page already made one
-    await loadSupabaseLib();
-    if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase library unavailable.');
-    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    return window.supabaseClient;
+    throw new Error('Not signed in: shared Supabase client (js/auth.js) is unavailable. Reload the page.');
   }
 
   /* ── STATE ── */

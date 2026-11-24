@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — AUTH
-   V1.03
+   V1.04
    Supabase session guard.
    Reads config from window.BROMAR_CONFIG (see js/config.js).
    - Times out after 8s on unreachable Supabase.
@@ -10,6 +10,7 @@
      window.BromarAuth.employee() → current employee row (async, cached)
      window.BromarAuth.isAdmin() → boolean
      window.BromarAuth.signOut()
+     window.BromarAuth.token()   → user's JWT (sync); headers(extra) → fetch headers
      window.supabaseClient      → shared Supabase client
    ============================================================ */
 
@@ -107,7 +108,18 @@
       }
     }
 
+    // Synchronous copy of the signed-in user's access token (kept fresh below).
+    let accessToken = session?.access_token || null;
+
     window.BromarAuth = {
+      // JWT of the signed-in user. Use this (not the anon key) for any raw
+      // fetch to Supabase REST/Storage/Functions so RLS sees the real user.
+      token: () => accessToken || cfg.supabaseAnonKey,
+      // Ready-made headers for raw fetch: { apikey, Authorization, ...extra }
+      headers: (extra) => Object.assign({
+        apikey: cfg.supabaseAnonKey,
+        Authorization: 'Bearer ' + (accessToken || cfg.supabaseAnonKey)
+      }, extra || {}),
       user: () => session?.user || null,
       employee: loadEmployee,
       isAdmin: async () => {
@@ -120,7 +132,8 @@
       }
     };
 
-    client.auth.onAuthStateChange((event) => {
+    client.auth.onAuthStateChange((event, newSession) => {
+      accessToken = newSession?.access_token || null;
       if (event === 'SIGNED_OUT' && !onLogin) location.replace('login.html');
     });
 

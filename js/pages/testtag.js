@@ -14,7 +14,7 @@
 
 window.BromarAdmin = window.BromarAdmin || {};
 window.BromarAdmin.testtag = {
-  version: 'V1.32',
+  version: 'V1.33',
 
   /* ── Supabase config ── */
   _SB_URL: window.BROMAR_CONFIG.supabaseUrl,
@@ -22,7 +22,7 @@ window.BromarAdmin.testtag = {
   _sbHeaders() {
     return {
       'apikey': this._SB_KEY,
-      'Authorization': 'Bearer ' + this._SB_KEY,
+      'Authorization': 'Bearer ' + (window.BromarAuth ? window.BromarAuth.token() : this._SB_KEY),
       'Content-Type': 'application/json',
       'Prefer': 'return=minimal'
     };
@@ -49,7 +49,7 @@ window.BromarAdmin.testtag = {
         method: 'POST',
         headers: {
           apikey: this._SB_KEY,
-          Authorization: 'Bearer ' + this._SB_KEY,
+          Authorization: 'Bearer ' + (window.BromarAuth ? window.BromarAuth.token() : this._SB_KEY),
           'Content-Type': 'application/pdf',
           'x-upsert': 'true'            // replace existing file for this cert
         },

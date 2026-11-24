@@ -8,7 +8,7 @@
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.tasks = {
   title: 'Tasks',
-  version: 'V1.02',
+  version: 'V1.03',
 
   render(container) {
     const versionEl = document.getElementById('app-version');
@@ -17,7 +17,7 @@ window.BromarPages.tasks = {
     /* ── Supabase ── */
     const SB = window.BROMAR_CONFIG.supabaseUrl;
     const KEY = window.BROMAR_CONFIG.supabaseAnonKey;
-    const H = { 'apikey': KEY, 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+    const H = { 'apikey': KEY, get 'Authorization'() { return `Bearer ${window.BromarAuth ? window.BromarAuth.token() : KEY}`; }, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
 
     /* ── Helpers ── */
     function parseISO(s) { if (!s) return null; if (s instanceof Date) return s; const p = String(s).split('T')[0].split('-').map(Number); return (p[0] && p[1] && p[2]) ? new Date(p[0], p[1]-1, p[2]) : null; }

@@ -15,7 +15,7 @@ window.BromarPages.admin = {
   _sbHeaders() {
     return {
       'apikey': this._SB_KEY,
-      'Authorization': 'Bearer ' + this._SB_KEY,
+      'Authorization': 'Bearer ' + (window.BromarAuth ? window.BromarAuth.token() : this._SB_KEY),
       'Content-Type': 'application/json',
       'Prefer': 'return=minimal'
     };
@@ -2722,7 +2722,7 @@ window.BromarPages.admin = {
     try {
       const emailRes = await fetch(this._SB_URL + '/functions/v1/send-notification', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + this._SB_KEY, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': 'Bearer ' + (window.BromarAuth ? window.BromarAuth.token() : this._SB_KEY), 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'email', to: to, subject: subject, body: body })
       });
       if (!emailRes.ok) {

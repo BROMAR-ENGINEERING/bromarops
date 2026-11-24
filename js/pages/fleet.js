@@ -5,14 +5,12 @@
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.fleet = (() => {
-  const PAGE_VERSION = 'V1.15';
+  const PAGE_VERSION = 'V1.16';
 
   /* ── SUPABASE ── */
-  const SB_URL = window.BROMAR_CONFIG.supabaseUrl;
-  const SB_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
   let sb = null;
   function loadScript(u){return new Promise((r,j)=>{const s=document.createElement('script');s.src=u;s.onload=r;s.onerror=j;document.head.appendChild(s);});}
-  async function ensureClient(){if(sb)return sb;if(window.supabaseClient){sb=window.supabaseClient;return sb;}if(!window.supabase?.createClient){for(const u of['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js','https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js']){try{await loadScript(u);if(window.supabase?.createClient)break;}catch{continue;}}}if(!window.supabase?.createClient)throw new Error('Supabase library failed to load');sb=window.supabase.createClient(SB_URL,SB_KEY);window.supabaseClient=sb;return sb;}
+  async function ensureClient(){if(sb)return sb;if(window.supabaseClient){sb=window.supabaseClient;return sb;}if(!window.supabase?.createClient){for(const u of['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js','https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js']){try{await loadScript(u);if(window.supabase?.createClient)break;}catch{continue;}}}throw new Error('Not signed in: shared Supabase client (js/auth.js) is unavailable. Reload the page.');}
   async function ensurePdfJs(){if(window.pdfjsLib)return;await loadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js').catch(()=>{});if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='';}
 
   /* ── CONSTANTS ── */

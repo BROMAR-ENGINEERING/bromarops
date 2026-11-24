@@ -13,13 +13,10 @@ window.BromarPages.scheduling = (() => {
   const PAGE_VERSION = 'V1.37';
 
   /* ── SUPABASE CONFIG ── */
-  const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
-  const SUPABASE_ANON_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
   let supabase = null;
   function getSupabase() {
     if (supabase) return supabase;
     if (window.supabaseClient) { supabase = window.supabaseClient; return supabase; }
-    if (window.supabase?.createClient) { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return supabase; }
     return null;
   }
 

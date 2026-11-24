@@ -15,8 +15,6 @@ window.BromarPages.jobs = (() => {
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
-    const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
-    const SUPABASE_ANON_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
     let sb = null;
 
     function loadScript(url) {
@@ -29,14 +27,8 @@ window.BromarPages.jobs = (() => {
     async function ensureSupabase() {
       if (window.supabaseClient) return (sb = window.supabaseClient);
       if (window.sb) return (sb = window.sb);
-      if (!window.supabase) {
-        for (const url of ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'https://unpkg.com/@supabase/supabase-js@2']) {
-          try { await loadScript(url); if (window.supabase) break; } catch (e) { /* next */ }
-        }
-        if (!window.supabase) throw new Error('Could not load the Supabase library (CDN blocked).');
-      }
-      window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      return (sb = window.supabaseClient);
+      // Never fall back to an anon-key client: it would bypass the user's session/RLS.
+      throw new Error('Not signed in: shared Supabase client (js/auth.js) is unavailable. Reload the page.');
     }
     async function ensureJsPDF() {
       if (!(window.jspdf && window.jspdf.jsPDF)) {

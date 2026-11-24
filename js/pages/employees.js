@@ -32,15 +32,17 @@ window.BromarPages.employees = {
     let skillSuggestions         = [];
 
     /* ── HELPERS ── */
+    // Use the signed-in user's JWT (fresh on every request) so RLS applies.
+    const authTok = () => (window.BromarAuth ? window.BromarAuth.token() : SUPABASE_KEY);
     const sbH = {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      get 'Authorization'() { return `Bearer ${authTok()}`; },
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
     const sbHnoPrefer = {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      get 'Authorization'() { return `Bearer ${authTok()}`; },
       'Content-Type': 'application/json'
     };
 
