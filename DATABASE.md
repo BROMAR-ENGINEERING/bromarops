@@ -119,6 +119,7 @@ Named in the Employees header but **never queried**. Cert images live in storage
 | work_type | text | set from quote `job_title` when created from a quote |
 | contact_person, contact_phone, contact_role | text | |
 | notes | text | e.g. "From quote BQ000001 v1" |
+| quote_id | text | optional; → quotes.id of the quote that created the job (Quotes → Approve). Added by `db/migrations/2026-11-24_job_quote_link.sql`; Ops ignores a missing column |
 | created_by | text | |
 | created_at | timestamptz | |
 | completed_at | timestamptz | set when status becomes `completed`, else null |
@@ -345,7 +346,7 @@ SWMS content JSON (`draft_content` / `swms_revisions.content`): `{ title, scope,
 
 # RPC / functions
 
-- **`create_new_job`** (RPC) — Ops (Jobs). Args: `p_prefix`, `p_client_id`, `p_site_id`, `p_job_type`, `p_contact_person`, `p_contact_phone`, `p_contact_role`. Returns the new job number as a string. Presumably bumps `job_number_counters` and inserts into `job_number_register`. After it returns, Ops updates the row with quote details (`work_type`, `site_address`, `notes`, `contact_person`).
+- **`create_new_job`** (RPC) — Ops (Jobs). Args: `p_prefix`, `p_client_id`, `p_site_id`, `p_job_type`, `p_contact_person`, `p_contact_phone`, `p_contact_role`. Returns the new job number as a string. Presumably bumps `job_number_counters` and inserts into `job_number_register`. After it returns, Ops updates the row with quote details (`work_type`, `client_name`, `site_name`, `site_address`, `notes`, contact fields, `quote_id`). Also called by Quotes when a quote is approved.
 - **`send-notification`** (Supabase Edge Function) — push: `{ employee_name, message }`; email: `{ type: 'email', to, subject, body }`.
 - **`client-user-admin`** (Netlify, Hub site) — see CLAUDE.md §3.
 - **`extract-invoice`** (Netlify) — does not exist yet. Expected: multipart POST with field `file`; response `{ supplier?, invoice_number?, items: [{ description, qty, unit_cost }] }`.
