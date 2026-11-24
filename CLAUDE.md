@@ -75,6 +75,10 @@ they are in the Hub repo or in Supabase.
 
 This repo and **Bromar Hub** use the **same** Supabase project. Any schema, RLS or data change here affects the Hub.
 
+> **Full schema reference: [`DATABASE.md`](DATABASE.md)** — columns, JSON shapes, who reads/writes each table, storage buckets, RPCs.
+> **Update `DATABASE.md` in the same change whenever you add/change a table, column, JSON shape, RLS policy, view, RPC or bucket**,
+> and mirror the change in the copy in the Bromar Hub repo.
+
 ### Every table/view/RPC/bucket this repo touches
 
 Tables: `callout_roster`, `cert_types`, `client_access_requests`, `client_sites`, `client_users`, `clients`,
