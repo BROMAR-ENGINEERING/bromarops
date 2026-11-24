@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — TASKS & ANNOUNCEMENTS
-   Version: V1.03
+   Version: V1.04
    Supabase: tasks table + employees table
    Tasks = completable | Announcements = acknowledgeable
    ============================================================ */
@@ -61,8 +61,10 @@ window.BromarPages.tasks = {
               return { ...t, assigned_individuals: ai, acknowledged_by: ab };
             });
           }
+        } else {
+          throw new Error('HTTP ' + r.status);
         }
-      } catch (e) { console.warn('Tasks fetch:', e); }
+      } catch (e) { console.error('Tasks fetch:', e); window.BromarUtils?.notify('Could not load tasks. Check your connection and refresh the page.', 'error'); }
     }
 
     async function saveTask(task) {

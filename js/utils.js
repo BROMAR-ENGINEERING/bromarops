@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — SHARED UTILITIES
-   V1.00
+   V1.01 — added notify(msg, type) + warning toast style
    Exposed as window.BromarUtils.
    Pages should use these helpers rather than reinventing them.
    ============================================================ */
@@ -90,7 +90,8 @@
     const bg = {
       success: 'linear-gradient(135deg,#15803d,#22c55e)',
       error:   'linear-gradient(135deg,#dc2626,#ef4444)',
-      info:    'linear-gradient(135deg,#ea580c,#fb923c)'
+      warning: 'linear-gradient(135deg,#b45309,#f59e0b)',
+      info:   'linear-gradient(135deg,#ea580c,#fb923c)'
     }[type || 'info'];
     el.style.cssText = `background:${bg};color:#fff;padding:0.75rem 1.25rem;border-radius:10px;font-family:'Outfit',sans-serif;font-weight:500;font-size:0.9rem;box-shadow:0 8px 24px rgba(0,0,0,0.15);pointer-events:auto;animation:bromar-toast-in 0.3s ease-out;max-width:90vw;`;
     el.textContent = message;
@@ -107,6 +108,13 @@
       el.style.animation = 'bromar-toast-out 0.25s ease-in forwards';
       setTimeout(() => el.remove(), 250);
     }, ms || 3000);
+  }
+
+  /* notify(msg, type): user-facing message. type = success | info | warning | error.
+     Errors and warnings stay on screen longer so they are not missed. */
+  function notify(message, type, ms) {
+    type = type || 'info';
+    showToast(message, type, ms || (type === 'error' ? 7000 : type === 'warning' ? 5000 : 3000));
   }
 
   /* ── CONFIRM DIALOG ── */
@@ -170,7 +178,7 @@
   }
 
   window.BromarUtils = {
-    version: 'V1.00',
+    version: 'V1.01',
     parseISO,
     formatDate,
     toISODate,
@@ -179,6 +187,7 @@
     safeJSON,
     escHtml,
     showToast,
+    notify,
     confirmDialog,
     showSpinner,
     hideSpinner,

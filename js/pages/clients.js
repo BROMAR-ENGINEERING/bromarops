@@ -98,13 +98,13 @@
       const { data, error } = await sb.from('client_sites').select('*').order('site_name', { ascending: true });
       if (error) throw error;
       state.sites = data || [];
-    } catch (e) { console.warn('sites load', e); state.sites = []; }
+    } catch (e) { console.error('sites load', e); state.sites = []; window.BromarUtils?.notify('Could not load client sites. Refresh the page to retry.', 'error'); }
 
     try {
       const { data, error } = await sb.from('site_contacts').select('*').order('name', { ascending: true });
       if (error) throw error;
       state.contacts = data || [];
-    } catch (e) { console.warn('contacts load', e); state.contacts = []; }
+    } catch (e) { console.error('contacts load', e); state.contacts = []; window.BromarUtils?.notify('Could not load site contacts. Refresh the page to retry.', 'error'); }
 
     state.loading = false;
     renderBody();
