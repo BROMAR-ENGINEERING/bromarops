@@ -2,6 +2,7 @@
    BROMAR OPS — SHARED UTILITIES
    V1.01 — added notify(msg, type) + warning toast style
    V1.02 — added fetchAll(buildQuery) to page past Supabase's 1,000-row limit
+   V1.03 — added saveState/loadState (per-page UI state in localStorage)
    Exposed as window.BromarUtils.
    Pages should use these helpers rather than reinventing them.
    ============================================================ */
@@ -178,6 +179,21 @@
     }
   }
 
+  /* ── PER-PAGE UI STATE (localStorage) ── */
+  const STATE_PREFIX = 'bromar_ops_state_';
+
+  function saveState(page, obj) {
+    try { localStorage.setItem(STATE_PREFIX + page, JSON.stringify(obj || {})); }
+    catch (_) { /* storage full or blocked — non-critical */ }
+  }
+
+  function loadState(page) {
+    try {
+      const v = JSON.parse(localStorage.getItem(STATE_PREFIX + page));
+      return v && typeof v === 'object' ? v : {};
+    } catch (_) { return {}; }
+  }
+
   /* Supabase/PostgREST returns at most 1,000 rows per request. fetchAll pages
      through with .range() until a short page comes back.
      buildQuery() must return a NEW query each call, with a stable order, e.g.
@@ -196,8 +212,10 @@
   }
 
   window.BromarUtils = {
-    version: 'V1.02',
+    version: 'V1.03',
     fetchAll,
+    saveState,
+    loadState,
     parseISO,
     formatDate,
     toISODate,

@@ -62,8 +62,22 @@ window.BromarPages.jobs = (() => {
     /* ── state ── */
     let jobs = [];
     let editing = null;
-    let activePrefix = '';
-    let activeTab = 'register';
+    // Remembered UI state (BromarUtils.loadState / saveState, key bromar_ops_state_jobs)
+    const saved = (window.BromarUtils && BromarUtils.loadState('jobs')) || {};
+    let activePrefix = saved.prefix || '';
+    let activeTab = saved.tab === 'overview' ? 'overview' : 'register';
+    function persistState() {
+      if (!window.BromarUtils) return;
+      const v = (id) => { const el = container.querySelector('#' + id); return el ? el.value : undefined; };
+      const prev = BromarUtils.loadState('jobs');
+      BromarUtils.saveState('jobs', Object.assign({}, prev, {
+        tab: activeTab, prefix: activePrefix,
+        ovMode: ov.mode, ovFrom: ov.from, ovTo: ov.to
+      }, activeTab === 'register' && container.querySelector('#jobSearch') ? {
+        search: v('jobSearch'), status: v('jobStatusFilter'), link: v('jobLinkFilter'),
+        dateFrom: v('dateFrom'), dateTo: v('dateTo')
+      } : {}));
+    }
     let JOB_TYPES_CACHE = null;   // rows from job_types (active only)
     const prefixGroups = {};      // code -> category (for register tile labels)
     const docListeners = [];
@@ -392,16 +406,23 @@ window.BromarPages.jobs = (() => {
 
       renderStats(); renderPrefixTiles(); renderList();
 
-      shownCount = PAGE_SIZE;
-      $('jobSearch').addEventListener('input', resetAndRenderList);
-      $('jobStatusFilter').addEventListener('change', resetAndRenderList);
-      $('jobLinkFilter').addEventListener('change', resetAndRenderList);
-      $('dateFrom').addEventListener('change', resetAndRenderList);
-      $('dateTo').addEventListener('change', resetAndRenderList);
+      const rs = BromarUtils.loadState('jobs');
+      if (rs.search != null) $('jobSearch').value = rs.search;
+      if (rs.status != null) $('jobStatusFilter').value = rs.status;
+      if (rs.link != null) $('jobLinkFilter').value = rs.link;
+      if (rs.dateFrom != null) $('dateFrom').value = rs.dateFrom;
+      if (rs.dateTo != null) $('dateTo').value = rs.dateTo;
+      resetAndRenderList();
+      const onFilter = () => { resetAndRenderList(); persistState(); };
+      $('jobSearch').addEventListener('input', onFilter);
+      $('jobStatusFilter').addEventListener('change', onFilter);
+      $('jobLinkFilter').addEventListener('change', onFilter);
+      $('dateFrom').addEventListener('change', onFilter);
+      $('dateTo').addEventListener('change', onFilter);
       $('newJobBtn').addEventListener('click', openNewJob);
       $('prefixTiles').addEventListener('click', (e) => {
         const tile = e.target.closest('.prefix-tile'); if (!tile) return;
-        activePrefix = tile.dataset.prefix; renderPrefixTiles(); resetAndRenderList();
+        activePrefix = tile.dataset.prefix; renderPrefixTiles(); resetAndRenderList(); persistState();
       });
       $('jobsList').addEventListener('click', (e) => {
         const card = e.target.closest('.job-card'); if (!card) return;
@@ -487,7 +508,7 @@ window.BromarPages.jobs = (() => {
     /* ══════════════ JOB OVERVIEW TAB (activity in a period + work report) ══════════════ */
     // Lists only jobs with job sheet submissions in the selected range.
     // Click a job → its sheets in range, tick which go into the Work Report PDF.
-    const ov = { mode: 'week', from: '', to: '', sheets: [], jobNo: null, selected: new Set(), loading: false, error: '' };
+    const ov = { mode: ['week', 'month', 'custom'].includes(saved.ovMode) ? saved.ovMode : 'week', from: saved.ovFrom || '', to: saved.ovTo || '', sheets: [], jobNo: null, selected: new Set(), loading: false, error: '' };
 
     const isoAdd = (iso, days) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + days); return isoLocal(d); };
     function weekOf(iso) { const d = new Date(iso + 'T12:00:00'); const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return [isoLocal(mon), isoAdd(isoLocal(mon), 6)]; }
@@ -518,6 +539,7 @@ window.BromarPages.jobs = (() => {
     const sheetsFor = (no) => ov.sheets.filter(s => s.job_number === no);
 
     async function loadOverviewSheets() {
+      persistState();
       ov.loading = true; ov.error = ''; paintOverview();
       try {
         if (!ov.from || !ov.to || ov.from > ov.to) { ov.sheets = []; return; }
@@ -1204,6 +1226,7 @@ window.BromarPages.jobs = (() => {
     /* ── tabs ── */
     function showTab(tab) {
       activeTab = tab;
+      persistState();
       container.querySelectorAll('.jobs-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
       closeDrawer();
       if (tab === 'register') renderRegister(); else renderOverview();
