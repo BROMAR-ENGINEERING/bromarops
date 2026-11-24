@@ -1,6 +1,6 @@
 /* ============================================================
    BROMAR OPS — TASKS & ANNOUNCEMENTS
-   Version: V1.02
+   Version: V1.03
    Supabase: tasks table + employees table
    Tasks = completable | Announcements = acknowledgeable
    ============================================================ */
@@ -15,8 +15,8 @@ window.BromarPages.tasks = {
     if (versionEl) versionEl.textContent = this.version;
 
     /* ── Supabase ── */
-    const SB = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-    const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+    const SB = window.BROMAR_CONFIG.supabaseUrl;
+    const KEY = window.BROMAR_CONFIG.supabaseAnonKey;
     const H = { 'apikey': KEY, 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
 
     /* ── Helpers ── */

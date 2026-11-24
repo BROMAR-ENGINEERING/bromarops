@@ -6,10 +6,10 @@
    ============================================================ */
 (function () {
   const PAGE_ID  = 'clients';
-  const VERSION  = 'V1.05';
+  const VERSION  = 'V1.06';
 
-  const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+  const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
+  const SUPABASE_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
 
   const db = () => window.supabaseClient;
 

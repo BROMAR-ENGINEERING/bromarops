@@ -1,5 +1,5 @@
 /* ============================================================
-   Jobs — V1.16 — 2026-11-23
+   Jobs — V1.17 — 2026-11-23
    Repo: js/pages/jobs.js
    Sub-tabs: Job Register (list/edit/create) + Job Overview (jobs with job sheet
    activity in a week / month / custom range + Work Report PDF via BromarReportKit).
@@ -15,8 +15,8 @@ window.BromarPages.jobs = (() => {
 
   render(container) {
     /* ── supabase (self-initialising, with CDN fallback) ── */
-    const SUPABASE_URL = 'https://iwtvlpfprxqwveqadlwl.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHZscGZwcnhxd3ZlcWFkbHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzczMDQsImV4cCI6MjA5MzExMzMwNH0.X6tOhxgFnJDDipltIuILOaZRv4bM4RE9kVV1R_UsE5k';
+    const SUPABASE_URL = window.BROMAR_CONFIG.supabaseUrl;
+    const SUPABASE_ANON_KEY = window.BROMAR_CONFIG.supabaseAnonKey;
     let sb = null;
 
     function loadScript(url) {
