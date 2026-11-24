@@ -5,12 +5,12 @@
    notification queue. Assignment types: one-off, duration,
    indefinite. Linked to schedule_assignments, client_sites,
    clients tables. Jobs table optional.
-   V1.37
+   V1.38
    ============================================================ */
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.scheduling = (() => {
 
-  const PAGE_VERSION = 'V1.37';
+  const PAGE_VERSION = 'V1.38';
 
   /* ── SUPABASE CONFIG ── */
   let supabase = null;
@@ -66,10 +66,13 @@ window.BromarPages.scheduling = (() => {
     async fetchEmployees() {
       try {
         const sb = await this.init();
-        const { data, error } = await sb.from('employees')
-          .select('id, full_name, first_name, last_name, role, a_grade, is_active')
-          .eq('is_active', true)
-          .order('full_name');
+        const cols = 'full_name, first_name, last_name, role, a_grade, is_active';
+        // Try with the hidden id first (issue #18); fall back so the list never goes blank
+        let { data, error } = await sb.from('employees').select('id, ' + cols).eq('is_active', true).order('full_name');
+        if (error) {
+          console.warn('Employee fetch with id failed, retrying without id:', error);
+          ({ data, error } = await sb.from('employees').select(cols).eq('is_active', true).order('full_name'));
+        }
         if (error) throw error;
         return (data || []).map((e, i) => ({
           id: 'emp-' + i,
