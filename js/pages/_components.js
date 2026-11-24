@@ -111,7 +111,7 @@ window.BromarPages._components = {
         </div>
         <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-secondary);">Modal: <code>.ui-overlay.show</code> &gt; <code>.ui-modal</code> (+ <code>.ui-modal-actions</code>) — bottom sheet on phones. Drawer: <code>.ui-drawer-overlay.show</code> + <code>.ui-drawer.show</code> (<code>-head</code>, <code>-body</code>, <code>-foot</code>). Toggle <code>show</code> to open/close.</p>
 
-        <h3>Toast — <code>.ui-toast.success|error|info</code> (static); in code use <code>BromarUtils.showToast</code></h3>
+        <h3>Toast — <code>.ui-toast.success|error|warning|info</code>; <code>BromarUtils.showToast</code> now uses these classes</h3>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><span class="ui-toast success">Success</span><span class="ui-toast error">Error</span><span class="ui-toast info">Info</span></div>
       </div>
 

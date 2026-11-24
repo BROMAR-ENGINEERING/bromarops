@@ -3,6 +3,7 @@
    V1.01 — added notify(msg, type) + warning toast style
    V1.02 — added fetchAll(buildQuery) to page past Supabase's 1,000-row limit
    V1.03 — added saveState/loadState (per-page UI state in localStorage)
+   V1.04 — showToast and confirmDialog now use the shared .ui-toast / .ui-modal classes
    Exposed as window.BromarUtils.
    Pages should use these helpers rather than reinventing them.
    ============================================================ */
@@ -81,7 +82,7 @@
     if (toastContainer) return toastContainer;
     toastContainer = document.createElement('div');
     toastContainer.id = 'bromar-toast-container';
-    toastContainer.style.cssText = 'position:fixed;top:calc(1rem + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    toastContainer.className = 'ui-toast-container';
     document.body.appendChild(toastContainer);
     return toastContainer;
   }
@@ -89,25 +90,11 @@
   function showToast(message, type, ms) {
     const container = ensureToastContainer();
     const el = document.createElement('div');
-    const bg = {
-      success: 'linear-gradient(135deg,#15803d,#22c55e)',
-      error:   'linear-gradient(135deg,#dc2626,#ef4444)',
-      warning: 'linear-gradient(135deg,#b45309,#f59e0b)',
-      info:   'linear-gradient(135deg,#ea580c,#fb923c)'
-    }[type || 'info'];
-    el.style.cssText = `background:${bg};color:#fff;padding:0.75rem 1.25rem;border-radius:10px;font-family:'Outfit',sans-serif;font-weight:500;font-size:0.9rem;box-shadow:0 8px 24px rgba(0,0,0,0.15);pointer-events:auto;animation:bromar-toast-in 0.3s ease-out;max-width:90vw;`;
+    el.className = 'ui-toast ' + (type || 'info');
     el.textContent = message;
     container.appendChild(el);
-
-    if (!document.getElementById('bromar-toast-css')) {
-      const s = document.createElement('style');
-      s.id = 'bromar-toast-css';
-      s.textContent = `@keyframes bromar-toast-in{from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:translateY(0);}}@keyframes bromar-toast-out{to{opacity:0;transform:translateY(-8px);}}`;
-      document.head.appendChild(s);
-    }
-
     setTimeout(() => {
-      el.style.animation = 'bromar-toast-out 0.25s ease-in forwards';
+      el.classList.add('leaving');
       setTimeout(() => el.remove(), 250);
     }, ms || 3000);
   }
@@ -124,14 +111,14 @@
     cfg = typeof cfg === 'string' ? { message: cfg } : (cfg || {});
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+      overlay.className = 'ui-overlay ui-confirm show';
       overlay.innerHTML = `
-        <div style="background:var(--bg-secondary,#fafafa);border:1px solid var(--border,rgba(0,0,0,0.09));border-radius:16px;padding:1.5rem;max-width:400px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.25);">
-          <h3 style="font-family:'Outfit',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;color:var(--text-primary,#1a1a1e);">${escHtml(cfg.title || 'Are you sure?')}</h3>
-          <p style="font-family:'Outfit',sans-serif;font-size:0.9rem;color:var(--text-secondary,#636369);margin-bottom:1.25rem;line-height:1.5;">${escHtml(cfg.message || '')}</p>
-          <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
-            <button data-choice="cancel" style="padding:0.6rem 1.2rem;border:1px solid var(--border,rgba(0,0,0,0.09));border-radius:10px;background:transparent;color:var(--text-secondary,#636369);font-family:'Outfit',sans-serif;font-weight:600;font-size:0.9rem;cursor:pointer;">${escHtml(cfg.cancelLabel || 'Cancel')}</button>
-            <button data-choice="ok" style="padding:0.6rem 1.2rem;border:none;border-radius:10px;background:${cfg.danger ? 'linear-gradient(135deg,#dc2626,#ef4444)' : 'linear-gradient(135deg,#ea580c,#fb923c)'};color:#fff;font-family:'Outfit',sans-serif;font-weight:600;font-size:0.9rem;cursor:pointer;">${escHtml(cfg.okLabel || 'Confirm')}</button>
+        <div class="ui-modal" role="dialog" aria-modal="true">
+          <h2>${escHtml(cfg.title || 'Are you sure?')}</h2>
+          <p class="ui-modal-text">${escHtml(cfg.message || '')}</p>
+          <div class="ui-modal-actions">
+            <button type="button" class="btn-secondary" data-choice="cancel">${escHtml(cfg.cancelLabel || 'Cancel')}</button>
+            <button type="button" class="${cfg.danger ? 'ui-btn-danger' : 'btn-primary'}" data-choice="ok">${escHtml(cfg.okLabel || 'Confirm')}</button>
           </div>
         </div>
       `;
