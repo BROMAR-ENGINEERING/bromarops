@@ -1,6 +1,7 @@
 /* ============================================================
    BROMAR OPS — SHARED UTILITIES
    V1.01 — added notify(msg, type) + warning toast style
+   V1.02 — added fetchAll(buildQuery) to page past Supabase's 1,000-row limit
    Exposed as window.BromarUtils.
    Pages should use these helpers rather than reinventing them.
    ============================================================ */
@@ -177,8 +178,26 @@
     }
   }
 
+  /* Supabase/PostgREST returns at most 1,000 rows per request. fetchAll pages
+     through with .range() until a short page comes back.
+     buildQuery() must return a NEW query each call, with a stable order, e.g.
+       await BromarUtils.fetchAll(() => sb.from('t').select('*').order('created_at').order('id'))
+     Returns { data, error } like a normal supabase call. */
+  async function fetchAll(buildQuery, pageSize) {
+    const size = pageSize || 1000;
+    const out = [];
+    for (let from = 0; ; from += size) {
+      const { data, error } = await buildQuery().range(from, from + size - 1);
+      if (error) return { data: null, error };
+      out.push(...(data || []));
+      if (!data || data.length < size) break;
+    }
+    return { data: out, error: null };
+  }
+
   window.BromarUtils = {
-    version: 'V1.01',
+    version: 'V1.02',
+    fetchAll,
     parseISO,
     formatDate,
     toISODate,

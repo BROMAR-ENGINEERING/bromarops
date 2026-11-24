@@ -12,7 +12,7 @@
    Bumping CACHE name auto-purges old caches on activate.
    ============================================================ */
 
-const CACHE = 'bromar-ops-v1-13';
+const CACHE = 'bromar-ops-v1-14';
 
 const PRECACHE_URLS = [
   'index.html',
