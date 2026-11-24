@@ -518,6 +518,8 @@ input, select, textarea, button {
 }
 .ui-tab:hover { color: var(--text-primary); border-color: var(--accent); }
 .ui-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* Tabs used as filter chips inside a toolbar: no divider line or extra spacing */
+.ui-tabs-inline { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
 
 /* Toolbar: stacks on phones, one row on wider screens */
 .ui-toolbar {
@@ -557,6 +559,7 @@ input, select, textarea, button {
 .ui-table th, .ui-table td { padding: 0.65rem 0.85rem; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .ui-table th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
 .ui-table tr:last-child td { border-bottom: none; }
+.ui-table tbody tr[data-id]:hover { background: var(--card-hover); cursor: pointer; }
 
 /* Modal: centred dialog, bottom sheet on phones */
 .ui-overlay {
@@ -609,6 +612,9 @@ input, select, textarea, button {
 .ui-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
 .ui-stat { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1rem; }
 .ui-stat-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+.ui-stat-value.accent { color: var(--accent); }
+.ui-stat-value.success { color: var(--success); }
+.ui-stat-value.error { color: var(--error); }
 .ui-stat-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 @media (min-width: 700px) { .ui-stats { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
 

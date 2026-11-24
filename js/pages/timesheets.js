@@ -7,13 +7,13 @@
    BROMAR OPS — TIMESHEETS PAGE
    File     : js/pages/timesheets.js
    Registers: window.BromarPages.timesheets
-   Version  : V1.12
+   Version  : V1.13
    ============================================================ */
 
 window.BromarPages = window.BromarPages || {};
 window.BromarPages.timesheets = {
   title: 'Timesheets',
-  version: 'V1.12',
+  version: 'V1.13',
 
   render(container) {
     // Display this page's version in the footer
@@ -161,29 +161,15 @@ window.BromarPages.timesheets = {
         <p class="subtitle">Pay week: Monday – Sunday. Submissions due Tuesday morning, paid Wednesday.</p>
       </div>
 
-      <div class="ts-tabs" role="tablist">
-        <button class="ts-tab active" data-view="status">Submission Status</button>
-        <button class="ts-tab" data-view="lookup">Lookup</button>
-        <button class="ts-tab" data-view="analysis">Analysis</button>
+      <div class="ui-tabs" role="tablist">
+        <button class="ui-tab active" data-view="status">Submission Status</button>
+        <button class="ui-tab" data-view="lookup">Lookup</button>
+        <button class="ui-tab" data-view="analysis">Analysis</button>
       </div>
 
       <div id="ts-view"></div>
 
       <style>
-        .ts-tabs {
-          display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
-          border-bottom: 1px solid var(--border); overflow-x: auto;
-        }
-        .ts-tab {
-          font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 500;
-          padding: 0.75rem 1.25rem; background: transparent; border: none;
-          color: var(--text-secondary); cursor: pointer;
-          border-bottom: 2px solid transparent; transition: all 0.2s ease;
-          white-space: nowrap;
-        }
-        .ts-tab:hover { color: var(--text-primary); }
-        .ts-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-
         .ts-toolbar {
           display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end;
           margin-bottom: 1.5rem;
@@ -233,10 +219,6 @@ window.BromarPages.timesheets = {
         }
         .ts-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-        .ts-stats {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 0.75rem; margin-bottom: 1.25rem;
-        }
         .ts-stat {
           padding: 1rem 1.25rem; border-radius: var(--radius);
           background: var(--bg-secondary); border: 1px solid var(--border);
@@ -253,10 +235,6 @@ window.BromarPages.timesheets = {
           color: var(--text-secondary); letter-spacing: 0.04em; text-transform: uppercase;
         }
 
-        .ts-table-wrap {
-          background: var(--bg-secondary); border: 1px solid var(--border);
-          border-radius: var(--radius); overflow: auto;
-        }
         .ts-table { width: 100%; border-collapse: collapse; }
         .ts-table th {
           text-align: left; padding: 0.6rem 0.85rem;
@@ -304,7 +282,6 @@ window.BromarPages.timesheets = {
         .ts-pill.late      { background: rgba(234,88,12,0.12); color: var(--accent); }
         .ts-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
-        .ts-empty { padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary); font-size: 0.95rem; }
         .ts-spinner { padding: 3rem; text-align: center; color: var(--text-secondary); }
         .ts-spinner::before {
           content: ''; display: inline-block;
@@ -436,7 +413,6 @@ window.BromarPages.timesheets = {
             font-size: 0.75rem; font-weight: 400; color: var(--text-secondary);
           }
           .ts-pill { padding: 0.25rem 0.55rem; font-size: 0.72rem; }
-          .ts-stats { grid-template-columns: repeat(2, 1fr); }
           .ts-stat { padding: 0.75rem 0.85rem; }
           .ts-stat .num { font-size: 1.35rem; }
           .ts-week-banner { padding: 0.85rem 1rem; }
@@ -541,11 +517,11 @@ window.BromarPages.timesheets = {
           </button>
         </div>
 
-        <div class="ts-stats">
-          <div class="ts-stat"><div class="num">${expected.length}</div><div class="lbl">Expected</div></div>
-          <div class="ts-stat"><div class="num success">${submitted.length}</div><div class="lbl">Submitted</div></div>
-          <div class="ts-stat"><div class="num error">${missing.length}</div><div class="lbl">Missing</div></div>
-          <div class="ts-stat"><div class="num accent">${lateCount}</div><div class="lbl">Late</div></div>
+        <div class="ui-stats">
+          <div class="ui-stat"><div class="ui-stat-value">${expected.length}</div><div class="ui-stat-label">Expected</div></div>
+          <div class="ui-stat"><div class="ui-stat-value success">${submitted.length}</div><div class="ui-stat-label">Submitted</div></div>
+          <div class="ui-stat"><div class="ui-stat-value error">${missing.length}</div><div class="ui-stat-label">Missing</div></div>
+          <div class="ui-stat"><div class="ui-stat-value accent">${lateCount}</div><div class="ui-stat-label">Late</div></div>
         </div>
 
         <div class="ts-section-head">
@@ -557,8 +533,8 @@ window.BromarPages.timesheets = {
           </div>
         </div>
         ${submittedTimesheets.length === 0
-          ? `<div class="ts-table-wrap"><div class="ts-empty">No submissions yet for this week.</div></div>`
-          : `<div class="ts-table-wrap"><table class="ts-table">
+          ? `<div class="ui-table-wrap"><div class="ui-empty">No submissions yet for this week.</div></div>`
+          : `<div class="ui-table-wrap"><table class="ts-table">
               <thead><tr>
                 <th>Name</th>
                 <th class="hide-mobile">Role</th>
@@ -593,8 +569,8 @@ window.BromarPages.timesheets = {
           <div class="section-label">Missing submissions (${missing.length})</div>
         </div>
         ${missing.length === 0
-          ? `<div class="ts-table-wrap"><div class="ts-empty">All employees have submitted ✓</div></div>`
-          : `<div class="ts-table-wrap"><table class="ts-table">
+          ? `<div class="ui-table-wrap"><div class="ui-empty">All employees have submitted ✓</div></div>`
+          : `<div class="ui-table-wrap"><table class="ts-table">
               <thead><tr><th>Name</th><th class="hide-mobile">Role</th><th class="hide-mobile">Email</th><th>Status</th></tr></thead>
               <tbody>
                 ${missing.map(e => `
@@ -643,10 +619,10 @@ window.BromarPages.timesheets = {
         rows = rows.filter(t => t.employee_name === state.lookupEmployee);
       }
       if (rows.length === 0) {
-        return `<div class="ts-table-wrap"><div class="ts-empty">No timesheets found for this selection.</div></div>`;
+        return `<div class="ui-table-wrap"><div class="ui-empty">No timesheets found for this selection.</div></div>`;
       }
       return `
-        <div class="ts-table-wrap"><table class="ts-table">
+        <div class="ui-table-wrap"><table class="ts-table">
           <thead><tr>
             <th>Employee</th>
             <th class="hide-mobile">Type</th>
@@ -725,7 +701,7 @@ window.BromarPages.timesheets = {
         rows = rows.filter(t => t.employee_name === state.analysisEmployee);
       }
       if (rows.length === 0) {
-        return `<div class="ts-table-wrap"><div class="ts-empty">No timesheets in selected range.</div></div>`;
+        return `<div class="ui-table-wrap"><div class="ui-empty">No timesheets in selected range.</div></div>`;
       }
 
       const byEmp = {};
@@ -769,17 +745,17 @@ window.BromarPages.timesheets = {
       const showFilterCol = state.analysisFilter !== 'all';
 
       const summary = `
-        <div class="ts-stats">
-          <div class="ts-stat"><div class="num">${rows.length}</div><div class="lbl">Timesheets</div></div>
-          <div class="ts-stat"><div class="num">${grandTotals.normal.toFixed(1)}</div><div class="lbl">Normal hrs</div></div>
-          <div class="ts-stat"><div class="num">${grandTotals.ot.toFixed(1)}</div><div class="lbl">Overtime hrs</div></div>
-          <div class="ts-stat"><div class="num">${grandTotals.travel.toFixed(1)}</div><div class="lbl">Travel hrs</div></div>
-          ${showFilterCol ? `<div class="ts-stat"><div class="num accent">${grandTotals.filtered.toFixed(1)}</div><div class="lbl">${state.analysisFilter} hrs</div></div>` : ''}
+        <div class="ui-stats">
+          <div class="ui-stat"><div class="ui-stat-value">${rows.length}</div><div class="ui-stat-label">Timesheets</div></div>
+          <div class="ui-stat"><div class="ui-stat-value">${grandTotals.normal.toFixed(1)}</div><div class="ui-stat-label">Normal hrs</div></div>
+          <div class="ui-stat"><div class="ui-stat-value">${grandTotals.ot.toFixed(1)}</div><div class="ui-stat-label">Overtime hrs</div></div>
+          <div class="ui-stat"><div class="ui-stat-value">${grandTotals.travel.toFixed(1)}</div><div class="ui-stat-label">Travel hrs</div></div>
+          ${showFilterCol ? `<div class="ui-stat"><div class="ui-stat-value accent">${grandTotals.filtered.toFixed(1)}</div><div class="ui-stat-label">${state.analysisFilter} hrs</div></div>` : ''}
         </div>
       `;
 
       const table = `
-        <div class="ts-table-wrap"><table class="ts-table">
+        <div class="ui-table-wrap"><table class="ts-table">
           <thead><tr>
             <th>Employee</th><th>Weeks</th><th>Normal</th><th>OT</th><th>Travel</th><th>Total</th>
             ${showFilterCol ? `<th>${state.analysisFilter}</th>` : ''}
@@ -806,7 +782,7 @@ window.BromarPages.timesheets = {
         if (types.length) {
           breakdown = `
             <div class="section-label">Breakdown by type — ${employees[0].name}</div>
-            <div class="ts-table-wrap"><table class="ts-table">
+            <div class="ui-table-wrap"><table class="ts-table">
               <thead><tr><th>Type</th><th>Hours</th><th>% of total</th></tr></thead>
               <tbody>
                 ${types.map(([type, h]) => `
@@ -1161,8 +1137,8 @@ window.BromarPages.timesheets = {
 
         <div class="section-label">Entries</div>
         ${entries.length === 0
-          ? `<div class="ts-empty">No entries recorded.</div>`
-          : `<div class="ts-table-wrap"><table class="ts-table ts-entries-table">
+          ? `<div class="ui-empty">No entries recorded.</div>`
+          : `<div class="ui-table-wrap"><table class="ts-table ts-entries-table">
               <thead><tr>
                 <th>Day</th><th>Shift</th><th>Type</th>
                 <th>Normal</th><th>OT</th><th>Travel</th>
@@ -1279,10 +1255,10 @@ window.BromarPages.timesheets = {
       finally { state.loading = false; renderView(); }
     }
 
-    container.querySelectorAll('.ts-tab').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
-    container.querySelectorAll('.ts-tab').forEach(btn => {
+    container.querySelectorAll('.ui-tab').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
+    container.querySelectorAll('.ui-tab').forEach(btn => {
       btn.addEventListener('click', () => {
-        container.querySelectorAll('.ts-tab').forEach(b => b.classList.remove('active'));
+        container.querySelectorAll('.ui-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.view = btn.dataset.view;
         if (state.view === 'analysis') loadRangeData();
